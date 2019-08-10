@@ -1,0 +1,239 @@
+\section{Description}
+\subsection{Architecture}
+
+A router is made of full-duplex ports which rely on ingress and egress interfaces and that are respectively plugged to
+egress and ingress of another router ports. Each router has its own clock domains and the crossing rely on dual-clocked
+FIFO at the input of each ingress interface. A node is attached to a router using a local interface, this interface
+instantiates an extra FIFO to the egress output to support the node's clock domain.
+
+Figure \ref{hynoc_noc_overview} shows both internal organization of 5-port routers and how they are connected to their
+neighbors.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.8\linewidth]{figures/hynoc_noc_overview.pdf}
+  \caption{Router interconnections overview}
+  \label{hynoc_noc_overview}
+\end{figure}
+
+The router is a full crossbar, meaning that each ports can establish a communication to all ports except with
+itself. Multiple paths inside the router can be opened at the same time thanks to the distributed arbitration
+scheme. Thus, each egress port embeds an output multiplexer and an arbiter to route, without starvation, data from the
+ingress ports that has requested a transfer.
+
+Figure \ref{hynoc_router_data_arch} presents the data paths between ingress and egress. Each ingress broadcasts its
+data to all egress ports except to the one which is grouped in the same router port. Then, the egress will forward data
+to the next router depending on the request asserted by the ingress ports and also depending on the state of the
+arbiter.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.8\linewidth]{figures/hynoc_router_data_arch.pdf}
+  \caption{Internal data path of a 3-port router}
+  \label{hynoc_router_data_arch}
+\end{figure}
+
+The control path is shown in the figure \ref{hynoc_router_control_arch}. Contrary to the data path structure, there
+is no broadcast of control signals. Each ingress has dedicated links with each egress to assert transmit requests and to
+receive the grant from an egress. Once the grand is received, the ingress can push data.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.8\linewidth]{figures/hynoc_router_control_arch.pdf}
+  \caption{Internal control path of a 3-port router}
+  \label{hynoc_router_control_arch}
+\end{figure}
+
+The egress arbiter uses a parallel round-robin arbiter which allows to schedule all ingress requests without starvation
+in a fix latency.
+
+\section{First Layer Protocol}
+
+\subsection{Packet routing}
+
+HyNoC uses source routing techniques to send data through routers. Instead of addressing node with coordinates, for
+instance (x,y) for a network with a mesh topology, we define in the packet's header the route to take through the
+network. This means that the header contains a list of output ports, called hops, of routers to cross. This technique
+is used by \cite{LIW2007} and \cite{MUB2010} to avoid congestion with a low packet header overhead using a simple encoding hop
+scheme.
+
+A routing algorithm can be defined upon Source Routing network depending on topology. \cite{MUB2010} survey presents such a
+technique. The routing algorithm generates for each communication the list of hops either dynamically (in hardware in
+the local interface or in software using the node's processor) or statically at compilation time.
+
+Routes are established in a distributed way in each router, this technique is presented by \cite{PON2011}. Each egress
+interface manage itself and it is in charge of selecting the right ingress interface using a simple request/acknowledge
+protocol. Moreover, the egress interface embeds a LUT-based parallel round robin arbiter to respond in fix amount of
+time without creating any starvation.
+
+
+\subsection{Packet structure}
+
+A packet is composed of multiple flits, a flit is the smallest unit transmitted over the network and it is composed of
+$K+1$ bits. The most significant bit is the last bit and it indicates the last flit of a packet.
+
+The table \ref{packet_definition} shows the packet structure. A packet is built with at least one Routing flit followed
+by at least one Payload flit. If multiple header flits are used to encode the path through the network, the router will
+consider only the first flit as a header and the remaining flits as payload. When all hops of the header are marked
+used, this header flit will not be forwarded to the next router. Thus, the next router will use the next flit as a
+header flit and so on.
+
+\begin{table}[h]
+  \centering
+  \begin{tabular}{c | c | c}
+    \toprule\hline
+    \textbf{Last bit} & \multicolumn{2}{c}{\textbf{payload (K bits)}} \\
+    \hline\hline
+    0 & 4-bit Proto & Routing flit \\
+    \hline
+    0 & ... & ... \\
+    \hline
+    0 & \multicolumn{2}{c}{Payload flit} \\
+    \hline
+    0 & \multicolumn{2}{c}{...} \\
+    \hline
+    1 & \multicolumn{2}{c}{last Payload flit} \\
+    \hline\bottomrule
+  \end{tabular}
+  \caption{\label{packet_definition} Packet definition}
+\end{table}
+
+
+The table \ref{smallest_packet} presents the smallest packet that can be sent over the network. The number of router
+that it can pass through depends on the protocol, the payload width and the number of ports within a router.
+
+\begin{table}[h]
+  \centering
+  \begin{tabular}{c | c | c}
+    \toprule\hline
+    \textbf{Last flit bit} & \multicolumn{2}{c}{\textbf{payload (K bits)}} \\
+    \hline\hline
+    0 & 4-bit Proto & Routing flit \\
+    \hline
+    1 & \multicolumn{2}{c}{last Payload flit} \\
+    \hline\bottomrule
+  \end{tabular}
+  \caption{\label{smallest_packet} Smallest packet}
+\end{table}
+
+
+\subsection{Routing protocols}
+
+Multiple protocols can be supported in a routing flit depending on the 4-bit Proto value. The table
+\ref{supported_protocol} shows supported protocols and the following sub-sections describe how they work.
+
+
+\begin{table}[h]
+  \centering
+  \begin{tabular}{l | c}
+    \toprule\hline
+    \textbf{Proto value} & \textbf{Routing method} \\
+    \hline\hline
+    4'b0000 & Unicast Circuit Switch \\
+    \hline
+    4'b0001 & Multicast Circuit Switch \\
+    % 4'b1000 & XY routing\\
+    \hline\bottomrule
+  \end{tabular}
+  \caption{\label{supported_protocol} Supported routing protocols}
+\end{table}
+
+
+\subsubsection{Unicast Circuit Switch routing}
+
+In this routing policy, the routing flit is a list of router egress ID to cross. The table
+\ref{unicast_circuit_switch_field} describes the unicast circuit switch protocol field. For a router with P ports, the
+Hop field is encoded using $W=\lceil \log_2(P-1)\rceil$ bits. The index field points the correct hop to be used by the
+router ingress port. The Gap width can be in $[0, W-1]$.
+
+\begin{table}[h]
+  \centering
+  \begin{tabular}{c | c | c | c | c | c}
+    \toprule
+    \hline
+    \textbf{Proto} & \multicolumn{5}{c}{\textbf{Hops list (K-4 bits)}} \\
+    \hline\hline
+    4'b0000 & Gap & Hop H-1 & ... & Hop 0 & Index \\
+    \hline
+    \bottomrule
+  \end{tabular}
+  \caption{\label{unicast_circuit_switch_field} Unicast Circuit Switch Field Description}
+\end{table}
+
+The index is numbered between $[0, H-1]$ for a flit with $H$ hops and is initialized to $H-1$. The index is decremented
+once the pointed hop is used to open the path inside the router. If the index is null before path opening, the related
+Network Hops flit will not be transmitted to the router's egress port, else the index is decremented and the updated
+Routing flit is transmitted. A unicast flit can embed less than the maximum allowed number of hop fields by just
+initializing the index accordingly.
+
+The hop encoding is based upon the fact that a same packet can not use the same port for incoming and outgoing. The
+number of accessible egress port are $P-1$ for a router with $P$ ports. This technique reduces the internal router's
+crossbar size.
+
+The figure \ref{hynoc_hops_encoding} shows the hops list $0 \rightarrow 2 \rightarrow 0 \rightarrow 1 \rightarrow 2$ to
+establish a communication channel from node $(0, 0)$ to node $(2,2)$ in a $3 \times 3$ mesh network. This NoC is built
+upon 5-port routers and only two bits are needed to encode each hop.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.6\linewidth]{figures/hynoc_hops_encoding.pdf}
+  \caption{Unicast Circuit Switch hops encoding}
+  \label{hynoc_hops_encoding}
+\end{figure}
+
+Each ports encodes the next counterclockwise egress with the ID zero. In other words, the selected egress ID must be
+calculated by taking into account the ingress id, this is a relative egress addressing.
+
+An example of an unicast packet is given in figure \ref{hynoc_unicast_packet_example_64b}. It corresponds to the path
+described in the figure \ref{hynoc_hops_encoding}, the NoC payload width is 64-bit.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.7\linewidth]{figures/hynoc_unicast_packet_example_64b.pdf}
+  \caption{Example of a unicast circuit switch packet of a 64-bit NoC}
+  \label{hynoc_unicast_packet_example_64b}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.5\linewidth]{figures/hynoc_unicast_packet_example_16b.pdf}
+  \caption{Example of a unicast circuit switch packet of a 16-bit NoC}
+  \label{hynoc_unicast_packet_example_16b}
+\end{figure}
+
+\subsubsection{Multicast Circuit Switch routing}
+
+The multicast routing policy permits to target multiple egress ports at a time from a unique ingress port. The table
+\ref{multicast_circuit_switch_field} describes the multicast circuit switch protcol field. For a router with P ports,
+the Hop field width is $W=P-1$ bits. The index field points the correct hop to be used by the router ingress port. The
+Gap width can be in $[0, W-1]$.
+
+As a reminder, the index must be initialized to $H-1$, because the ingress port forwards this flit by decrementing the
+index. A multicast flit can embed less than the maximum allowed number of hop fields by just initializing the index
+accordingly.
+
+\begin{table}[h]
+  \centering
+  \begin{tabular}{c | c | c | c | c | c}
+    \toprule
+    \hline
+    \textbf{Proto} & \multicolumn{5}{c}{\textbf{Hops list (K-4 bits)}} \\
+    \hline\hline
+    4'b0001 & Gap & Hop H-1 & ... & Hop 0 & Index \\
+    \hline
+    \bottomrule
+  \end{tabular}
+  \caption{\label{multicast_circuit_switch_field} Multicast Circuit Switch Field Description}
+\end{table}
+
+\subsubsection{Combining multiple routing policies}
+
+Multiple types of routing flits can be mixed at the beginning of a packet.
+
+\section{Interface}
+
+\subsection{Parameters}
+
+\subsection{Ports}
+
+\section{Test environment}

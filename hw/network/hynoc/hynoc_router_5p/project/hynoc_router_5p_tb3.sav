@@ -1,0 +1,223 @@
+[*]
+[*] GTKWave Analyzer v3.3.57 (w)1999-2014 BSI
+[*] Fri Mar  7 18:17:49 2014
+[*]
+[dumpfile] "/home/christophe/src/sasquatch/trunk/src/arch/network/hynoc/hynoc_router_5p/hynoc_router_5p_tb3.vcd"
+[dumpfile_mtime] "Fri Mar  7 18:06:08 2014"
+[dumpfile_size] 148487
+[savefile] "/home/christophe/src/sasquatch/trunk/src/arch/network/hynoc/hynoc_router_5p/hynoc_router_5p_tb3.sav"
+[timestart] 4039580
+[size] 1366 709
+[pos] -1 -1
+*-14.000000 4071000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] hynoc_router_5p_tb3.
+[treeopen] hynoc_router_5p_tb3.hynoc_router_5p_inst.hynoc_router_base_inst.
+[treeopen] hynoc_router_5p_tb3.hynoc_router_5p_inst.hynoc_router_base_inst.gen_modules[0].
+[treeopen] hynoc_router_5p_tb3.hynoc_router_5p_inst.hynoc_router_base_inst.gen_modules[1].
+[treeopen] hynoc_router_5p_tb3.hynoc_router_5p_inst.hynoc_router_base_inst.gen_modules[2].
+[treeopen] hynoc_router_5p_tb3.hynoc_router_5p_inst.hynoc_router_base_inst.gen_modules[3].
+[treeopen] hynoc_router_5p_tb3.hynoc_router_5p_inst.hynoc_router_base_inst.gen_modules[4].
+[sst_width] 209
+[signals_width] 347
+[sst_expanded] 1
+[sst_vpaned_height] 312
+@28
+hynoc_router_5p_tb3.arst[0]
+hynoc_router_5p_tb3.router_clk[0]
+hynoc_router_5p_tb3.router_srst[0]
+@200
+-
+-
+-READER
+-
+@28
+hynoc_router_5p_tb3.hynoc_stream_reader_inst_3.all_packets_received[0]
+@2023
+^2 /home/christophe/src/sasquatch/trunk/src/arch/network/hynoc/hynoc_stream_reader/translate_checker_state.filter
+hynoc_router_5p_tb3.hynoc_stream_reader_inst_3.checker_state[31:0]
+@28
+hynoc_router_5p_tb3.hynoc_stream_reader_inst_3.fifo_empty[0]
+hynoc_router_5p_tb3.hynoc_stream_reader_inst_3.fsm_next[2:0]
+@c02028
+^1 /home/christophe/src/sasquatch/trunk/src/arch/network/hynoc/hynoc_stream_reader/translate_fsm_reg.filter
+hynoc_router_5p_tb3.hynoc_stream_reader_inst_3.fsm_reg[2:0]
+@28
+(0)hynoc_router_5p_tb3.hynoc_stream_reader_inst_3.fsm_reg[2:0]
+(1)hynoc_router_5p_tb3.hynoc_stream_reader_inst_3.fsm_reg[2:0]
+(2)hynoc_router_5p_tb3.hynoc_stream_reader_inst_3.fsm_reg[2:0]
+@1401200
+-group_end
+@28
+hynoc_router_5p_tb3.hynoc_stream_reader_inst_3.header[1:0]
+hynoc_router_5p_tb3.hynoc_stream_reader_inst_3.local_clk[0]
+hynoc_router_5p_tb3.hynoc_stream_reader_inst_3.data_valid[0]
+@800022
+hynoc_router_5p_tb3.hynoc_stream_reader_inst_3.local_egress_data[32:0]
+@22
+hynoc_router_5p_tb3.hynoc_stream_reader_inst_3.data[31:0]
+hynoc_router_5p_tb3.hynoc_stream_reader_inst_3.data_ref[31:0]
+@1001200
+-group_end
+@22
+hynoc_router_5p_tb3.hynoc_stream_reader_inst_3.local_egress_fifo_level[5:0]
+@28
+hynoc_router_5p_tb3.hynoc_stream_reader_inst_3.local_egress_read[0]
+hynoc_router_5p_tb3.hynoc_stream_reader_inst_3.local_srst[0]
+@24
+hynoc_router_5p_tb3.hynoc_stream_reader_inst_3.nbflits[31:0]
+@22
+hynoc_router_5p_tb3.hynoc_stream_reader_inst_3.nbflits_ref[31:0]
+hynoc_router_5p_tb3.hynoc_stream_reader_inst_3.nseed[31:0]
+@28
+hynoc_router_5p_tb3.hynoc_stream_reader_inst_3.packet_received[0]
+@22
+hynoc_router_5p_tb3.hynoc_stream_reader_inst_3.packetid[15:0]
+hynoc_router_5p_tb3.hynoc_stream_reader_inst_3.seed[31:0]
+@28
+hynoc_router_5p_tb3.hynoc_stream_reader_inst_3.wait_countdown[0]
+@22
+hynoc_router_5p_tb3.hynoc_stream_reader_inst_3.wait_reg[31:0]
+@28
+hynoc_router_5p_tb3.hynoc_stream_reader_inst_3.wait_set[0]
+@22
+hynoc_router_5p_tb3.hynoc_stream_reader_inst_3.writerid[15:0]
+hynoc_router_5p_tb3.hynoc_stream_reader_inst_3.wseed[31:0]
+@200
+-
+-WRITER
+@28
+hynoc_router_5p_tb3.hynoc_stream_writer_inst_3.packet_sent[0]
+@22
+hynoc_router_5p_tb3.hynoc_stream_writer_inst_3.seed[31:0]
+@200
+-
+-LOCAL
+@28
+hynoc_router_5p_tb3.hynoc_local_interface_inst.local_srst[0]
+hynoc_router_5p_tb3.hynoc_local_interface_inst.local_clk[0]
+hynoc_router_5p_tb3.hynoc_local_interface_inst.local_ingress_write[0]
+@22
+hynoc_router_5p_tb3.hynoc_local_interface_inst.local_ingress_data[32:0]
+hynoc_router_5p_tb3.hynoc_local_interface_inst.local_ingress_fifo_level[5:0]
+@28
+hynoc_router_5p_tb3.hynoc_local_interface_inst.local_egress_read[0]
+@22
+hynoc_router_5p_tb3.hynoc_local_interface_inst.local_egress_data[32:0]
+hynoc_router_5p_tb3.hynoc_local_interface_inst.local_egress_fifo_level[5:0]
+@200
+-
+-PORT 0
+@28
+hynoc_router_5p_tb3.port0_ingress_srst[0]
+hynoc_router_5p_tb3.port0_ingress_clk[0]
+hynoc_router_5p_tb3.port0_ingress_write[0]
+@22
+hynoc_router_5p_tb3.port0_ingress_data[32:0]
+hynoc_router_5p_tb3.port0_ingress_fifo_level[5:0]
+hynoc_router_5p_tb3.hynoc_router_5p_inst.hynoc_router_base_inst.gen_modules[0].hynoc_ingress_inst.to_egress_request[3:0]
+hynoc_router_5p_tb3.hynoc_router_5p_inst.hynoc_router_base_inst.gen_modules[0].hynoc_ingress_inst.from_egress_grant[3:0]
+@200
+-
+@28
+hynoc_router_5p_tb3.port0_egress_srst[0]
+hynoc_router_5p_tb3.port0_egress_clk[0]
+hynoc_router_5p_tb3.port0_egress_write[0]
+@22
+hynoc_router_5p_tb3.port0_egress_data[32:0]
+hynoc_router_5p_tb3.port0_egress_fifo_level[5:0]
+hynoc_router_5p_tb3.hynoc_router_5p_inst.hynoc_router_base_inst.gen_modules[0].hynoc_egress_inst.from_ingress_request[3:0]
+hynoc_router_5p_tb3.hynoc_router_5p_inst.hynoc_router_base_inst.gen_modules[0].hynoc_egress_inst.to_ingress_grant[3:0]
+@200
+-
+-PORT 1
+@28
+hynoc_router_5p_tb3.port1_ingress_srst[0]
+hynoc_router_5p_tb3.port1_ingress_clk[0]
+hynoc_router_5p_tb3.port1_ingress_write[0]
+@22
+hynoc_router_5p_tb3.port1_ingress_data[32:0]
+hynoc_router_5p_tb3.port1_ingress_fifo_level[5:0]
+hynoc_router_5p_tb3.hynoc_router_5p_inst.hynoc_router_base_inst.gen_modules[1].hynoc_ingress_inst.to_egress_request[3:0]
+hynoc_router_5p_tb3.hynoc_router_5p_inst.hynoc_router_base_inst.gen_modules[1].hynoc_ingress_inst.from_egress_grant[3:0]
+@200
+-
+@28
+hynoc_router_5p_tb3.port1_egress_srst[0]
+hynoc_router_5p_tb3.port1_egress_clk[0]
+hynoc_router_5p_tb3.port1_egress_write[0]
+@22
+hynoc_router_5p_tb3.port1_egress_data[32:0]
+hynoc_router_5p_tb3.port1_egress_fifo_level[5:0]
+hynoc_router_5p_tb3.hynoc_router_5p_inst.hynoc_router_base_inst.gen_modules[1].hynoc_egress_inst.from_ingress_request[3:0]
+hynoc_router_5p_tb3.hynoc_router_5p_inst.hynoc_router_base_inst.gen_modules[1].hynoc_egress_inst.to_ingress_grant[3:0]
+@200
+-
+-PORT2
+@28
+hynoc_router_5p_tb3.port2_ingress_srst[0]
+hynoc_router_5p_tb3.port2_ingress_clk[0]
+hynoc_router_5p_tb3.port2_ingress_write[0]
+@22
+hynoc_router_5p_tb3.port2_ingress_data[32:0]
+hynoc_router_5p_tb3.port2_ingress_fifo_level[5:0]
+hynoc_router_5p_tb3.hynoc_router_5p_inst.hynoc_router_base_inst.gen_modules[2].hynoc_ingress_inst.to_egress_request[3:0]
+hynoc_router_5p_tb3.hynoc_router_5p_inst.hynoc_router_base_inst.gen_modules[2].hynoc_ingress_inst.from_egress_grant[3:0]
+@200
+-
+@28
+hynoc_router_5p_tb3.port2_egress_srst[0]
+hynoc_router_5p_tb3.port2_egress_clk[0]
+hynoc_router_5p_tb3.port2_egress_write[0]
+@22
+hynoc_router_5p_tb3.port2_egress_data[32:0]
+hynoc_router_5p_tb3.port2_egress_fifo_level[5:0]
+hynoc_router_5p_tb3.hynoc_router_5p_inst.hynoc_router_base_inst.gen_modules[2].hynoc_egress_inst.from_ingress_request[3:0]
+hynoc_router_5p_tb3.hynoc_router_5p_inst.hynoc_router_base_inst.gen_modules[2].hynoc_egress_inst.to_ingress_grant[3:0]
+@200
+-
+-PORT 3
+@28
+hynoc_router_5p_tb3.port3_ingress_srst[0]
+hynoc_router_5p_tb3.port3_ingress_clk[0]
+hynoc_router_5p_tb3.port3_ingress_write[0]
+@22
+hynoc_router_5p_tb3.port3_ingress_data[32:0]
+hynoc_router_5p_tb3.port3_ingress_fifo_level[5:0]
+hynoc_router_5p_tb3.hynoc_router_5p_inst.hynoc_router_base_inst.gen_modules[3].hynoc_ingress_inst.to_egress_request[3:0]
+hynoc_router_5p_tb3.hynoc_router_5p_inst.hynoc_router_base_inst.gen_modules[3].hynoc_ingress_inst.from_egress_grant[3:0]
+@200
+-
+@28
+hynoc_router_5p_tb3.port3_egress_srst[0]
+hynoc_router_5p_tb3.port3_egress_clk[0]
+hynoc_router_5p_tb3.port3_egress_write[0]
+@22
+hynoc_router_5p_tb3.port3_egress_data[32:0]
+hynoc_router_5p_tb3.port3_egress_fifo_level[5:0]
+hynoc_router_5p_tb3.hynoc_router_5p_inst.hynoc_router_base_inst.gen_modules[3].hynoc_egress_inst.to_ingress_grant[3:0]
+hynoc_router_5p_tb3.hynoc_router_5p_inst.hynoc_router_base_inst.gen_modules[3].hynoc_egress_inst.from_ingress_request[3:0]
+@200
+-
+-PORT 4
+@28
+hynoc_router_5p_tb3.port4_ingress_srst[0]
+hynoc_router_5p_tb3.port4_ingress_clk[0]
+hynoc_router_5p_tb3.port4_ingress_write[0]
+@22
+hynoc_router_5p_tb3.port4_ingress_data[32:0]
+hynoc_router_5p_tb3.port4_ingress_fifo_level[5:0]
+hynoc_router_5p_tb3.hynoc_router_5p_inst.hynoc_router_base_inst.gen_modules[4].hynoc_ingress_inst.to_egress_request[3:0]
+hynoc_router_5p_tb3.hynoc_router_5p_inst.hynoc_router_base_inst.gen_modules[4].hynoc_ingress_inst.from_egress_grant[3:0]
+@200
+-
+@28
+hynoc_router_5p_tb3.port4_egress_srst[0]
+hynoc_router_5p_tb3.port4_egress_clk[0]
+hynoc_router_5p_tb3.port4_egress_write[0]
+@22
+hynoc_router_5p_tb3.port4_egress_data[32:0]
+hynoc_router_5p_tb3.port4_egress_fifo_level[5:0]
+hynoc_router_5p_tb3.hynoc_router_5p_inst.hynoc_router_base_inst.gen_modules[4].hynoc_egress_inst.from_ingress_request[3:0]
+hynoc_router_5p_tb3.hynoc_router_5p_inst.hynoc_router_base_inst.gen_modules[4].hynoc_egress_inst.to_ingress_grant[3:0]
+[pattern_trace] 1
+[pattern_trace] 0

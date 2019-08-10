@@ -1,0 +1,40 @@
+[*]
+[*] GTKWave Analyzer v3.3.41 (w)1999-2012 BSI
+[*] Sun Feb  17 14:32:53 2013
+[*]
+[dumpfile] "/home/cclienti/src/sasquatch/trunk/src/arch/lib/cmpgt_tb.vcd"
+[dumpfile_mtime] "Sun Feb  17 14:32:53 2013"
+[dumpfile_size] 1163
+[savefile] "/home/cclienti/src/sasquatch/trunk/src/arch/lib/cmpgt_tb.sav"
+[timestart] 3590
+[size] 1564 720
+[pos] -1 -1
+*-12.000000 22650 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] cmpgt_tb.
+[sst_width] 226
+[signals_width] 201
+[sst_expanded] 1
+[sst_vpaned_height] 185
+@22
+cmpgt_tb.cpt[31:0]
+@200
+-
+@28
+cmpgt_tb.is_signed
+@200
+-
+@24
+cmpgt_tb.a[15:0]
+cmpgt_tb.b[15:0]
+@200
+-
+@420
+cmpgt_tb.a[15:0]
+@421
+cmpgt_tb.b[15:0]
+@200
+-
+@28
+cmpgt_tb.out
+[pattern_trace] 1
+[pattern_trace] 0

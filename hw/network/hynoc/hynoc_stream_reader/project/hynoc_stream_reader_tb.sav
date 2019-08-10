@@ -1,0 +1,46 @@
+[*]
+[*] GTKWave Analyzer v3.3.57 (w)1999-2014 BSI
+[*] Fri Mar  7 12:22:50 2014
+[*]
+[dumpfile] "(null)"
+[savefile] "/home/christophe.clienti/private/private/sasquatch/trunk/src/arch/network/hynoc/hynoc_stream_reader/hynoc_stream_reader_tb.sav"
+[timestart] 49950
+[size] 1920 1051
+[pos] -1 -1
+*-14.000000 143740 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] hynoc_stream_reader_tb.
+[sst_width] 334
+[signals_width] 370
+[sst_expanded] 1
+[sst_vpaned_height] 347
+@28
+hynoc_stream_reader_tb.hynoc_stream_reader_inst.local_srst[0]
+hynoc_stream_reader_tb.hynoc_stream_reader_inst.local_clk[0]
+@200
+-
+-READER
+@28
+hynoc_stream_reader_tb.hynoc_stream_reader_inst.packet_received[0]
+hynoc_stream_reader_tb.hynoc_stream_reader_inst.all_packets_received[0]
+hynoc_stream_reader_tb.hynoc_stream_reader_inst.local_egress_read[0]
+@22
+hynoc_stream_reader_tb.hynoc_stream_reader_inst.local_egress_data[33:0]
+hynoc_stream_reader_tb.hynoc_stream_reader_inst.local_egress_fifo_level[5:0]
+@2028
+^1 ./translate_fsm_reg.filter
+hynoc_stream_reader_tb.hynoc_stream_reader_inst.fsm_reg[2:0]
+@2023
+^2 ./translate_checker_state.filter
+hynoc_stream_reader_tb.hynoc_stream_reader_inst.checker_state[31:0]
+@200
+-
+-WRITER
+@28
+hynoc_stream_reader_tb.address_sent[0]
+hynoc_stream_reader_tb.all_packets_sent[0]
+hynoc_stream_reader_tb.local_ingress_write[0]
+@22
+hynoc_stream_reader_tb.local_ingress_data[33:0]
+hynoc_stream_reader_tb.local_ingress_fifo_level[5:0]
+[pattern_trace] 1
+[pattern_trace] 0

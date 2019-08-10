@@ -1,0 +1,63 @@
+[*]
+[*] GTKWave Analyzer v3.3.57 (w)1999-2014 BSI
+[*] Wed Mar 26 08:10:42 2014
+[*]
+[dumpfile] "/home/christophe.clienti/private/private/sasquatch/trunk/src/arch/network/hynoc-axist/hynoc_local_interface/hynoc_local_interface_tb.vcd"
+[dumpfile_mtime] "Wed Mar 26 08:01:41 2014"
+[dumpfile_size] 7734
+[savefile] "/home/christophe.clienti/private/private/sasquatch/trunk/src/arch/network/hynoc-axist/hynoc_local_interface/hynoc_local_interface_tb.sav"
+[timestart] 0
+[size] 1371 777
+[pos] 3907 131
+*-14.000000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[sst_width] 220
+[signals_width] 317
+[sst_expanded] 1
+[sst_vpaned_height] 215
+@200
+-
+-PORT
+@28
+hynoc_local_interface_tb.port_ingress_srst[0]
+hynoc_local_interface_tb.port_ingress_clk[0]
+hynoc_local_interface_tb.port_ingress_write[0]
+@22
+hynoc_local_interface_tb.port_ingress_data[32:0]
+hynoc_local_interface_tb.port_ingress_fifo_level[5:0]
+@200
+-
+@28
+hynoc_local_interface_tb.port_egress_srst[0]
+hynoc_local_interface_tb.port_egress_clk[0]
+hynoc_local_interface_tb.port_egress_write[0]
+@22
+hynoc_local_interface_tb.port_egress_data[32:0]
+hynoc_local_interface_tb.port_egress_fifo_level[5:0]
+@200
+-
+-LOCAL
+@28
+hynoc_local_interface_tb.local_srst[0]
+hynoc_local_interface_tb.local_clk[0]
+@200
+-
+@28
+hynoc_local_interface_tb.local_egress_read[0]
+@22
+hynoc_local_interface_tb.local_egress_data[32:0]
+@28
+hynoc_local_interface_tb.local_egress_empty[0]
+@22
+hynoc_local_interface_tb.local_egress_fifo_level[5:0]
+@200
+-
+@28
+hynoc_local_interface_tb.local_ingress_write[0]
+@22
+hynoc_local_interface_tb.local_ingress_data[32:0]
+@28
+hynoc_local_interface_tb.local_ingress_full[0]
+@22
+hynoc_local_interface_tb.local_ingress_fifo_level[5:0]
+[pattern_trace] 1
+[pattern_trace] 0

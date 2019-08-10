@@ -1,0 +1,50 @@
+[*]
+[*] GTKWave Analyzer v3.3.47 (w)1999-2013 BSI
+[*] Mon Jun 24 14:48:30 2013
+[*]
+[dumpfile] "/home/christophe.clienti/private/private/sasquatch/trunk/src/arch/lib/dclkfifolut/dclkfifolut_tb.vcd"
+[dumpfile_mtime] "Mon Jun 24 14:48:09 2013"
+[dumpfile_size] 18326
+[savefile] "/home/christophe.clienti/private/private/sasquatch/trunk/src/arch/lib/dclkfifolut/dclkfifolut_tb.sav"
+[timestart] 48300
+[size] 1453 927
+[pos] 3001 336
+*-15.000000 105400 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] dclkfifolut_tb.
+[sst_width] 216
+[signals_width] 210
+[sst_expanded] 1
+[sst_vpaned_height] 273
+@28
+dclkfifolut_tb.arst
+@200
+-
+-
+@28
+dclkfifolut_tb.rclk
+dclkfifolut_tb.ren
+@22
+dclkfifolut_tb.rdata[7:0]
+@29
+dclkfifolut_tb.raempty
+@28
+dclkfifolut_tb.rempty
+@22
+dclkfifolut_tb.DUT.rptrbin[3:0]
+@200
+-
+-
+@28
+dclkfifolut_tb.wclk
+dclkfifolut_tb.wen
+@22
+dclkfifolut_tb.wdata[7:0]
+@28
+dclkfifolut_tb.wafull
+dclkfifolut_tb.wfull
+@22
+dclkfifolut_tb.DUT.wptrbin[3:0]
+@200
+-
+[pattern_trace] 1
+[pattern_trace] 0

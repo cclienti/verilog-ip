@@ -1,0 +1,171 @@
+[*]
+[*] GTKWave Analyzer v3.3.66 (w)1999-2015 BSI
+[*] Sun May 22 18:59:41 2016
+[*]
+[dumpfile] "/home/christophe/src/sasquatch/trunk/src/arch/network/hynoc/hynoc_ingress/build/hynoc_ingress_tb.vcd"
+[dumpfile_mtime] "Sun May 22 18:56:44 2016"
+[dumpfile_size] 15913894
+[savefile] "/home/christophe/src/sasquatch/trunk/src/arch/network/hynoc/hynoc_ingress/build/hynoc_ingress_tb.sav"
+[timestart] 49600
+[size] 1920 1030
+[pos] -1 -1
+*-15.000000 66000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] hynoc_ingress_tb.
+[treeopen] hynoc_ingress_tb.hynoc_ingress_inst.
+[treeopen] hynoc_ingress_tb.hynoc_ingress_inst.genblk1.
+[treeopen] hynoc_ingress_tb.hynoc_ingress_inst.genblk3.
+[sst_width] 286
+[signals_width] 371
+[sst_expanded] 1
+[sst_vpaned_height] 320
+@200
+-
+@28
+hynoc_ingress_tb.hynoc_ingress_inst.router_clk
+hynoc_ingress_tb.hynoc_ingress_inst.wclk
+hynoc_ingress_tb.arst
+hynoc_ingress_tb.egress_rsrst
+hynoc_ingress_tb.egress_wsrst
+hynoc_ingress_tb.router_srst
+hynoc_ingress_tb.wsrst
+@200
+-
+@22
+hynoc_ingress_tb.wdata[32:0]
+@200
+-
+@22
+hynoc_ingress_tb.from_egress_afull[3:0]
+hynoc_ingress_tb.from_egress_grant[3:0]
+@200
+-
+@22
+hynoc_ingress_tb.to_egress_data[32:0]
+hynoc_ingress_tb.to_egress_request[3:0]
+@200
+-
+@2022
+^1 /home/christophe/src/sasquatch/trunk/src/arch/network/hynoc/hynoc_ingress/build/fsm_reg.def
+hynoc_ingress_tb.hynoc_ingress_inst.fsm_reg[3:0]
+@200
+-
+@22
+hynoc_ingress_tb.from_egress_afull[3:0]
+@200
+-
+-
+@800200
+-ROUTING_UCAST
+@22
+hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.from_egress_grant[3:0]
+hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.rdata[32:0]
+@200
+-
+@c00022
+hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.new_header[32:0]
+@28
+(0)hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.new_header[32:0]
+(1)hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.new_header[32:0]
+(2)hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.new_header[32:0]
+(3)hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.new_header[32:0]
+(4)hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.new_header[32:0]
+(5)hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.new_header[32:0]
+(6)hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.new_header[32:0]
+(7)hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.new_header[32:0]
+(8)hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.new_header[32:0]
+(9)hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.new_header[32:0]
+(10)hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.new_header[32:0]
+(11)hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.new_header[32:0]
+(12)hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.new_header[32:0]
+(13)hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.new_header[32:0]
+(14)hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.new_header[32:0]
+(15)hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.new_header[32:0]
+(16)hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.new_header[32:0]
+(17)hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.new_header[32:0]
+(18)hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.new_header[32:0]
+(19)hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.new_header[32:0]
+(20)hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.new_header[32:0]
+(21)hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.new_header[32:0]
+(22)hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.new_header[32:0]
+(23)hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.new_header[32:0]
+(24)hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.new_header[32:0]
+(25)hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.new_header[32:0]
+(26)hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.new_header[32:0]
+(27)hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.new_header[32:0]
+(28)hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.new_header[32:0]
+(29)hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.new_header[32:0]
+(30)hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.new_header[32:0]
+(31)hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.new_header[32:0]
+(32)hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.new_header[32:0]
+@1401200
+-group_end
+@22
+hynoc_ingress_tb.hynoc_ingress_inst.hynoc_ingress_routing_ucast_inst.to_egress_request[3:0]
+@1000200
+-ROUTING_UCAST
+@200
+-
+@800200
+-ROUTING_MCAST
+@22
+hynoc_ingress_tb.hynoc_ingress_inst.genblk3.hynoc_ingress_routing_mcast_inst.from_egress_grant[3:0]
+hynoc_ingress_tb.hynoc_ingress_inst.genblk3.hynoc_ingress_routing_mcast_inst.rdata[32:0]
+@200
+-
+@22
+hynoc_ingress_tb.hynoc_ingress_inst.genblk3.hynoc_ingress_routing_mcast_inst.new_header[32:0]
+hynoc_ingress_tb.hynoc_ingress_inst.genblk3.hynoc_ingress_routing_mcast_inst.to_egress_request[3:0]
+@1000200
+-ROUTING_MCAST
+@200
+-
+-
+@800200
+-REFERENCE_CHECKING
+@22
+hynoc_ingress_tb.egress_ref_wdata[32:0]
+@200
+-
+@22
+hynoc_ingress_tb.egress_ref_rlevel[10:0]
+@200
+-
+-
+-
+@22
+hynoc_ingress_tb.egress_rdata[32:0]
+hynoc_ingress_tb.egress_ref_rdata[32:0]
+@200
+-
+@22
+hynoc_ingress_tb.egress_rrequest[3:0]
+hynoc_ingress_tb.egress_ref_rrequest[3:0]
+@1000200
+-REFERENCE_CHECKING
+@200
+-
+-
+-INTERNAL INGRESS FIFO
+@29
+hynoc_ingress_tb.hynoc_ingress_inst.router_clk
+@22
+hynoc_ingress_tb.hynoc_ingress_inst.rdata[32:0]
+@28
+hynoc_ingress_tb.hynoc_ingress_inst.rempty
+hynoc_ingress_tb.hynoc_ingress_inst.ren
+@22
+hynoc_ingress_tb.hynoc_ingress_inst.rlevel[5:0]
+@28
+hynoc_ingress_tb.hynoc_ingress_inst.wclk
+@22
+hynoc_ingress_tb.hynoc_ingress_inst.wdata[32:0]
+@28
+hynoc_ingress_tb.hynoc_ingress_inst.wen
+hynoc_ingress_tb.hynoc_ingress_inst.wfull
+@22
+hynoc_ingress_tb.hynoc_ingress_inst.wlevel[5:0]
+@200
+-EGRESS RESPONSE SIMULATION
+-
+[pattern_trace] 1
+[pattern_trace] 0

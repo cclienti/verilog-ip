@@ -1,0 +1,37 @@
+[*]
+[*] GTKWave Analyzer v3.3.47 (w)1999-2013 BSI
+[*] Tue Jul  2 06:30:37 2013
+[*]
+[dumpfile] "/home/christophe.clienti/private/private/sasquatch/trunk/src/arch/network/hynoc/hynoc_prra/hynoc_prra_tb.vcd"
+[dumpfile_mtime] "Tue Jul  2 06:29:37 2013"
+[dumpfile_size] 6153
+[savefile] "/home/christophe.clienti/private/private/sasquatch/trunk/src/arch/network/hynoc/hynoc_prra/hynoc_prra_tb.sav"
+[timestart] 0
+[size] 1107 700
+[pos] -1 -1
+*-15.756196 76300 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] hynoc_prra_tb.
+[treeopen] hynoc_prra_tb.DUT.
+[treeopen] hynoc_prra_tb.DUT.lut_gen[3].
+[sst_width] 216
+[signals_width] 223
+[sst_expanded] 1
+[sst_vpaned_height] 305
+@28
+hynoc_prra_tb.srst
+hynoc_prra_tb.clk
+@200
+-
+@28
+hynoc_prra_tb.request[3:0]
+@200
+-
+@28
+hynoc_prra_tb.grant[3:0]
+hynoc_prra_tb.grant_check[3:0]
+@200
+-
+@24
+hynoc_prra_tb.state[1:0]
+[pattern_trace] 1
+[pattern_trace] 0

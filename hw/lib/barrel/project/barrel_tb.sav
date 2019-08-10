@@ -1,0 +1,39 @@
+[*]
+[*] GTKWave Analyzer v3.3.41 (w)1999-2012 BSI
+[*] Sun Feb 17 11:56:04 2013
+[*]
+[dumpfile] "/home/cclienti/src/sasquatch/trunk/src/arch/lib/barrel_tb.vcd"
+[dumpfile_mtime] "Sun Feb 17 11:55:48 2013"
+[dumpfile_size] 229308
+[savefile] "/home/cclienti/src/sasquatch/trunk/src/arch/lib/barrel_tb.sav"
+[timestart] 0
+[size] 1920 1021
+[pos] -1 -1
+*-14.000000 379 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] barrel_tb.
+[sst_width] 226
+[signals_width] 191
+[sst_expanded] 1
+[sst_vpaned_height] 293
+@200
+-
+@28
+barrel_tb.clk
+barrel_tb.enable
+@200
+-
+-
+@22
+barrel_tb.shift[4:0]
+@23
+barrel_tb.DUT.ex[31:0]
+@22
+barrel_tb.in[31:0]
+barrel_tb.out[31:0]
+@200
+-
+@22
+barrel_tb.DUT.shift_reg[4:0]
+barrel_tb.DUT.ex_reg[31:0]
+[pattern_trace] 1
+[pattern_trace] 0

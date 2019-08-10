@@ -1,0 +1,39 @@
+[*]
+[*] GTKWave Analyzer v3.3.41 (w)1999-2012 BSI
+[*] Thu Mar 14 19:40:31 2013
+[*]
+[dumpfile] "/home/cclienti/src/sasquatch/trunk/src/arch/lib/multiplier_tb.vcd"
+[dumpfile_mtime] "Thu Mar 14 19:39:50 2013"
+[dumpfile_size] 230277
+[savefile] "/home/cclienti/src/sasquatch/trunk/src/arch/lib/multiplier_tb.sav"
+[timestart] 0
+[size] 1489 778
+[pos] 274 61
+*-14.000000 17440 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[sst_width] 226
+[signals_width] 102
+[sst_expanded] 1
+[sst_vpaned_height] 205
+@28
+multiplier_tb.clk
+multiplier_tb.enable
+@200
+-
+@29
+multiplier_tb.is_signed
+@200
+-
+@22
+multiplier_tb.a[15:0]
+multiplier_tb.b[15:0]
+multiplier_tb.out[31:0]
+@200
+-
+-
+-
+@420
+multiplier_tb.a[15:0]
+multiplier_tb.b[15:0]
+multiplier_tb.out[31:0]
+[pattern_trace] 1
+[pattern_trace] 0

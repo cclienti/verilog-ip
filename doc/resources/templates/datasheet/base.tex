@@ -1,0 +1,194 @@
+%========================================================================================
+% Document type
+%========================================================================================
+
+\newcommand{\paperdim}{a4paper}
+\documentclass[\paperdim, 11pt]{article}
+
+
+%========================================================================================
+% Packages
+%========================================================================================
+
+\usepackage[left=2cm,right=2cm,top=3cm,bottom=2.5cm, headheight=1cm]{geometry}% http://ctan.org/pkg/geometry
+\usepackage{graphicx} % Required for including images
+\usepackage{microtype} % Improved typography
+\usepackage{multirow} % multirow in table
+\usepackage{booktabs} % Required for nice horizontal rules in tables
+\usepackage{wrapfig} % Required for in-line images
+\usepackage{float} % Required for forcing figures not to float with the [H] parameter
+\usepackage{lipsum}% http://ctan.org/pkg/lipsum
+\usepackage{array}% Define specific alignments in tables
+\usepackage{fancyhdr}% Define specific header and footer
+\usepackage{hyperref}% Hyperref colors
+\usepackage[hyperpageref]{backref} % Backref in the references
+\usepackage[dvipsnames]{xcolor} % enable X color names
+\usepackage{tocloft} % Change toc dot
+\usepackage[nottoc, notlof, notlot]{tocbibind} % Entries in toc, lof, lot for references
+\usepackage{amsmath} % Formula
+
+%========================================================================================
+% ToC
+%========================================================================================
+
+\renewcommand{\contentsname}{Summary}
+\renewcommand{\cftsecleader}{\cftdotfill{\cftdotsep}}
+
+
+%========================================================================================
+% Header and footer
+%========================================================================================
+
+% Clear the default layout
+\fancypagestyle{logo}{%
+  %pagestyle definition
+  \fancyhf{}
+
+  % Build the new layout
+  \renewcommand\footrule {}
+  \renewcommand\headrule {}
+
+  \lhead{\includegraphics[width=\linewidth]{logo-blue_3952x360.png}}
+  \rhead{\LARGE{\IPTitle} \\[0.7cm] \normalsize{revision \IPRev\ -- \IPDate}}
+  \lfoot{}
+  \rfoot{}
+}
+
+\fancypagestyle{content}{%
+  %pagestyle definition
+  \fancyhf{}
+
+  % Build the new layout
+  \renewcommand\footrule {
+    \begin{minipage}{1\textwidth}
+      \includegraphics[width=\linewidth]{line-blue_3952x15.png}
+    \end{minipage}\par
+  }
+
+  \renewcommand\headrule {
+    \begin{minipage}{1\textwidth}
+      \includegraphics[width=\linewidth]{line-blue_3952x15.png}
+    \end{minipage}
+  }
+
+  \lhead{\includegraphics[width=4cm]{logo-small-blue_927x78.png}}
+  \rhead{\IPTitle}
+  \lfoot{revision \IPRev\ -- \IPDate}
+  \rfoot{Page \thepage}
+}
+
+
+%========================================================================================
+% Links
+%========================================================================================
+
+\hypersetup{
+  colorlinks,
+  citecolor=MidnightBlue,
+  filecolor=MidnightBlue,
+  linkcolor=MidnightBlue,
+  urlcolor=MidnightBlue
+}
+
+
+%========================================================================================
+% bibliography
+%========================================================================================
+
+% Bibliography cite style
+% \bibliographystyle{plainnat}
+\bibliographystyle{alpha}
+
+% Backref style:
+\newcommand{\mapolicebackref}[1]{
+    \hspace*{\fill} \mbox{\textit {\small #1}}
+}
+% Manage backref
+\renewcommand*{\backref}[1]{}
+\renewcommand*{\backrefalt}[4]{%
+  \ifcase #1
+  \mapolicebackref{pas de citations}
+  \or \mapolicebackref{(cited on page #2)}
+  \else \mapolicebackref{(cited on pages #2)}
+  \fi
+}
+
+
+%========================================================================================
+% Fonts
+%========================================================================================
+
+\usepackage{charter} % Use the Charter font as the main document font
+\usepackage{courier} % Use the Courier font for \texttt (monospaced) only
+\usepackage[T1]{fontenc} % Use T1 font encoding
+
+
+%========================================================================================
+% Start Document
+%========================================================================================
+
+\input{iptitle.tex}
+\begin{document}
+%-----------------------------------
+% First page
+%-----------------------------------
+\begin{titlepage}
+  \thispagestyle{empty}
+  %-----------------------------------
+  % Logo
+  %-----------------------------------
+  \noindent
+  \begin{minipage}{0.5\linewidth}
+    \includegraphics[width=2.005\linewidth]{logo-blue_3952x360.png}
+  \end{minipage}
+  \noindent
+  \begin{minipage}{0.5\linewidth}
+    \begin{flushright}
+      \LARGE \IPTitle\\[0.5cm]
+      \normalsize revision \IPRev\ -- \IPDate
+    \end{flushright}
+  \end{minipage}\\[1cm]
+  %-----------------------------------
+  % Brief & Feature
+  %-----------------------------------
+  \begin{minipage}[t]{8.25cm}
+    \section*{Brief}
+    \input{brief.tex}
+    \section*{Features}
+    \input{features.tex}
+  \end{minipage}
+  \hspace{0.4cm}
+  \noindent
+  %-----------------------------------
+  % Short description table
+  %-----------------------------------
+  \begin{minipage}[t]{8.25cm}
+    \section*{Short description table}
+    \begin{center}
+      \input{iptable.tex}
+    \end{center}
+  \end{minipage}
+\end{titlepage}
+
+%-----------------------------------
+% Tables ToC etc
+%-----------------------------------
+\newpage
+\tableofcontents
+\thispagestyle{empty}
+
+%-----------------------------------
+% Content
+%-----------------------------------
+\newpage
+\pagestyle{content}
+\input{content.tex}
+
+%-----------------------------------
+% References
+%-----------------------------------
+\newpage
+\pagestyle{content}
+\input{references.tex}
+
+\end{document}

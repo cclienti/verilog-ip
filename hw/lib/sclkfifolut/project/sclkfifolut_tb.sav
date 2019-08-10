@@ -1,0 +1,52 @@
+[*]
+[*] GTKWave Analyzer v3.3.46 (w)1999-2012 BSI
+[*] Tue Jun 18 06:53:33 2013
+[*]
+[dumpfile] "/home/christophe.clienti/private/sasquatch/trunk/src/arch/lib/sclkfifolut_tb.vcd"
+[dumpfile_mtime] "Tue Jun 18 06:53:01 2013"
+[dumpfile_size] 11277
+[savefile] "/home/christophe.clienti/private/sasquatch/trunk/src/arch/lib/sclkfifolut_tb.sav"
+[timestart] 59310
+[size] 1717 918
+[pos] -1 -1
+*-13.000000 100250 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] sclkfifolut_tb.
+[sst_width] 216
+[signals_width] 209
+[sst_expanded] 1
+[sst_vpaned_height] 273
+@24
+sclkfifolut_tb.cpt[31:0]
+@200
+-
+@28
+sclkfifolut_tb.clk
+sclkfifolut_tb.srst
+@200
+-
+@22
+sclkfifolut_tb.DUT.level[3:0]
+sclkfifolut_tb.level_check[3:0]
+@200
+-
+@28
+sclkfifolut_tb.wen
+sclkfifolut_tb.wfull
+@22
+sclkfifolut_tb.wdata[31:0]
+@200
+-
+@28
+sclkfifolut_tb.ren
+sclkfifolut_tb.rempty
+@22
+sclkfifolut_tb.rdata[31:0]
+sclkfifolut_tb.rdata_check[31:0]
+@200
+-
+-
+@28
+sclkfifolut_tb.DUT.rptr[2:0]
+sclkfifolut_tb.DUT.wptr[2:0]
+[pattern_trace] 1
+[pattern_trace] 0
