@@ -1,0 +1,43 @@
+[*]
+[*] GTKWave Analyzer v3.3.100 (w)1999-2019 BSI
+[*] Sun Aug 11 20:10:18 2019
+[*]
+[dumpfile] "/home/christophe/src/wavecruncher-ips/hw/lib/smalldiv/project/smalldiv_tb.vcd"
+[dumpfile_mtime] "Sun Aug 11 20:09:58 2019"
+[dumpfile_size] 745052
+[savefile] "/home/christophe/src/wavecruncher-ips/hw/lib/smalldiv/project/smalldiv_tb.sav"
+[timestart] 0
+[size] 1517 785
+[pos] -1 -1
+*-15.000000 79579300 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] smalldiv_tb.
+[treeopen] smalldiv_tb.smalldiv_inst.
+[sst_width] 208
+[signals_width] 301
+[sst_expanded] 1
+[sst_vpaned_height] 209
+@24
+smalldiv_tb.smalldiv_inst.clock[0]
+smalldiv_tb.smalldiv_inst.enable[0]
+@25
+smalldiv_tb.dividend[17:0]
+@24
+smalldiv_tb.quotient[14:0]
+smalldiv_tb.smalldiv_inst.remainder[2:0]
+@200
+-
+@22
+smalldiv_tb.smalldiv_inst.padded_dividend[17:0]
+@200
+-
+-first lut (msb)
+@24
+smalldiv_tb.smalldiv_inst.smalldiv_lut_inst.dividend_digit[2:0]
+smalldiv_tb.smalldiv_inst.smalldiv_lut_inst.i[31:0]
+smalldiv_tb.smalldiv_inst.smalldiv_lut_inst.last_remainder[2:0]
+smalldiv_tb.smalldiv_inst.smalldiv_lut_inst.m[31:0]
+smalldiv_tb.smalldiv_inst.smalldiv_lut_inst.q[31:0]
+smalldiv_tb.smalldiv_inst.smalldiv_lut_inst.quotient[2:0]
+smalldiv_tb.smalldiv_inst.smalldiv_lut_inst.remainder[2:0]
+[pattern_trace] 1
+[pattern_trace] 0

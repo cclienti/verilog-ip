@@ -38,6 +38,6 @@ venv/
 # Vivado
 ##################
 **/xilinx/
+*.jou
 vivado.tcl
-vivado.jou
 vivado.log
