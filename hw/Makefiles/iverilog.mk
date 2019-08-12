@@ -17,7 +17,7 @@ trace: vcd
 vcd: $(VCD_FILE)
 
 $(VCD_FILE): $(TESTBENCH_MODULE)
-	vvp ./$< -lxt2
+	! vvp ./$< -lxt2 | grep Error
 
 $(TESTBENCH_MODULE): $(TESTBENCH_FILE) $(TOP_FILE) $(TOP_DEPS) $(TESTBENCH_DEPS)
 	$(IVERILOG) $(IVFLAGS)  -s $(TESTBENCH_MODULE) -o $(TESTBENCH_MODULE) \
