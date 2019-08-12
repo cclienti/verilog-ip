@@ -20,15 +20,15 @@ module smalldiv_tb();
    localparam DIVIDER_WIDTH         = $clog2(DIVIDER_VALUE);
    localparam DIVIDEND_WIDTH        = 18;
    localparam THEORETICAL_LUT_WIDTH = 6;
-   localparam REGISTER_IN           = 0;
+   localparam REGISTER_IN           = 1;
    localparam REGISTER_OUT          = 1;
    localparam PIPELINE              = 1;
 
-   reg                                     clock;
-   reg                                     enable;
-   reg [DIVIDEND_WIDTH-1:0]                dividend;
-   wire [DIVIDEND_WIDTH-DIVIDER_WIDTH-1:0] quotient;
-   wire [DIVIDER_WIDTH-1:0]                remainder;
+   reg                       clock;
+   reg                       enable;
+   reg [DIVIDEND_WIDTH-1:0]  dividend;
+   wire [DIVIDEND_WIDTH-1:0] quotient;
+   wire [DIVIDER_WIDTH-1:0]  remainder;
 
    smalldiv
    #(
@@ -81,6 +81,45 @@ module smalldiv_tb();
    always @(posedge clock) begin
       if (enable) begin
          dividend <= dividend + 1;
+      end
+   end
+
+   //----------------------------------------------------------------
+   // Check
+   //----------------------------------------------------------------
+
+   localparam DELAY=2;
+
+   reg [DIVIDEND_WIDTH-1:0] dividend_delayed [DELAY:0];
+
+   always @(*) begin
+      dividend_delayed[DELAY] = dividend;
+   end
+
+   genvar i;
+   generate
+      for (i=0; i<DELAY; i=i+1) begin: GEN_LOOPS
+         always @(posedge clock) begin
+            if (enable) begin
+               dividend_delayed[i] <= dividend_delayed[i+1];
+            end
+         end
+      end
+   endgenerate
+
+   wire [DIVIDEND_WIDTH-1:0] quotient_ref = dividend_delayed[0] / DIVIDER_VALUE;
+   wire [DIVIDER_WIDTH-1:0] remainder_ref = dividend_delayed[0] % DIVIDER_VALUE;
+   wire test_ok = (quotient_ref == quotient) && (remainder_ref == remainder);
+
+   always @(posedge clock) begin
+      if (enable) begin
+         if (!test_ok) begin
+            $display("Error");
+            $display("dividend: %0d", dividend_delayed[0]);
+            $display("quotient ref: %0d - obtained: %0d", quotient_ref, quotient);
+            $display("remainder ref: %0d - obtained: %0d\n", remainder_ref, remainder);
+            $finish;
+         end
       end
    end
 
