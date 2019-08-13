@@ -21,8 +21,7 @@ module smalldiv
     parameter DIVIDEND_WIDTH        = 18,
     parameter THEORETICAL_LUT_WIDTH = 6,
     parameter REGISTER_IN           = 1,
-    parameter REGISTER_OUT          = 1,
-    parameter PIPELINE              = 1)
+    parameter REGISTER_OUT          = 1)
 
    (input wire                      clock,
     input wire                      enable,
@@ -59,7 +58,6 @@ module smalldiv
       `PARAMDISP(THEORETICAL_LUT_WIDTH);
       `PARAMDISP(REGISTER_IN);
       `PARAMDISP(REGISTER_OUT);
-      `PARAMDISP(PIPELINE);
 
       $display("Localparams:");
       `PARAMDISP(THEORETICAL_DIGIT_WIDTH);
