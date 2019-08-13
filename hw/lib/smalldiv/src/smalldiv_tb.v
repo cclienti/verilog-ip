@@ -12,18 +12,17 @@
 
 `timescale 1 ns / 100 ps
 
-module smalldiv_tb();
+module smalldiv_test #(parameter DIVIDER_VALUE         = 5,
+                       parameter DIVIDEND_WIDTH        = 18,
+                       parameter THEORETICAL_LUT_WIDTH = 6,
+                       parameter REGISTER_IN           = 1,
+                       parameter REGISTER_OUT          = 1);
+
+   localparam DIVIDER_WIDTH = $clog2(DIVIDER_VALUE);
+
    //----------------------------------------------------------------
    // DUT
    //----------------------------------------------------------------
-   localparam DIVIDER_VALUE         = 5;
-   localparam DIVIDER_WIDTH         = $clog2(DIVIDER_VALUE);
-   localparam DIVIDEND_WIDTH        = 18;
-   localparam THEORETICAL_LUT_WIDTH = 6;
-   localparam REGISTER_IN           = 1;
-   localparam REGISTER_OUT          = 1;
-   localparam PIPELINE              = 1;
-
    reg                       clock;
    reg                       enable;
    reg [DIVIDEND_WIDTH-1:0]  dividend;
@@ -33,12 +32,10 @@ module smalldiv_tb();
    smalldiv
    #(
       .DIVIDER_VALUE         (DIVIDER_VALUE),
-      .DIVIDER_WIDTH         (DIVIDER_WIDTH),
       .DIVIDEND_WIDTH        (DIVIDEND_WIDTH),
       .THEORETICAL_LUT_WIDTH (THEORETICAL_LUT_WIDTH),
       .REGISTER_IN           (REGISTER_IN),
-      .REGISTER_OUT          (REGISTER_OUT),
-      .PIPELINE              (PIPELINE)
+      .REGISTER_OUT          (REGISTER_OUT)
    )
    smalldiv_inst
    (
@@ -88,7 +85,7 @@ module smalldiv_tb();
    // Check
    //----------------------------------------------------------------
 
-   localparam DELAY=2;
+   localparam DELAY=(REGISTER_IN != 0) + (REGISTER_OUT != 0);
 
    reg [DIVIDEND_WIDTH-1:0] dividend_delayed [DELAY:0];
 
@@ -114,13 +111,39 @@ module smalldiv_tb();
    always @(posedge clock) begin
       if (enable) begin
          if (!test_ok) begin
-            $display("Error");
-            $display("dividend: %0d", dividend_delayed[0]);
-            $display("quotient ref: %0d - obtained: %0d", quotient_ref, quotient);
-            $display("remainder ref: %0d - obtained: %0d\n", remainder_ref, remainder);
+            $display({"Error in %m: dividend: %0d, quotient ref: %0d - obtained: %0d, ",
+                      "remainder ref: %0d - obtained: %0d"},
+                     dividend_delayed[0], quotient_ref, quotient, remainder_ref, remainder);
             $finish;
          end
       end
    end
 
+endmodule
+
+
+module smalldiv_tb();
+   smalldiv_test #(.DIVIDER_VALUE         (3),
+                   .DIVIDEND_WIDTH        (18),
+                   .THEORETICAL_LUT_WIDTH (6),
+                   .REGISTER_IN           (1),
+                   .REGISTER_OUT          (1)) test0 ();
+
+   smalldiv_test #(.DIVIDER_VALUE         (5),
+                   .DIVIDEND_WIDTH        (18),
+                   .THEORETICAL_LUT_WIDTH (6),
+                   .REGISTER_IN           (0),
+                   .REGISTER_OUT          (1)) test1 ();
+
+   smalldiv_test #(.DIVIDER_VALUE         (7),
+                   .DIVIDEND_WIDTH        (18),
+                   .THEORETICAL_LUT_WIDTH (6),
+                   .REGISTER_IN           (1),
+                   .REGISTER_OUT          (0)) test2 ();
+
+   smalldiv_test #(.DIVIDER_VALUE         (11),
+                   .DIVIDEND_WIDTH        (18),
+                   .THEORETICAL_LUT_WIDTH (6),
+                   .REGISTER_IN           (0),
+                   .REGISTER_OUT          (0)) test3 ();
 endmodule

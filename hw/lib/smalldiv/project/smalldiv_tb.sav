@@ -1,43 +1,66 @@
 [*]
 [*] GTKWave Analyzer v3.3.100 (w)1999-2019 BSI
-[*] Mon Aug 12 20:42:46 2019
+[*] Tue Aug 13 19:33:26 2019
 [*]
 [dumpfile] "/home/christophe/src/wavecruncher-ips/hw/lib/smalldiv/project/smalldiv_tb.vcd"
-[dumpfile_mtime] "Mon Aug 12 20:42:12 2019"
-[dumpfile_size] 711768
+[dumpfile_mtime] "Tue Aug 13 19:32:52 2019"
+[dumpfile_size] 1135814
 [savefile] "/home/christophe/src/wavecruncher-ips/hw/lib/smalldiv/project/smalldiv_tb.sav"
 [timestart] 0
-[size] 1517 785
+[size] 1920 1018
 [pos] -1 -1
-*-15.000000 75600 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+*-15.000000 10000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
 [treeopen] smalldiv_tb.
-[treeopen] smalldiv_tb.smalldiv_inst.
-[treeopen] smalldiv_tb.smalldiv_inst.genblk5[0].
 [sst_width] 208
 [signals_width] 301
 [sst_expanded] 1
-[sst_vpaned_height] 209
+[sst_vpaned_height] 290
+@205
+-TEST0
 @24
-smalldiv_tb.smalldiv_inst.clock[0]
-smalldiv_tb.smalldiv_inst.enable[0]
-smalldiv_tb.dividend[17:0]
-@22
-smalldiv_tb.quotient[17:0]
-@24
-smalldiv_tb.quotient_ref[17:0]
-smalldiv_tb.smalldiv_inst.remainder[2:0]
-@25
-smalldiv_tb.remainder_ref[2:0]
-@200
+smalldiv_tb.test0.clock[0]
+smalldiv_tb.test0.dividend[17:0]
+smalldiv_tb.test0.enable[0]
+smalldiv_tb.test0.quotient[17:0]
+smalldiv_tb.test0.quotient_ref[17:0]
+smalldiv_tb.test0.remainder[1:0]
+smalldiv_tb.test0.remainder_ref[1:0]
+smalldiv_tb.test0.test_ok[0]
+@204
 -
-@22
-smalldiv_tb.smalldiv_inst.padded_dividend[17:0]
-smalldiv_tb.smalldiv_inst.padded_quotient[17:0]
+-TEST1
 @24
-smalldiv_tb.smalldiv_inst.genblk5[0].smalldiv_lut_inst.remainder[2:0]
-@200
+smalldiv_tb.test1.clock[0]
+smalldiv_tb.test1.dividend[17:0]
+smalldiv_tb.test1.enable[0]
+smalldiv_tb.test1.quotient[17:0]
+smalldiv_tb.test1.quotient_ref[17:0]
+smalldiv_tb.test1.remainder[2:0]
+smalldiv_tb.test1.remainder_ref[2:0]
+smalldiv_tb.test1.test_ok[0]
+@204
 -
-@28
-smalldiv_tb.test_ok[0]
+-TEST2
+@24
+smalldiv_tb.test2.clock[0]
+smalldiv_tb.test2.dividend[17:0]
+smalldiv_tb.test2.enable[0]
+smalldiv_tb.test2.quotient[17:0]
+smalldiv_tb.test2.quotient_ref[17:0]
+smalldiv_tb.test2.remainder[2:0]
+smalldiv_tb.test2.remainder_ref[2:0]
+smalldiv_tb.test2.test_ok[0]
+@204
+-
+-TEST3
+@24
+smalldiv_tb.test3.clock[0]
+smalldiv_tb.test3.dividend[17:0]
+smalldiv_tb.test3.enable[0]
+smalldiv_tb.test3.quotient[17:0]
+smalldiv_tb.test3.quotient_ref[17:0]
+smalldiv_tb.test3.remainder[3:0]
+smalldiv_tb.test3.remainder_ref[3:0]
+smalldiv_tb.test3.test_ok[0]
 [pattern_trace] 1
 [pattern_trace] 0
