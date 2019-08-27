@@ -31,13 +31,28 @@ venv/
 ##################
 # Verilog
 ##################
-*.vcd
-*_tb
+**/project/*.vcd
+**/project/*_tb
+
+##################
+# Modelsim
+##################
+**/project/modelsim.ini
+**/project/transcript
+**/project/*.wlf
+**/project/work
+
+##################
+# Wavedisp
+##################
+**/project/*.modelsim.tcl
+**/project/*.gtkwave.tcl
+**/project/*.rivierapro.tcl
 
 ##################
 # Vivado
 ##################
-**/xilinx/
-*.jou
-vivado.tcl
-vivado.log
+**/project/xilinx/
+**/project/*.jou
+**/project/vivado.tcl
+**/project/vivado.log
