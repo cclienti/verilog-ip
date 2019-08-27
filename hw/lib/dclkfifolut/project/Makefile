@@ -17,6 +17,7 @@ TOP_DEPS          = ../../gray2bin/src/gray2bin.v \
 
 include ../../../Makefiles/iverilog.mk
 include ../../../Makefiles/verilator.mk
+include ../../../Makefiles/modelsim.mk
 include ../../../Makefiles/xilinx.mk
 include ../../../Makefiles/yosys.mk
 include ../../../Makefiles/common.mk

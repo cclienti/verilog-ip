@@ -8,4 +8,4 @@ print-%:
 	@echo $* = $($*)
 
 clean::
-	rm -rf *~ *# ../src/*~ ../src/*#
+	rm -rf *~ *# ../src/*~ ../src/*# __pycache__
