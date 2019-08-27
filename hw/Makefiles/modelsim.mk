@@ -19,11 +19,13 @@ help::
 modelsim_sim: modelsim_build
 	$(MODELSIM_VSIM) -c -do 'run -all' $(VSIM_FLAGS) $(TESTBENCH_MODULE)
 
-modelsim_simgui: modelsim_build
-	$(MODELSIM_VSIM) -do 'run -all' $(VSIM_FLAGS) -coverage $(TESTBENCH_MODULE)
+modelsim_simgui: modelsim_build $(WAVEDISP_MODELSIM_TCL)
+	$(MODELSIM_VSIM) -do 'do $(WAVEDISP_MODELSIM_TCL); run -all' \
+		$(VSIM_FLAGS) -coverage $(TESTBENCH_MODULE)
 
 modelsim_build: modelsim_work $(TESTBENCH_FILE) $(TOP_FILE) $(TOP_DEPS) $(TESTBENCH_DEPS)
-	$(MODELSIM_VLOG) $(VLOG_FLAGS) $(sort $(TOP_DEPS) $(TESTBENCH_DEPS) $(TOP_FILE) $(TESTBENCH_FILE))
+	$(MODELSIM_VLOG) $(VLOG_FLAGS) \
+		$(sort $(TOP_DEPS) $(TESTBENCH_DEPS) $(TOP_FILE) $(TESTBENCH_FILE))
 
 modelsim_xilinx_build: modelsim_work $(TESTBENCH_FILE) $(POST_SYNTH_FILE) $(TESTBENCH_DEPS)
 	$(MODELSIM_VLOG) $(VLOG_FLAGS) $(TESTBENCH_DEPS) $(TESTBENCH_FILE) $(POST_SYNTH_FILE)
