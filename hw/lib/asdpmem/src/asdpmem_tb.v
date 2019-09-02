@@ -27,9 +27,9 @@ module asdpmem_tb();
 
 
    asdpmem #(.DEPTH(DEPTH), .WIDTH(WIDTH))
-   DUT(.clka(clka), .ena(ena), .wea(wea),
-       .addra(addra), .dia(dia),
-       .addrb(addrb), .dob(dob));
+   asdpmem(.clka(clka), .ena(ena), .wea(wea),
+           .addra(addra), .dia(dia),
+           .addrb(addrb), .dob(dob));
 
    //----------------------------------------------------------------
    // VCD
