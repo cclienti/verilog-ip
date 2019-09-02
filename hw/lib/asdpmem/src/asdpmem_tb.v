@@ -43,12 +43,11 @@ module asdpmem_tb();
    // Clock generation
    //----------------------------------------------------------------
    initial begin
-      clka = 1'b1;
-      # 10000 $finish;
+      clka = 0;
    end
 
    always begin
-     #5 clka = ~clka;
+      #5 clka = ~clka;
    end
 
    //----------------------------------------------------------------
@@ -60,34 +59,63 @@ module asdpmem_tb();
 
    always @ (cpt) begin
       case (cpt)
-        0: begin
-           ena = 1;
-           wea = 0;
-           dia = 0;
-           addra = 0;
-           addrb = 1;
-        end
+         0: begin
+            ena = 1;
+            wea = 0;
+            dia = 0;
+            addra = 0;
+            addrb = 1;
+         end
 
-        2: begin
-           wea = 1;
-           dia = 32'h11223344;
-           addra = 1;
-        end
+         2: begin
+            wea = 1;
+            dia = 32'h11223344;
+            addra = 1;
+         end
 
-        3: begin
-           wea = 1;
-           dia = 32'h55667788;
-           addra = 2;
-        end
+         3: begin
+            wea = 1;
+            dia = 32'h55667788;
+            addra = 2;
+         end
 
-        4: begin
-           wea = 0;
-           dia = 0;
-           addra = 0;
-           addrb = 2;
-        end
-
+         4: begin
+            wea = 0;
+            dia = 0;
+            addra = 0;
+            addrb = 2;
+         end
       endcase // case (cpt)
    end
+
+   //----------------------------------------------------------------
+   // Reference
+   //----------------------------------------------------------------
+   always @ (cpt) begin
+      case (cpt)
+         3: begin
+            if (dob != 32'h11223344) begin
+               $display("Error: dob obtained (32'h%08h) - reference (32'h11223344)", dob);
+            end
+         end
+
+         4: begin
+            if (dob != 32'h55667788) begin
+               $display("Error: dob obtained (32'h%08h) - reference (32'h55667788)", dob);
+            end
+         end
+
+         5: begin
+            if (dob != 32'h55667788) begin
+               $display("Error: dob obtained (32'h%08h) - reference (32'h55667788)", dob);
+            end
+         end
+
+         6: begin
+            $finish();
+         end
+      endcase
+   end
+
 
 endmodule
