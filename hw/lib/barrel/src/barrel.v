@@ -12,16 +12,16 @@
 `timescale 1 ns / 100 ps
 
 module barrel
-  #(parameter WIDTH       = 64,  //WIDTH of the word to right shift
-    parameter SHIFT_WIDTH = 6,   //WIDTH of the shift word
-    parameter SHIFT_MAX   = 46,  //maximum allowable shift value
-    parameter IS_REG_IN   = 1)   //register input or not
+  #(parameter WIDTH       = 64,                  // Width of the word to right shift
+    parameter SHIFT_MAX   = 46,                  // Maximum allowable shift value
+    parameter SHIFT_WIDTH = $clog2(SHIFT_MAX+2), // Width of the shift word
+    parameter IS_REG_IN   = 1)                   // Register input or not
 
    (input wire                   clk, enable,
     input wire                   is_signed,
     input wire [SHIFT_WIDTH-1:0] shift,
     input wire [WIDTH-1:0]       in,
-    input wire [WIDTH-1:0]       ex,
+    input wire [WIDTH-1:0]       ex, // out <= ex ? shit==SHIFT_MAX+1 : ...
     output reg [WIDTH-1:0]       out);
 
 
@@ -32,6 +32,14 @@ module barrel
    reg [SHIFT_WIDTH-1:0]   shift_reg;
    reg [WIDTH-1:0]         in_reg, ex_reg;
 
+
+   // Check parameters
+   initial begin
+      if ($clog2(SHIFT_MAX+2) > SHIFT_WIDTH) begin
+         $display("Error: %m: parameter SHIFT_WIDTH cannot fit requested SHIFT_MAX value");
+         $finish;
+      end
+   end
 
    // register or not inputs
    generate
@@ -76,8 +84,6 @@ module barrel
          out <= muxin[shift_reg];
       end
    end
-
-
 
 
 endmodule // barrel
