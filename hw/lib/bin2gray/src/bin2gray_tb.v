@@ -9,7 +9,7 @@
 // Status          : Unknown, Use with caution!
 // Copyright (C) 2013-2016 Christophe Clienti - All Rights Reserved
 
-`timescale 1 ns / 100 ps
+`timescale 1 ns / 100ps
 
 
 module bin2gray_tb;
@@ -46,25 +46,35 @@ module bin2gray_tb;
    //----------------------------------------------------------------
    // Test vectors
    //----------------------------------------------------------------
+   reg [3:0] ref [15:0];
    initial begin
-      bin = 4'h0;
-      #5 bin = 4'h1;
-      #5 bin = 4'h2;
-      #5 bin = 4'h3;
-      #5 bin = 4'h4;
-      #5 bin = 4'h5;
-      #5 bin = 4'h6;
-      #5 bin = 4'h7;
-      #5 bin = 4'h8;
-      #5 bin = 4'h9;
-      #5 bin = 4'ha;
-      #5 bin = 4'hb;
-      #5 bin = 4'hc;
-      #5 bin = 4'hd;
-      #5 bin = 4'he;
-      #5 bin = 4'hf;
-      #10 $finish;
+      ref[0] = 4'b0000;
+      ref[1] = 4'b0001;
+      ref[2] = 4'b0011;
+      ref[3] = 4'b0010;
+      ref[4] = 4'b0110;
+      ref[5] = 4'b0111;
+      ref[6] = 4'b0101;
+      ref[7] = 4'b0100;
+      ref[8] = 4'b1100;
+      ref[9] = 4'b1101;
+      ref[10] = 4'b1111;
+      ref[11] = 4'b1110;
+      ref[12] = 4'b1010;
+      ref[13] = 4'b1011;
+      ref[14] = 4'b1001;
+      ref[15] = 4'b1000;
    end
 
+   integer idx;
+   initial begin
+      for (idx = 0; idx<16; idx=idx+1) begin
+         #1 bin = idx;
+         #1 if (gray != ref[idx]) begin
+            $display("Error: out=4'b%04b - ref=4'b%04b", gray, ref[idx]);
+         end
+      end
+      #10 $finish;
+   end
 
 endmodule
