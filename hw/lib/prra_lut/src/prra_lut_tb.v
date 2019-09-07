@@ -46,7 +46,7 @@ module prra_lut_tb();
       .LOG2_WIDTH   (LOG2_WIDTH),
       .STATE_OFFSET (STATE_OFFSET)
    )
-   DUT
+   prra_lut
    (
       .request (request),
       .state   (state)
@@ -61,7 +61,7 @@ module prra_lut_tb();
    initial begin
       $display("LUT:");
       for(j=0 ; j<2**WIDTH ; j=j+1) begin
-         $display("\t %b -> %d", j[WIDTH-1:0], DUT.lut[j]);
+         $display("\t %b -> %d", j[WIDTH-1:0], prra_lut.lut[j]);
       end
    end
 
