@@ -20,7 +20,6 @@ module cmpgt
     input wire             is_signed,
     output wire            out);
 
-
    wire sign_a, sign_b;
    wire sign, cmpabs;
 
