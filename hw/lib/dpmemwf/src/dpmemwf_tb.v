@@ -28,15 +28,16 @@ module dpmemwf_tb();
    reg [WIDTH-1:0]  dib;
    wire [WIDTH-1:0] dob;
 
-   integer          cpt = 0;
+   integer          cpta = 0;
+   integer          cptb = 0;
 
 
    dpmemwf #(.DEPTH(DEPTH), .WIDTH(WIDTH),
              .OUTREGA(OUTREGA), .OUTREGB(OUTREGB))
-   DUT(.clka(clka), .ena(ena), .wea(wea),
-       .addra(addra), .dia(dia), .doa(doa),
-       .clkb(clkb), .enb(enb), .web(web),
-       .addrb(addrb), .dib(dib), .dob(dob));
+   dpmemwf(.clka(clka), .ena(ena), .wea(wea),
+           .addra(addra), .dia(dia), .doa(doa),
+           .clkb(clkb), .enb(enb), .web(web),
+           .addrb(addrb), .dib(dib), .dob(dob));
 
    //----------------------------------------------------------------
    // VCD
@@ -52,11 +53,10 @@ module dpmemwf_tb();
    initial begin
       clka = 1'b1;
       clkb = 1'b1;
-      # 10000 $finish;
    end
 
    always fork
-     #5 clka = ~clka;
+     #4 clka = ~clka;
      #5 clkb = ~clkb;
    join
 
@@ -64,20 +64,20 @@ module dpmemwf_tb();
    // Test Vectors
    //----------------------------------------------------------------
    always @ (posedge clka) begin
-      cpt <= cpt + 1;
+      cpta <= cpta + 1;
    end
 
-   always @ (cpt) begin
-      case (cpt)
+   always @ (posedge clkb) begin
+      cptb <= cptb + 1;
+   end
+
+   always @ (cpta) begin
+      case (cpta)
         0: begin
            ena = 1;
-           enb = 1;
            wea = 0;
-           web = 0;
            dia = 0;
-           dib = 0;
            addra = 0;
-           addrb = 0;
         end
 
         1: begin
@@ -96,21 +96,76 @@ module dpmemwf_tb();
            wea = 0;
            dia = 0;
            addra = 2;
-           web = 1;
-           dib = 32'hCAFEDECA;
-           addrb = 2;
         end
 
         4: begin
            wea = 0;
            dia = 0;
            addra = 2;
+        end
+
+         10: begin
+            $finish;
+         end
+      endcase
+   end
+
+   always @ (cptb) begin
+      case (cptb)
+        0: begin
+           enb = 1;
+           web = 0;
+           dib = 0;
+           addrb = 0;
+        end
+
+        3: begin
+           web = 1;
+           dib = 32'hCAFEDECA;
+           addrb = 2;
+        end
+
+        4: begin
            web = 0;
            dib = 0;
            addrb = 2;
         end
+      endcase
+   end
 
-      endcase // case (cpt)
+   //----------------------------------------------------------------
+   // Checker
+   //----------------------------------------------------------------
+   always @ (posedge clka) begin
+      case (cpta)
+         3: begin
+            if (doa != 32'h11223344) begin
+               $display("Error: cpta(%0d) doa(32'h%08h) ref(32'h11223344)", cpta, doa);
+            end
+         end
+
+         4, 5: begin
+            if (doa != 32'h55667788) begin
+               $display("Error: cpta(%0d) doa(32'h%08h) ref(32'h55667788)", cpta, doa);
+            end
+         end
+
+         6: begin
+            if (doa != 32'hCAFEDECA) begin
+               $display("Error: cpta(%0d) doa(32'h%08h) ref(32'hCAFEDECA)", cpta, doa);
+            end
+         end
+      endcase
+   end
+
+   always @ (posedge clkb) begin
+      case (cptb)
+         4: begin
+            if (dob != 32'hCAFEDECA) begin
+               $display("Error: cptb(%0d) dob(32'h%08h) ref(32'hCAFEDECA)", cptb, dob);
+            end
+         end
+      endcase
    end
 
 endmodule
