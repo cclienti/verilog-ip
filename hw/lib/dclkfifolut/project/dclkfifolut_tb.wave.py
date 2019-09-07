@@ -1,11 +1,13 @@
 # -*- python -*-
 
-from wavedisp.ast import *
+from wavedisp.ast import Hierarchy, Disp, Divider
 
 
 def generator():
-    hier = Hierarchy('/dclkfifolut_tb')
-    inst = hier.add(Hierarchy('DUT'))
+    testbench = Hierarchy('/dclkfifolut_tb')
+    inst = testbench.add(Hierarchy('DUT'))
     inst.include('dclkfifolut.wave.py')
+    testbench.add(Divider('Reference'))
+    testbench.add(Disp('rcheck_data'))
 
-    return hier
+    return testbench

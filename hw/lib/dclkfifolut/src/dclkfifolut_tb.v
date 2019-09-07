@@ -103,14 +103,6 @@ module dclkfifolut_tb;
    end
 
    //----------------------------------------------------------------
-   // Reference
-   //----------------------------------------------------------------
-
-   //----------------------------------------------------------------
-   // Checks
-   //----------------------------------------------------------------
-
-   //----------------------------------------------------------------
    // Test vectors
    //----------------------------------------------------------------
    initial
@@ -188,5 +180,57 @@ module dclkfifolut_tb;
       end
    end
 
+   //----------------------------------------------------------------
+   // Reference
+   //----------------------------------------------------------------
+   reg [FIFO_WIDTH-1:0] ref_data [15:0];
+
+   initial begin
+      ref_data[0] = 1;
+      ref_data[1] = 2;
+      ref_data[2] = 3;
+      ref_data[3] = 4;
+      ref_data[4] = 5;
+      ref_data[5] = 6;
+      ref_data[6] = 7;
+      ref_data[7] = 8;
+      ref_data[8] = 21;
+      ref_data[9] = 22;
+      ref_data[10] = 23;
+      ref_data[11] = 24;
+      ref_data[12] = 25;
+      ref_data[13] = 26;
+      ref_data[14] = 27;
+      ref_data[15] = 28;
+   end
+
+   //----------------------------------------------------------------
+   // Checks
+   //----------------------------------------------------------------
+   reg rcheck;
+   integer rcheck_ptr = 0;
+   wire [FIFO_WIDTH-1:0] rcheck_data;
+
+   assign rcheck_data = ref_data[rcheck_ptr];
+
+   always @(posedge rclk) begin
+      rcheck <= ren & ~rempty;
+   end
+
+   always @(posedge rclk) begin
+      if (rcheck) begin
+         rcheck_ptr <= rcheck_ptr + 1;
+
+         $write("rcpt(%0d) rdata(h'%0h) ref(h'%0h)", rcpt, rdata, rcheck_data);
+
+         if (rcheck_data != rdata) begin
+            $display(" -> Error");
+         end
+         else begin
+            $display(" -> Ok");
+         end
+
+      end
+   end
 
 endmodule
