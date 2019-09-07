@@ -12,9 +12,9 @@
 `timescale 1 ns / 100 ps
 
 module multiplier
-  #(parameter WIDTH_A    = 32,
-    parameter WIDTH_B    = 32,
-    parameter NB_OUT_REG = 4)
+  #(parameter WIDTH_A          = 32,
+    parameter WIDTH_B          = 32,
+    parameter NB_EXTRA_REG     = 4)
 
    (input wire                        clk,
     input wire                        enable,
@@ -28,7 +28,7 @@ module multiplier
    //----------------------------------------------------------------
    integer                      i;
 
-   reg [WIDTH_A+WIDTH_B-1:0]    mult_reg[NB_OUT_REG-1:0];
+   reg [WIDTH_A+WIDTH_B-1:0]    mult_reg[NB_EXTRA_REG-1:0];
 
    reg signed [WIDTH_A:0]       a_ext;
    reg signed [WIDTH_B:0]       b_ext;
@@ -55,12 +55,12 @@ module multiplier
    always @(posedge clk) begin
       if(enable == 1'b1) begin
          mult_reg[0] <= mult[WIDTH_A+WIDTH_B-1:0];
-         for(i=0 ; i < NB_OUT_REG-1 ; i=i+1)
+         for(i=0 ; i < NB_EXTRA_REG-1 ; i=i+1)
            mult_reg[i+1] <= mult_reg[i];
       end
    end
 
    // Output
-   assign out = mult_reg[NB_OUT_REG-1];
+   assign out = mult_reg[NB_EXTRA_REG-1];
 
 endmodule
