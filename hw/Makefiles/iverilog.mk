@@ -16,8 +16,14 @@ trace: vcd $(WAVEDISP_GTKWAVE_TCL)
 
 vcd: $(VCD_FILE)
 
-$(VCD_FILE): $(TESTBENCH_MODULE)
+sim: $(TESTBENCH_MODULE)
+	vvp ./$< -lxt2
+
+check: $(TESTBENCH_MODULE)
 	! vvp ./$< -lxt2 | grep Error
+
+$(VCD_FILE): $(TESTBENCH_MODULE)
+	vvp ./$< -lxt2
 
 $(TESTBENCH_MODULE): $(TESTBENCH_FILE) $(TOP_FILE) $(TOP_DEPS) $(TESTBENCH_DEPS)
 	$(IVERILOG) $(IVFLAGS)  -s $(TESTBENCH_MODULE) -o $(TESTBENCH_MODULE) \
