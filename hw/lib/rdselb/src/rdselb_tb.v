@@ -20,10 +20,10 @@ module rdselb_tb();
    integer     cpt;
 
 
-   rdselb DUT(.out(out),
-              .is_signed(is_signed),
-              .sel(sel),
-              .in(in));
+   rdselb rdselb(.out(out),
+                 .is_signed(is_signed),
+                 .sel(sel),
+                 .in(in));
 
 
    initial  begin
