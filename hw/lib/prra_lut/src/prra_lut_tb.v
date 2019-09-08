@@ -27,7 +27,6 @@ module prra_lut_tb();
    reg [WIDTH-1:0] request;
    wire [LOG2_WIDTH-1:0] state;
 
-
    //----------------------------------------------------------------
    // Value Change Dump
    //----------------------------------------------------------------
@@ -36,6 +35,18 @@ module prra_lut_tb();
       $dumpvars;
    end
 
+   //----------------------------------------------------------------
+   // Clock generation
+   //----------------------------------------------------------------
+   reg clk;
+
+   initial begin
+      clk = 1'b1;
+   end
+
+   always begin
+     #5 clk = ~clk;
+   end
 
    //----------------------------------------------------------------
    // DUT
@@ -52,26 +63,58 @@ module prra_lut_tb();
       .state   (state)
    );
 
-
    //----------------------------------------------------------------
-   // Some usefull information
+   // Test vectors
    //----------------------------------------------------------------
-   integer j;
-
-   initial begin
-      $display("LUT:");
-      for(j=0 ; j<2**WIDTH ; j=j+1) begin
-         $display("\t %b -> %d", j[WIDTH-1:0], prra_lut.lut[j]);
-      end
-   end
+   integer cpt;
 
    initial begin
       request = 0;
-      for(j=0 ; j<2**WIDTH ; j=j+1) begin
-         #4 request = j;
-      end
-      #10 $finish;
+      cpt = 0;
    end
 
+   always @(posedge clk) begin
+      cpt <= cpt + 1;
+      request <= request + 1;
+      if (cpt == 16) begin
+         $finish;
+      end
+   end
+
+   //----------------------------------------------------------------
+   // Checker
+   //----------------------------------------------------------------
+   reg [LOG2_WIDTH-1:0] state_ref_array [2**WIDTH-1:0];
+   initial begin
+      state_ref_array[0] = 1;
+      state_ref_array[1] = 0;
+      state_ref_array[2] = 1;
+      state_ref_array[3] = 0;
+      state_ref_array[4] = 2;
+      state_ref_array[5] = 2;
+      state_ref_array[6] = 2;
+      state_ref_array[7] = 2;
+      state_ref_array[8] = 3;
+      state_ref_array[9] = 3;
+      state_ref_array[10] = 3;
+      state_ref_array[11] = 3;
+      state_ref_array[12] = 2;
+      state_ref_array[13] = 2;
+      state_ref_array[14] = 2;
+      state_ref_array[15] = 2;
+   end
+
+   wire [LOG2_WIDTH-1:0] state_ref;
+   assign state_ref = state_ref_array[request];
+
+   always @(posedge clk) begin
+      $write("request(%04b) state(%04b) ref(%04b)", request, state, state_ref);
+      if (state != state_ref) begin
+         $display(" -> Error");
+      end
+      else begin
+         $display(" -> Ok");
+      end
+   end
 
 endmodule

@@ -11,6 +11,6 @@ from wavedisp.ast import Divider
 def generator():
     """Generator for module prra_lut."""
     blk = Block()
-    blk.add(Disp('request'))
-    blk.add(Disp('state'))
+    blk.add(Disp('request', radix='binary'))
+    blk.add(Disp('state', radix='unsigned'))
     return blk
