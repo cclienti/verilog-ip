@@ -157,6 +157,9 @@ module sclkfifolut_tb;
            $display("  --> obtained 0x%08X instead of 0x%08X", level, level_check);
            $finish;
         end
+        else begin
+           $display("%m: cpt=%3d, level Ok", cpt-1);
+        end
    end
 
    always @(posedge clk) begin
@@ -166,22 +169,23 @@ module sclkfifolut_tb;
            $display("  --> obtained 0x%08X instead of 0x%08X", rdata, rdata_check);
            $finish;
         end
+        else begin
+           $display("%m: cpt=%3d, rdata Ok", cpt-1);
+        end
    end
 
 
    //----------------------------------------------------------------
    // Test vectors
    //----------------------------------------------------------------
-   initial
-     #1000 $finish;
-
-   always @(posedge clk)
+   always @(posedge clk) begin
      if(srst) begin
         cpt <= 0;
      end
      else begin
         cpt <= cpt + 1;
      end
+   end
 
    always @(cpt) begin
       // Write the fifo
@@ -219,6 +223,9 @@ module sclkfifolut_tb;
          ren       <= 1'b1;
          wen       <= 1'b1;
          wdata     <= cpt;
+      end
+      else if (cpt>40) begin
+         $finish;
       end
       else begin
 	 ren   <= 1'b0;
