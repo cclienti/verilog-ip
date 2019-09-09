@@ -51,7 +51,7 @@ module sclkfifolut_tb;
       .LOG2_FIFO_DEPTH (LOG2_FIFO_DEPTH),
       .FIFO_WIDTH      (FIFO_WIDTH)
    )
-   DUT
+   sclkfifolut
    (
       .clk    (clk),
       .srst   (srst),
