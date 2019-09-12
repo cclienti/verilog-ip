@@ -4,6 +4,12 @@ WAVEDISP_MODELSIM_TCL    = $(TESTBENCH_MODULE).modelsim.tcl
 WAVEDISP_RIVIERAPRO_TCL  = $(TESTBENCH_MODULE).rivierapro.tcl
 WAVEDISP_DOT_FILE        = $(TESTBENCH_MODULE).dot
 
+ifeq ($(WAVEDISP_GEN_ARGS),)
+WAVEDISP_KWARGS :=
+else
+WAVEDISP_KWARGS := -a '$(WAVEDISP_GEN_ARGS)'
+endif
+
 
 .PHONY: $(WAVEDISP_GTKWAVE_TCL) $(WAVEDISP_MODELSIM_TCL) $(WAVEDISP_RIVIERAPRO_TCL)
 
@@ -18,16 +24,16 @@ wavedisp_dot: $(WAVEDISP_DOT_FILE)
 	xdot $^
 
 $(WAVEDISP_GTKWAVE_TCL): $(WAVEDISP_FILE)
-	wavedisp -t gtkwave -o $@ $^
+	wavedisp -t gtkwave -o $@ $^ $(WAVEDISP_KWARGS)
 
 $(WAVEDISP_MODELSIM_TCL): $(WAVEDISP_FILE)
-	wavedisp -t modelsim -o $@ $^
+	wavedisp -t modelsim -o $@ $^ $(WAVEDISP_KWARGS)
 
 $(WAVEDISP_RIVIERAPRO_TCL): $(WAVEDISP_FILE)
-	wavedisp -t rivierapro -o $@ $^
+	wavedisp -t rivierapro -o $@ $^ $(WAVEDISP_KWARGS)
 
 $(WAVEDISP_DOT_FILE): $(WAVEDISP_FILE)
-	wavedisp -t dot -o $@ $^
+	wavedisp -t dot -o $@ $^ $(WAVEDISP_KWARGS)
 
 clean:: wavedisp_clean
 
