@@ -17,7 +17,7 @@ module shmemif_tb();
    // Constants
    //----------------------------------------------------------------
    localparam NB_PORTS            = 4;
-   localparam LOG2_NB_PORTS       = 2;
+   localparam LOG2_NB_PORTS       = $clog2(NB_PORTS);
    localparam ADDR_WIDTH          = 12;
    localparam DATA_WIDTH          = 32;
    localparam REGISTER_MEM_OUTPUT = 1;
