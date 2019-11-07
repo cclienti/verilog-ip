@@ -32,4 +32,9 @@ module simple_uart
     input wire [7:0] tx_value,
     input wire       tx_value_write);
 
+
+   always @(posedge clock) begin
+      tx_bit <= rx_bit;
+   end
+
 endmodule
