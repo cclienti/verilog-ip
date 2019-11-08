@@ -39,6 +39,7 @@ module simple_uart_tb;
 
    reg [7:0]  tx_value;
    reg        tx_value_write;
+   wire       tx_value_done;
 
    //----------------------------------------------------------------
    // Value Change Dump
@@ -77,7 +78,8 @@ module simple_uart_tb;
                      .rx_value       (rx_value),
                      .rx_value_ready (rx_value_ready),
                      .tx_value       (tx_value),
-                     .tx_value_write (tx_value_write));
+                     .tx_value_write (tx_value_write),
+                     .tx_value_done  (tx_value_done));
 
    //----------------------------------------------------------------
    // Helpers
@@ -190,6 +192,17 @@ module simple_uart_tb;
       end
    endtask
 
+
+   //----------------------------------------------------------------
+   // Loop back
+   //----------------------------------------------------------------
+
+   always @(*) begin
+      tx_value = rx_value;
+      tx_value_write = rx_value_ready;
+   end
+
+
    //----------------------------------------------------------------
    // Test vectors
    //----------------------------------------------------------------
@@ -210,6 +223,7 @@ module simple_uart_tb;
       send(8'hAA);
       send(8'hCC);
 
+      wait_cycles(10*SYSTEM_FREQ/BAUD_RATE);
       $finish;
    end
 

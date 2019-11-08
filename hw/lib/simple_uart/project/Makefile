@@ -11,7 +11,7 @@ TOP_MODULE        = simple_uart
 
 TESTBENCH_DEPS    =
 
-TOP_DEPS          =
+TOP_DEPS          = ../src/simple_uart_rx.v ../src/simple_uart_tx.v
 
 
 include ../../../Makefiles/wavedisp.mk
