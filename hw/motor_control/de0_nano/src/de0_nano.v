@@ -53,7 +53,114 @@ module de0_nano
    input wire [1:0]   GPIO_1_IN
 );
 
-   assign LED = 8'h55;
+   //----------------------------------------------------
+   // Constants
+   //----------------------------------------------------
 
+   localparam CLOCK_FREQ              = 50_000_000;
+   localparam RESET_CYCLES            = CLOCK_FREQ / 2 - 1;
+   localparam LOG2_RESET_CYCLES       = $clog2(RESET_CYCLES + 1);
+
+   localparam SIMPLE_UART_SYSTEM_FREQ = 50_000_000;
+   localparam SIMPLE_UART_BAUD_RATE   = 115_200;
+
+
+   //----------------------------------------------------
+   // Reset Management
+   //----------------------------------------------------
+
+   reg                             srst;
+   reg [LOG2_RESET_CYCLES - 1 : 0] srst_counter;
+   wire                            srst_force;
+
+   initial begin
+      srst_counter = 0;
+      srst         = 1;
+   end
+
+   always @(posedge CLOCK_50) begin
+      if (srst_force == 1'b1) begin
+         srst_counter <= 0;
+         srst <= 1'b1;
+      end
+      else if (srst_counter == RESET_CYCLES[LOG2_RESET_CYCLES - 1 : 0]) begin
+         srst <= 1'b0;
+      end
+      else begin
+         srst_counter <= srst_counter + 1'b1;
+      end
+   end
+
+
+   //----------------------------------------------------
+   // KEYS
+   //----------------------------------------------------
+
+   assign srst_force = !KEY[0];
+
+
+   //----------------------------------------------------
+   // LEDS
+   //----------------------------------------------------
+
+   // assign LED[0] = srst;
+   // assign LED[1] = simple_uart_tx_value_done;
+   assign LED = simple_uart_tx_value;
+
+
+   //----------------------------------------------------
+   // GPIO_0
+   //----------------------------------------------------
+
+   // We add two FFs on inputs to avoid meta-stability issues.
+   reg [33:0] GPIO_0_reg1, GPIO_0_reg2;
+   always @(posedge CLOCK_50) begin
+      GPIO_0_reg1 <= GPIO_0;
+      GPIO_0_reg2 <= GPIO_0_reg1;
+   end
+
+   // We add a register on output.
+   reg simple_uart_tx_bit_reg;
+   always @(posedge CLOCK_50) begin
+      simple_uart_tx_bit_reg <= simple_uart_tx_bit;
+   end
+
+   // Assign pins
+   assign GPIO_0[23] = simple_uart_tx_bit_reg;
+   assign simple_uart_rx_bit = GPIO_0_reg2[21];
+
+
+   //----------------------------------------------------
+   // UART
+   //----------------------------------------------------
+
+   wire       simple_uart_rx_bit;
+   wire       simple_uart_tx_bit;
+   wire [7:0] simple_uart_rx_value;
+   wire       simple_uart_rx_value_ready;
+   reg [7:0]  simple_uart_tx_value;
+   reg        simple_uart_tx_value_write;
+   wire       simple_uart_tx_value_done;
+
+
+   simple_uart #(.SYSTEM_FREQ (SIMPLE_UART_SYSTEM_FREQ),
+                 .BAUD_RATE   (SIMPLE_UART_BAUD_RATE))
+
+   simple_uart_inst (.clock          (CLOCK_50),
+                     .srst           (srst),
+                     .rx_bit         (simple_uart_rx_bit),
+                     .tx_bit         (simple_uart_tx_bit),
+                     .rx_value       (simple_uart_rx_value),
+                     .rx_value_ready (simple_uart_rx_value_ready),
+                     .tx_value       (simple_uart_tx_value),
+                     .tx_value_write (simple_uart_tx_value_write),
+                     .tx_value_done  (simple_uart_tx_value_done));
+
+   always @(posedge CLOCK_50) begin
+      if (simple_uart_rx_value_ready == 1'b1) begin
+         simple_uart_tx_value <= simple_uart_rx_value;
+      end
+      simple_uart_tx_value_write <= simple_uart_rx_value_ready;
+   end
 
 endmodule
