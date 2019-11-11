@@ -33,10 +33,14 @@ module simple_uart_rx
    //---------------------------------------------------------------------------
 
    localparam NUM_BITS           = 8;
-   localparam BITS_COUNTER_MAX   = 7;
    localparam LOG2_NUM_BITS      = $clog2(NUM_BITS);
-   localparam BAUD_COUNTER_MAX   = SYSTEM_FREQ / BAUD_RATE - 1;
-   localparam BAUD_COUNTER_HALF  = SYSTEM_FREQ / BAUD_RATE / 2 - 1;
+   localparam BITS_COUNTER_MAX   = 7;
+
+   // Take into account FSM Latency (-3)
+   localparam BAUD_COUNTER_MAX   = SYSTEM_FREQ / BAUD_RATE - 3;
+   // Take into account FSM Latency + restart Latency (-5)
+   localparam BAUD_COUNTER_HALF  = SYSTEM_FREQ / BAUD_RATE / 2 - 5;
+
    localparam BAUD_COUNTER_WIDTH = $clog2(BAUD_COUNTER_MAX + 1);
 
 
@@ -140,13 +144,16 @@ module simple_uart_rx
    //         +Rst   +Rst   +Rst
    //
 
-   localparam STATE_IDLE      = 0;
-   localparam STATE_START     = 1;
-   localparam STATE_READ_PRE  = 2;
-   localparam STATE_READ_WAIT = 3;
-   localparam STATE_READ      = 4;
-   localparam STATE_DONE      = 5;
-   localparam LOG2_STATES     = $clog2(STATE_DONE + 1);
+   localparam STATE_IDLE        = 0;
+   localparam STATE_START       = 1;
+   localparam STATE_READ_PRE    = 2;
+   localparam STATE_READ_WAIT   = 3;
+   localparam STATE_READ        = 4;
+   localparam STATE_READ_POST   = 5;
+   localparam STATE_STOP_WAIT   = 6;
+   localparam STATE_PUSH        = 7;
+   localparam STATE_PUSH_WAIT   = 8;
+   localparam LOG2_STATES       = $clog2(STATE_PUSH_WAIT + 1);
 
    reg [LOG2_STATES-1:0] state_reg, state_new;
 
@@ -175,19 +182,13 @@ module simple_uart_rx
          end
 
          STATE_START: begin
-            if (rx_bit == 1'b0) begin
-               if (baud_counter_half == 1'b1) begin
-                  // The baud counter is at the half period value
-                  state_new = STATE_READ_PRE;
-               end
-               else begin
-                  // We wait for the half value of the baud counter
-                  state_new = STATE_START;
-               end
+            if (baud_counter_half == 1'b1) begin
+               // The baud counter is at the half period value
+               state_new = STATE_READ_PRE;
             end
             else begin
-               // RX is high, which is not normal.
-               state_new = STATE_IDLE;
+               // We wait for the half value of the baud counter
+               state_new = STATE_START;
             end
          end
 
@@ -199,7 +200,7 @@ module simple_uart_rx
             if (baud_counter_max == 1'b1) begin
                if (bits_counter_max == 1'b1) begin
                   // Stop bit received.
-                  state_new = STATE_DONE;
+                  state_new = STATE_READ_POST;
                end
                else begin
                   // We can sample the bit value.
@@ -216,8 +217,30 @@ module simple_uart_rx
             state_new = STATE_READ_WAIT;
          end
 
-         STATE_DONE: begin
-            state_new = STATE_IDLE;
+         STATE_READ_POST: begin
+            state_new = STATE_STOP_WAIT;
+         end
+
+         STATE_STOP_WAIT: begin
+            if (baud_counter_max == 1'b1) begin
+               state_new = STATE_PUSH;
+            end
+            else begin
+               state_new = STATE_STOP_WAIT;
+            end
+         end
+
+         STATE_PUSH: begin
+            state_new = STATE_PUSH_WAIT;
+         end
+
+         STATE_PUSH_WAIT: begin
+            if (baud_counter_half == 1'b1) begin
+               state_new = STATE_IDLE;
+            end
+            else begin
+               state_new = STATE_PUSH_WAIT;
+            end
          end
       endcase
    end
@@ -235,15 +258,15 @@ module simple_uart_rx
 
          STATE_START: begin
             baud_counter_reset = 1'b0;
-            bits_counter_reset = 1'b1;
+            bits_counter_reset = 1'b0;
             bits_counter_incr  = 1'b0;
             rx_shift           = 1'b0;
             rx_value_ready_new = 1'b0;
-        end
+         end
 
          STATE_READ_PRE: begin
             baud_counter_reset = 1'b1;
-            bits_counter_reset = 1'b1;
+            bits_counter_reset = 1'b0;
             bits_counter_incr  = 1'b0;
             rx_shift           = 1'b0;
             rx_value_ready_new = 1'b0;
@@ -263,15 +286,39 @@ module simple_uart_rx
             bits_counter_incr  = 1'b1;
             rx_shift           = 1'b1;
             rx_value_ready_new = 1'b0;
-        end
+         end
 
-         STATE_DONE: begin
+         STATE_READ_POST: begin
             baud_counter_reset = 1'b1;
-            bits_counter_reset = 1'b1;
+            bits_counter_reset = 1'b0;
             bits_counter_incr  = 1'b0;
             rx_shift           = 1'b1;
+            rx_value_ready_new = 1'b0;
+         end
+
+         STATE_STOP_WAIT: begin
+            baud_counter_reset = 1'b0;
+            bits_counter_reset = 1'b0;
+            bits_counter_incr  = 1'b0;
+            rx_shift           = 1'b0;
+            rx_value_ready_new = 1'b0;
+         end
+
+         STATE_PUSH: begin
+            baud_counter_reset = 1'b1;
+            bits_counter_reset = 1'b0;
+            bits_counter_incr  = 1'b0;
+            rx_shift           = 1'b0;
             rx_value_ready_new = 1'b1;
-        end
+         end
+
+         STATE_PUSH_WAIT: begin
+            baud_counter_reset = 1'b0;
+            bits_counter_reset = 1'b0;
+            bits_counter_incr  = 1'b0;
+            rx_shift           = 1'b0;
+            rx_value_ready_new = 1'b0;
+         end
       endcase
    end
 
@@ -281,18 +328,43 @@ module simple_uart_rx
    //---------------------------------------------------------------------------
 
    reg rx_value_ready_new;
+   reg rx_value_ready_trig;
+   reg rx_value_ready_pre1;
+   reg rx_value_ready_pre2;
 
    always @(posedge clock) begin
       if (srst == 1'b1) begin
-         rx_value_ready <= 0;
+         rx_value_ready_trig <= 1'b0;
       end
-      else begin
-         rx_value_ready <= rx_value_ready_new;
+      if (rx_value_ready_new) begin
+         rx_value_ready_trig <= 1'b1;
+      end
+      else if (rx_value_ready) begin
+         rx_value_ready_trig <= 1'b0;
       end
    end
 
-   always @(*) begin
-      rx_value = rx_shift_reg;
+   always @(posedge clock) begin
+      if (srst == 1'b1) begin
+         rx_value_ready_pre1 <= 0;
+      end
+      else if (baud_counter_half && rx_value_ready_trig) begin
+         rx_value_ready_pre1 <= 1'b1;
+      end
+      else begin
+         rx_value_ready_pre1 <= 1'b0;
+      end
+   end
+
+   always @(posedge clock) begin
+      rx_value_ready_pre2 <= rx_value_ready_pre1;
+      rx_value_ready <= rx_value_ready_pre2;
+   end
+
+   always @(posedge clock) begin
+      if (rx_value_ready_new) begin
+         rx_value <= rx_shift_reg;
+      end
    end
 
 endmodule

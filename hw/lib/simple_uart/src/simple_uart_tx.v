@@ -34,9 +34,9 @@ module simple_uart_tx
    //---------------------------------------------------------------------------
 
    localparam NUM_BITS           = 8;
-   localparam BITS_COUNTER_MAX   = 7;
+   localparam BITS_COUNTER_MAX   = NUM_BITS - 1;
    localparam LOG2_NUM_BITS      = $clog2(NUM_BITS);
-   localparam BAUD_COUNTER_MAX   = SYSTEM_FREQ / BAUD_RATE - 1;
+   localparam BAUD_COUNTER_MAX   = SYSTEM_FREQ / BAUD_RATE - 4;
    localparam BAUD_COUNTER_WIDTH = $clog2(BAUD_COUNTER_MAX + 1);
 
 
@@ -48,6 +48,7 @@ module simple_uart_tx
    reg baud_counter_reset;
    reg baud_counter_max_new;
    reg baud_counter_max;
+   reg baud_counter_max2;
 
    always @(posedge clock) begin
       if (baud_counter_reset == 1'b1) begin
@@ -69,6 +70,7 @@ module simple_uart_tx
 
    always @(posedge clock) begin
       baud_counter_max <= baud_counter_max_new;
+      baud_counter_max2 <= baud_counter_max;
    end
 
 
@@ -191,7 +193,7 @@ module simple_uart_tx
          end
 
          STATE_SEND_WAIT: begin
-            if (baud_counter_max == 1'b1) begin
+            if (baud_counter_max2 == 1'b1) begin
                if (bits_counter_max == 1'b1) begin
                   state_new = STATE_STOP;
                end
@@ -209,6 +211,9 @@ module simple_uart_tx
          end
 
          STATE_STOP_WAIT: begin
+            // we use baud_counter_max to save cycle in order to
+            // restart faster. The Stop bit will be a 2 cycles too
+            // short but this not an issue.
             if (baud_counter_max == 1'b1) begin
                state_new = STATE_DONE;
             end
@@ -236,7 +241,7 @@ module simple_uart_tx
 
          STATE_START: begin
             baud_counter_reset = 1'b1;
-            bits_counter_reset = 1'b1;
+            bits_counter_reset = 1'b0;
             bits_counter_incr  = 1'b0;
             tx_shift           = 1'b0;
             tx_value_done      = 1'b0;
@@ -244,7 +249,7 @@ module simple_uart_tx
 
          STATE_START_WAIT: begin
             baud_counter_reset = 1'b0;
-            bits_counter_reset = 1'b1;
+            bits_counter_reset = 1'b0;
             bits_counter_incr  = 1'b0;
             tx_shift           = 1'b0;
             tx_value_done      = 1'b0;
@@ -268,7 +273,7 @@ module simple_uart_tx
 
          STATE_STOP: begin
             baud_counter_reset = 1'b1;
-            bits_counter_reset = 1'b1;
+            bits_counter_reset = 1'b0;
             bits_counter_incr  = 1'b0;
             tx_shift           = 1'b1;
             tx_value_done      = 1'b0;
@@ -276,9 +281,9 @@ module simple_uart_tx
 
          STATE_STOP_WAIT: begin
             baud_counter_reset = 1'b0;
-            bits_counter_reset = 1'b1;
+            bits_counter_reset = 1'b0;
             bits_counter_incr  = 1'b0;
-            tx_shift           = 1'b1;
+            tx_shift           = 1'b0;
             tx_value_done      = 1'b0;
          end
 
@@ -286,7 +291,7 @@ module simple_uart_tx
             baud_counter_reset = 1'b1;
             bits_counter_reset = 1'b1;
             bits_counter_incr  = 1'b0;
-            tx_shift           = 1'b1;
+            tx_shift           = 1'b0;
             tx_value_done      = 1'b1;
          end
       endcase

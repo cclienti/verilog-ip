@@ -21,8 +21,10 @@ module simple_uart_tb;
    //----------------------------------------------------------------
    // Constants
    //----------------------------------------------------------------
-   localparam SYSTEM_FREQ = 50_000_000;
-   localparam BAUD_RATE   = 9600;
+   localparam SYSTEM_FREQ       = 50_000_000;
+   localparam BAUD_RATE         = 100_000;
+   localparam BAUD_COUNTER_MAX  = SYSTEM_FREQ / BAUD_RATE;
+   localparam BAUD_COUNTER_HALF = BAUD_COUNTER_MAX / 2;
 
    //----------------------------------------------------------------
    // Signals
@@ -69,6 +71,7 @@ module simple_uart_tb;
    //----------------------------------------------------------------
    // DUT
    //----------------------------------------------------------------
+
    simple_uart #(.SYSTEM_FREQ (SYSTEM_FREQ),
                  .BAUD_RATE   (BAUD_RATE))
    simple_uart_inst (.clock          (clock),
@@ -81,114 +84,58 @@ module simple_uart_tb;
                      .tx_value_write (tx_value_write),
                      .tx_value_done  (tx_value_done));
 
+
    //----------------------------------------------------------------
    // Helpers
    //----------------------------------------------------------------
 
-   // Wait for the amount of cycles specified.
-   task automatic wait_cycles(input reg [31:0] cycles);
-      begin
-         while (cycles > 0) begin
-            @(posedge clock) cycles = cycles - 1;
-         end
-      end
-   endtask
-
-   // Wait for a baud.
-   reg send_baud_clock = 1;
-   task send_baud_delay;
-      begin
-         wait_cycles(SYSTEM_FREQ/BAUD_RATE/2);
-         send_baud_clock <= 0;
-         wait_cycles(SYSTEM_FREQ/BAUD_RATE/2);
-         send_baud_clock <= 1;
-      end
-   endtask
-
    // Send the stream on the RX pin of the simple_uart module.
-   // send_state:
-   //   -1: Idle
-   //    0: Start
-   //  1-8: Send bits (lsb first)
-   //    9: Stop
-   reg [7:0] send_state = -1;
    task send (input reg [7:0] value);
       integer i;
+      integer cnt;
       begin
          // Start bit
-         send_state <= 0;
          rx_bit <= 0;
-         send_baud_delay();
+         for (cnt=0; cnt<BAUD_COUNTER_MAX; cnt=cnt+1) @(posedge clock);
 
          // Send the value (lsb first)
          for (i=0; i<8; i=i+1) begin
-            send_state <= i + 1;
             rx_bit <= value[i];
-            send_baud_delay();
+            for (cnt=0; cnt<BAUD_COUNTER_MAX; cnt=cnt+1) @(posedge clock);
          end
 
          // One Stop bit
-         send_state <= i + 1;
          rx_bit <= 1;
-         send_baud_delay();
-         send_state <= -1;
-         send_baud_delay();
-      end
-   endtask
-
-   // Wait for a baud.
-   task receive_half_baud_delay;
-      begin
-         wait_cycles(SYSTEM_FREQ/BAUD_RATE/2);
-      end
-   endtask
-
-   // Set the receive_sampling bit during one clock cycle.
-   reg receive_sampling = 0;
-   task received_sampled;
-      begin
-         receive_sampling <= 0;
-         @(posedge clock);
-         receive_sampling <= 1;
-         @(posedge clock);
+         for (cnt=0; cnt<BAUD_COUNTER_MAX; cnt=cnt+1) @(posedge clock);
       end
    endtask
 
    // Reveive the stream on the RX pin of the simple_uart module.
-   // reveive_state:
-   //   -1: Idle
-   //    0: Sample Start
-   //  1-8: Sample Reveive bits (lsb first)
-   //    9: Sample Stop
-   reg [7:0] receive_state = -1;
    task receive (output reg [7:0] value);
       integer i;
+      integer cnt;
       begin
          // Detect start bit
-         receive_state <= -1;
-         while (tx_bit != 0) begin
-            // synchronize at the middle of the baud rate to improve
-            // the sampling.
-            receive_half_baud_delay();
+         while (tx_bit == 1'b1) begin
+            @(posedge clock);
          end
-         receive_state <= 0;
+
+         // synchronize at the middle of the baud rate to improve
+         // the sampling.
+         for (cnt=0; cnt<BAUD_COUNTER_HALF-1; cnt=cnt+1) @(posedge clock);
 
          // Sample
          for (i=0; i<8; i=i+1) begin
-            receive_half_baud_delay();
-            receive_state <= i + 1;
-            receive_half_baud_delay();
+            for (cnt=0; cnt<BAUD_COUNTER_MAX-1; cnt=cnt+1) @(posedge clock);
             value[i] <= tx_bit;
-            received_sampled();
-        end
+         end
 
-         // Detect start bit
-         receive_half_baud_delay();
-         receive_state <= 9;
-         receive_half_baud_delay();
-         if (tx_bit != 1) begin
+         // Detect stop bit
+         for (cnt=0; cnt<BAUD_COUNTER_MAX-1; cnt=cnt+1) @(posedge clock);
+         if (tx_bit == 1'b0) begin
             $display("error: bad stop bit at %0t", $time);
          end
+
       end
    endtask
 
@@ -198,8 +145,8 @@ module simple_uart_tb;
    //----------------------------------------------------------------
 
    always @(*) begin
-      tx_value = rx_value;
-      tx_value_write = rx_value_ready;
+      tx_value_write <= rx_value_ready;
+      tx_value <= rx_value;
    end
 
 
@@ -207,35 +154,33 @@ module simple_uart_tb;
    // Test vectors
    //----------------------------------------------------------------
 
-   reg [7:0] tx_bit_regs;
-   initial begin
-      tx_bit_regs = 0;
-      tx_value = 0;
-      tx_value_write = 0;
-   end
+   integer pattern;
 
    // Send process
    initial begin
+      pattern = 0;
       rx_bit = 1; // line is idle
-      wait_cycles(100);
 
+      #100000 @(posedge clock);
       send(8'h55);
+      #100000 @(posedge clock);
       send(8'hAA);
+      #100000 @(posedge clock);
       send(8'hCC);
 
-      wait_cycles(10*SYSTEM_FREQ/BAUD_RATE);
-      $finish;
+      for(pattern = 0; pattern < 200; pattern = pattern + 1) begin
+         send(pattern[7:0]);
+      end
+
+      #100000 $finish;
    end
 
    // Receive process
    reg [7:0] received_value;
    initial begin
-      wait_cycles(10);
+      #1000 @(posedge clock);
 
       while(1) begin
-         receive(received_value);
-         $display("info: received value 0x%02h", received_value);
-
          receive(received_value);
          $display("info: received value 0x%02h", received_value);
       end
