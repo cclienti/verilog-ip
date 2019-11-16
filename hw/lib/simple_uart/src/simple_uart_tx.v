@@ -152,6 +152,7 @@ module simple_uart_tx
    localparam LOG2_STATES      = $clog2(STATE_DONE + 1);
 
    reg [LOG2_STATES-1 : 0] state_reg, state_new;
+   reg                     tx_value_done_comb;
 
    // State register
    always @(posedge clock) begin
@@ -236,7 +237,7 @@ module simple_uart_tx
             bits_counter_reset = 1'b1;
             bits_counter_incr  = 1'b0;
             tx_shift           = 1'b0;
-            tx_value_done      = 1'b0;
+            tx_value_done_comb = 1'b0;
          end
 
          STATE_START: begin
@@ -244,7 +245,7 @@ module simple_uart_tx
             bits_counter_reset = 1'b0;
             bits_counter_incr  = 1'b0;
             tx_shift           = 1'b0;
-            tx_value_done      = 1'b0;
+            tx_value_done_comb = 1'b0;
          end
 
          STATE_START_WAIT: begin
@@ -252,7 +253,7 @@ module simple_uart_tx
             bits_counter_reset = 1'b0;
             bits_counter_incr  = 1'b0;
             tx_shift           = 1'b0;
-            tx_value_done      = 1'b0;
+            tx_value_done_comb = 1'b0;
          end
 
          STATE_SEND: begin
@@ -260,7 +261,7 @@ module simple_uart_tx
             bits_counter_reset = 1'b0;
             bits_counter_incr  = 1'b1;
             tx_shift           = 1'b1;
-            tx_value_done      = 1'b0;
+            tx_value_done_comb = 1'b0;
          end
 
          STATE_SEND_WAIT: begin
@@ -268,7 +269,7 @@ module simple_uart_tx
             bits_counter_reset = 1'b0;
             bits_counter_incr  = 1'b0;
             tx_shift           = 1'b0;
-            tx_value_done      = 1'b0;
+            tx_value_done_comb = 1'b0;
          end
 
          STATE_STOP: begin
@@ -276,7 +277,7 @@ module simple_uart_tx
             bits_counter_reset = 1'b0;
             bits_counter_incr  = 1'b0;
             tx_shift           = 1'b1;
-            tx_value_done      = 1'b0;
+            tx_value_done_comb = 1'b0;
          end
 
          STATE_STOP_WAIT: begin
@@ -284,7 +285,7 @@ module simple_uart_tx
             bits_counter_reset = 1'b0;
             bits_counter_incr  = 1'b0;
             tx_shift           = 1'b0;
-            tx_value_done      = 1'b0;
+            tx_value_done_comb = 1'b0;
          end
 
          STATE_DONE: begin
@@ -292,7 +293,7 @@ module simple_uart_tx
             bits_counter_reset = 1'b1;
             bits_counter_incr  = 1'b0;
             tx_shift           = 1'b0;
-            tx_value_done      = 1'b1;
+            tx_value_done_comb = 1'b1;
          end
       endcase
    end
@@ -301,6 +302,10 @@ module simple_uart_tx
    //---------------------------------------------------------------------------
    // Output
    //---------------------------------------------------------------------------
+
+   always @(posedge clock) begin
+      tx_value_done <= tx_value_done_comb;
+   end
 
    assign tx_bit = tx_shift_reg[0];
 
