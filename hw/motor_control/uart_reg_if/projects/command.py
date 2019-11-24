@@ -15,20 +15,29 @@ class UartRegIf():
     PROTO_READ = b'R'
     PROTO_WRITE = b'W'
 
-    def __init__(self, tty, speed, timeout=1):
+    def __init__(self, tty, speed, num_bytes=4, timeout=1):
+        self.num_bytes = num_bytes
         self.serial = serial.Serial(tty, speed, timeout=timeout)
 
     def write(self, index, value):
         """Write value in the register at the specified index."""
         self.serial.write(UartRegIf.PROTO_INDEX)
         self.serial.write(str(index).encode())
-        self.serial.write(str(value).encode())
+
+        for _ in range(self.num_bytes):
+            self.serial.write(str(value & 0xff).encode())
+            value >>= 8
 
     def read(self, index, timeout=1):
         """Read the register value at the specified index."""
         self.serial.write(UartRegIf.PROTO_INDEX)
         self.serial.write(str(index).encode())
-        return self.serial.read(timeout)
+
+        value = 0
+        for num in range(self.num_bytes):
+            value += ord(self.serial.read(timeout)) << num*8
+
+        return value
 
 
 def get_uarts():
