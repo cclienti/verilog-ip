@@ -9,6 +9,10 @@ class UartRegIf():
     """Manage the register interface to read and write register using an
     UART interface.
 
+    :param tty: str, tty interface
+    :param speed: int, tty speed value (bauds)
+    :param num_bytes: int, number of bytes per register, defaults to 4
+    :param timeout: int, serial interface timeout (seconds), defaults to 1
     """
 
     PROTO_INDEX = b'S'
@@ -20,7 +24,11 @@ class UartRegIf():
         self.serial = serial.Serial(tty, speed, timeout=timeout)
 
     def write(self, index, value):
-        """Write value in the register at the specified index."""
+        """Write value in the register at the specified index.
+
+        :param index: int, register index
+        :param value: int, register value
+        """
         self.serial.write(UartRegIf.PROTO_INDEX)
         self.serial.write(str(index).encode())
 
@@ -29,7 +37,13 @@ class UartRegIf():
             value >>= 8
 
     def read(self, index, timeout=1):
-        """Read the register value at the specified index."""
+        """Read the register value at the specified index.
+
+        :param index: int, register index
+        :param timeout: int, read timeout (seconds), defaults to 1
+        :return: read value
+        :rtype: int
+        """
         self.serial.write(UartRegIf.PROTO_INDEX)
         self.serial.write(str(index).encode())
 
