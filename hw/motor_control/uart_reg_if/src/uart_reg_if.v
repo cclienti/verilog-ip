@@ -107,7 +107,6 @@ module uart_reg_if
    always @(posedge clock) begin
       if (byte_counter_reset == 1'b1) begin
          byte_counter <= 0;
-         byte_counter_reg <= 0;
       end
       else if (byte_counter_incr == 1'b1) begin
          byte_counter <= byte_counter + 1'b1;
@@ -133,7 +132,7 @@ module uart_reg_if
 
    // Generate all register write enables.
    generate
-      for (reg_idx = 0; reg_idx < NUM_REGISTERS; reg_idx = reg_idx + 1) begin
+      for (reg_idx = 0; reg_idx < NUM_REGISTERS; reg_idx = reg_idx + 1) begin: GEN_REG_SEL
 
          always @(*) begin
             if (reg_array_idx == reg_idx) begin
@@ -159,8 +158,8 @@ module uart_reg_if
    // the registers are written and reg_array_sel gathers each
    // register write enable (for each byte of each register).
    generate
-      for (reg_idx = 0; reg_idx < NUM_REGISTERS; reg_idx = reg_idx + 1) begin
-         for (byte_idx = 0; byte_idx < NUM_BYTES_PER_REG; byte_idx = byte_idx + 1) begin
+      for (reg_idx = 0; reg_idx < NUM_REGISTERS; reg_idx = reg_idx + 1) begin: GEN_REGS
+         for (byte_idx = 0; byte_idx < NUM_BYTES_PER_REG; byte_idx = byte_idx + 1) begin: GEN_BYTES
 
             always @(posedge clock) begin
                if (srst == 1'b1) begin
