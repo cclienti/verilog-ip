@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import sys
 import argparse
 import serial
 from serial.tools.list_ports import comports
@@ -49,7 +50,11 @@ class UartRegIf():
 
         value = 0
         for num in range(self.num_bytes):
-            value += ord(self.serial.read(timeout)) << num*8
+            try:
+                value += ord(self.serial.read(timeout)) << num*8
+            except TypeError:
+                print('read timeout!', file=sys.stderr)
+                return None
 
         return value
 
@@ -64,23 +69,44 @@ def get_uarts():
 def main():
     """Main entry point."""
 
-    uarts = list(get_uarts())
-    if not uarts:
-        print("no uart available, exiting...")
-        exit(1)
+    try:
+        uarts = list(get_uarts())
+        default_uart = uarts[0]
+    except IndexError:
+        default_uart = None
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-s', '--speed', type=int, default=115200,
                         help='Serial speed (in baud)')
 
-    parser.add_argument('-t', '--tty', type=str, default=uarts[0],
+    parser.add_argument('-t', '--tty', type=str, default=default_uart,
                         help='tty to use')
+
+    parser.add_argument('-n', '--bytes', dest='num_bytes', type=int, default=4,
+                        help='Number of bytes per registers')
+
+    parser.add_argument('-i', '--index', type=int, required=True,
+                        help='Register to select')
+
+    action = parser.add_mutually_exclusive_group(required=True)
+    action.add_argument('-w', '--write', type=int, help='Value to write')
+    action.add_argument('-r', '--read', action='store_true')
 
     args = parser.parse_args()
 
-    uart = UartRegIf(args.tty, args.speed)
-    uart.write(0, 0x55)
-    print(uart.read(0))
+    if not uarts:
+        print('no uart available, exiting...', file=sys.stderr)
+        exit(1)
+
+    uart = UartRegIf(args.tty, args.speed, num_bytes=args.num_bytes)
+
+    if args.write:
+        uart.write(args.index, args.write)
+    else:
+        value = uart.read(args.index)
+        if not value:
+            exit(1)
+
 
 
 if __name__ == '__main__':
