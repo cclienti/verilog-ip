@@ -57,12 +57,18 @@ module de0_nano
    // Constants
    //----------------------------------------------------
 
+   localparam VERSION                 = "V001";
+
    localparam CLOCK_FREQ              = 50_000_000;
    localparam RESET_CYCLES            = CLOCK_FREQ / 2 - 1;
    localparam LOG2_RESET_CYCLES       = $clog2(RESET_CYCLES + 1);
 
    localparam SIMPLE_UART_SYSTEM_FREQ = 50_000_000;
    localparam SIMPLE_UART_BAUD_RATE   = 115_200;
+
+   localparam NUM_BYTES_PER_REG = 4;
+   localparam NUM_REGISTERS     = 8;
+
 
 
    //----------------------------------------------------
@@ -105,7 +111,7 @@ module de0_nano
 
    // assign LED[0] = srst;
    // assign LED[1] = simple_uart_tx_value_done;
-   assign LED = simple_uart_tx_value;
+   assign LED = value_out[0][0];
 
 
    //----------------------------------------------------
@@ -156,11 +162,42 @@ module de0_nano
                      .tx_value_write (simple_uart_tx_value_write),
                      .tx_value_done  (simple_uart_tx_value_done));
 
-   always @(posedge CLOCK_50) begin
-      if (simple_uart_rx_value_ready == 1'b1) begin
-         simple_uart_tx_value <= simple_uart_rx_value;
-      end
-      simple_uart_tx_value_write <= simple_uart_rx_value_ready;
-   end
+   // // Stub used without register interface
+   // always @(posedge CLOCK_50) begin
+   //    if (simple_uart_rx_value_ready == 1'b1) begin
+   //       simple_uart_tx_value <= simple_uart_rx_value;
+   //    end
+   //    simple_uart_tx_value_write <= simple_uart_rx_value_ready;
+   // end
+
+
+   //----------------------------------------------------
+   // Register Interface
+   //----------------------------------------------------
+
+   wire [NUM_REGISTERS-1:0][NUM_BYTES_PER_REG-1:0][7:0] value_in;
+   wire [NUM_REGISTERS-1:0][NUM_BYTES_PER_REG-1:0][7:0] value_out;
+
+   assign value_in[0] = VERSION;
+   assign value_in[NUM_REGISTERS-1:1] = value_out[NUM_REGISTERS-1:1];
+
+   uart_reg_if
+   #(
+      .NUM_BYTES_PER_REG (NUM_BYTES_PER_REG),
+      .NUM_REGISTERS     (NUM_REGISTERS)
+   )
+   uart_reg_if_inst
+   (
+      .clock               (CLOCK_50),
+      .srst                (srst),
+      .uart_rx_value       (simple_uart_rx_value),
+      .uart_rx_value_ready (simple_uart_rx_value_ready),
+      .uart_tx_value       (simple_uart_tx_value),
+      .uart_tx_value_write (simple_uart_tx_value_write),
+      .uart_tx_value_done  (simple_uart_tx_value_done),
+      .value_in            (value_in),
+      .value_out           (value_out)
+   );
+
 
 endmodule
