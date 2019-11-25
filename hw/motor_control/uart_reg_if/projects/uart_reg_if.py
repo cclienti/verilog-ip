@@ -51,16 +51,13 @@ class UartRegIf():
         self.serial.write(bytes([index]))
 
         self.serial.write(UartRegIf.PROTO_READ)
-        value = 0
-        for num in range(self.num_bytes):
-            try:
-                char = self.serial.read(timeout)
-                value += ord(char) << num*8
-            except TypeError:
-                print('read timeout!', file=sys.stderr)
-                return None
+        try:
+            chars = [ord(self.serial.read(timeout)) << i*8 for i in range(self.num_bytes)]
+        except TypeError:
+            print('read timeout!', file=sys.stderr)
+            return None
 
-        return value
+        return sum(chars)
 
 
 def get_uarts():
