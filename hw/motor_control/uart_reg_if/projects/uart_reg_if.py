@@ -31,11 +31,13 @@ class UartRegIf():
         :param value: int, register value
         """
         self.serial.write(UartRegIf.PROTO_INDEX)
-        self.serial.write(str(index).encode())
+        self.serial.write(bytes([index]))
+
+        self.serial.write(UartRegIf.PROTO_WRITE)
 
         for _ in range(self.num_bytes):
-            self.serial.write(str(value & 0xff).encode())
-            value >>= 8
+            self.serial.write(bytes([value & 0xff]))
+            value = value >> 8
 
     def read(self, index, timeout=1):
         """Read the register value at the specified index.
@@ -46,12 +48,14 @@ class UartRegIf():
         :rtype: int
         """
         self.serial.write(UartRegIf.PROTO_INDEX)
-        self.serial.write(str(index).encode())
+        self.serial.write(bytes([index]))
 
+        self.serial.write(UartRegIf.PROTO_READ)
         value = 0
         for num in range(self.num_bytes):
             try:
-                value += ord(self.serial.read(timeout)) << num*8
+                char = self.serial.read(timeout)
+                value += ord(char) << num*8
             except TypeError:
                 print('read timeout!', file=sys.stderr)
                 return None
@@ -88,9 +92,8 @@ def main():
     parser.add_argument('-i', '--index', type=int, required=True,
                         help='Register to select')
 
-    action = parser.add_mutually_exclusive_group(required=True)
-    action.add_argument('-w', '--write', type=int, help='Value to write')
-    action.add_argument('-r', '--read', action='store_true')
+    parser.add_argument('-w', '--write', type=int, help='Value to write')
+    parser.add_argument('-r', '--read', action='store_true')
 
     args = parser.parse_args()
 
@@ -100,13 +103,14 @@ def main():
 
     uart = UartRegIf(args.tty, args.speed, num_bytes=args.num_bytes)
 
-    if args.write:
+    if args.write is not None:
         uart.write(args.index, args.write)
-    else:
-        value = uart.read(args.index)
-        if not value:
-            exit(1)
 
+    if args.read is True:
+        value = uart.read(args.index)
+        if value is None:
+            exit(1)
+        print(value)
 
 
 if __name__ == '__main__':
