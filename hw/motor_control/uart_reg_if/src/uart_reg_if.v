@@ -32,12 +32,12 @@ module uart_reg_if
 
    // UART received interface
    input wire [7:0] uart_rx_value,
-   input wire uart_rx_value_ready,
+   input wire       uart_rx_value_ready,
 
    // UART send interface
    output reg [7:0] uart_tx_value,
-   output reg  uart_tx_value_write,
-   input wire  uart_tx_value_done,
+   output reg       uart_tx_value_write,
+   input wire       uart_tx_value_done,
 
    // Registers are not in/out, the component instantiating
    // uart_reg_if must connect value_in[j] to value_out[j] in order to
@@ -94,6 +94,7 @@ module uart_reg_if
          end
       end
    end
+
 
    //-----------------------------------------------------------------------------
    // Byte counter
@@ -187,7 +188,11 @@ module uart_reg_if
 
    // First mux stage
    always @(posedge clock) begin
-      reg_word <= value_in[reg_array_idx];
+      // We memorize the input value only when the byte counter is
+      // reset to prevent data change when sending the response.
+      if (byte_counter_reset == 1'b1) begin
+         reg_word <= value_in[reg_array_idx];
+      end
    end
 
    // Second mux stage
