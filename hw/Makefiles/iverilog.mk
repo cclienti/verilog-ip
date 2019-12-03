@@ -16,8 +16,7 @@ trace: vcd $(WAVEDISP_GTKWAVE_TCL)
 
 vcd: $(VCD_FILE)
 
-sim: $(TESTBENCH_MODULE)
-	vvp ./$< -lxt2
+sim: $(VCD_FILE)
 
 check: $(TESTBENCH_MODULE)
 	! vvp ./$< -lxt2 | grep Error
