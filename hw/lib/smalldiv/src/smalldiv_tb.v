@@ -47,14 +47,6 @@ module smalldiv_test #(parameter DIVIDER_VALUE         = 5,
    );
 
    //----------------------------------------------------------------
-   // VCD
-   //----------------------------------------------------------------
-   initial begin
-      $dumpfile("smalldiv_tb.vcd");
-      $dumpvars(0, smalldiv_tb);
-   end
-
-   //----------------------------------------------------------------
    // Clock generation
    //----------------------------------------------------------------
    initial begin
@@ -123,6 +115,11 @@ endmodule
 
 
 module smalldiv_tb();
+   initial begin
+      $dumpfile("smalldiv_tb.vcd");
+      $dumpvars(0, smalldiv_tb);
+   end
+
    smalldiv_test #(.DIVIDER_VALUE         (3),
                    .DIVIDEND_WIDTH        (18),
                    .THEORETICAL_LUT_WIDTH (6),
