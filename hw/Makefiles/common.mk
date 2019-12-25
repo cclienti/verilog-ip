@@ -7,5 +7,8 @@ help::
 print-%:
 	@echo $* = $($*)
 
+eval-%:
+	@echo $($*)
+
 clean::
 	rm -rf *~ *# ../src/*~ ../src/*# __pycache__
