@@ -25,7 +25,7 @@ get-file = $(shell \
 
 # Gather all module and testbench files
 ALL_TOP_FILES    := $(call get-file,$(TOP_FILE),$(TOP_DEPS),ALL_TOP_FILES)
-ALL_TEST_FILES   := $(call get-file,$(TESTBENCH_FILE),$(TESTBENCH_DEPS),ALL_TEST_FILES)
+ALL_TEST_FILES   := $(call get-file,$(TESTBENCH_FILE),$(TESTBENCH_DEPS),ALL_TOP_FILES)
 ALL_SOURCE_FILES := $(sort $(ALL_TOP_FILES) $(ALL_TEST_FILES))
 
 
