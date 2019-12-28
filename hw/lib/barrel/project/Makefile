@@ -1,17 +1,11 @@
 # Component Library
 # Copyright (C) 2013-2016 Christophe Clienti - All Rights Reserved
 
-TESTBENCH_FILE    = ../src/barrel_tb.v
-TESTBENCH_MODULE  = barrel_tb
+TOP_MODULE        ?= barrel
+TOP_FILE          ?= ../src/barrel.v
 
-VCD_FILE          = barrel_tb.vcd
-
-TOP_FILE          = ../src/barrel.v
-TOP_MODULE        = barrel
-
-TESTBENCH_DEPS    =
-
-TOP_DEPS          =
+TESTBENCH_MODULE  ?= barrel_tb
+TESTBENCH_FILE    ?= ../src/barrel_tb.v
 
 
 include ../../../Makefiles/common.mk

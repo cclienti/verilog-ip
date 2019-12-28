@@ -1,17 +1,11 @@
 # Component Library
 # Copyright (C) 2013-2016 Christophe Clienti - All Rights Reserved
 
-TESTBENCH_FILE    = ../src/dpmemwf_tb.v
-TESTBENCH_MODULE  = dpmemwf_tb
+TOP_MODULE        ?= dpmemwf
+TOP_FILE          ?= ../src/dpmemwf.v
 
-VCD_FILE          = dpmemwf_tb.vcd
-
-TOP_FILE          = ../src/dpmemwf.v
-TOP_MODULE        = dpmemwf
-
-TESTBENCH_DEPS    =
-
-TOP_DEPS          =
+TESTBENCH_MODULE  ?= dpmemwf_tb
+TESTBENCH_FILE    ?= ../src/dpmemwf_tb.v
 
 
 include ../../../Makefiles/common.mk

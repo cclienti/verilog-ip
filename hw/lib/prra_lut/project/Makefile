@@ -1,17 +1,11 @@
 # Component Library
 # Copyright (C) 2013-2016 Christophe Clienti - All Rights Reserved
 
-TESTBENCH_FILE    = ../src/prra_lut_tb.v
-TESTBENCH_MODULE  = prra_lut_tb
+TESTBENCH_MODULE  ?= prra_lut_tb
+TESTBENCH_FILE    ?= ../src/prra_lut_tb.v
 
-VCD_FILE          = prra_lut_tb.vcd
-
-TOP_FILE          = ../src/prra_lut.v
-TOP_MODULE        = prra_lut
-
-TESTBENCH_DEPS    =
-
-TOP_DEPS          =
+TOP_MODULE        ?= prra_lut
+TOP_FILE          ?= ../src/prra_lut.v
 
 
 include ../../../Makefiles/common.mk

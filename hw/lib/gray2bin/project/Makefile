@@ -1,17 +1,11 @@
 # Component Library
 # Copyright (C) 2013-2016 Christophe Clienti - All Rights Reserved
 
-TESTBENCH_FILE    = ../src/gray2bin_tb.v
-TESTBENCH_MODULE  = gray2bin_tb
+TOP_MODULE        ?= gray2bin
+TOP_FILE          ?= ../src/gray2bin.v
 
-VCD_FILE          = gray2bin_tb.vcd
-
-TOP_FILE          = ../src/gray2bin.v
-TOP_MODULE        = gray2bin
-
-TESTBENCH_DEPS    =
-
-TOP_DEPS          =
+TESTBENCH_MODULE  ?= gray2bin_tb
+TESTBENCH_FILE    ?= ../src/gray2bin_tb.v
 
 
 include ../../../Makefiles/common.mk

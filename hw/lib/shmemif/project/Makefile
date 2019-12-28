@@ -1,16 +1,16 @@
 # Component Library
 # Copyright (C) 2013-2016 Christophe Clienti - All Rights Reserved
 
-TOP_MODULE        = shmemif
-TOP_FILE          = ../src/shmemif.v
-TOP_DEPS          = ../../prra_lut
+TOP_MODULE        ?= shmemif
+TOP_FILE          ?= ../src/shmemif.v
+TOP_DEPS          ?= ../../prra_lut
 
-TESTBENCH_MODULE  = shmemif_tb
-TESTBENCH_FILE    = ../src/shmemif_tb.v
-TESTBENCH_DEPS    = ../../dpmemrf
+TESTBENCH_MODULE  ?= shmemif_tb
+TESTBENCH_FILE    ?= ../src/shmemif_tb.v
+TESTBENCH_DEPS    ?= ../../dpmemrf
 
-VCD_FILE          = shmemif_tb.vcd
-WAVEDISP_GEN_ARGS = {"nb_ports": 4}
+WAVEDISP_GEN_ARGS ?= {"nb_ports": 4}
+
 
 include ../../../Makefiles/common.mk
 include ../../../Makefiles/iverilog.mk

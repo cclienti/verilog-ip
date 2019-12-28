@@ -1,17 +1,11 @@
 # Component Library
 # Copyright (C) 2013-2016 Christophe Clienti - All Rights Reserved
 
-TESTBENCH_FILE    = ../src/multiplier_tb.v
-TESTBENCH_MODULE  = multiplier_tb
+TOP_MODULE        ?= multiplier
+TOP_FILE          ?= ../src/multiplier.v
 
-VCD_FILE          = multiplier_tb.vcd
-
-TOP_FILE          = ../src/multiplier.v
-TOP_MODULE        = multiplier
-
-TESTBENCH_DEPS    =
-
-TOP_DEPS          =
+TESTBENCH_MODULE  ?= multiplier_tb
+TESTBENCH_FILE    ?= ../src/multiplier_tb.v
 
 
 include ../../../Makefiles/common.mk

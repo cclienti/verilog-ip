@@ -1,17 +1,11 @@
 # Component Library
 # Copyright (C) 2013-2016 Christophe Clienti - All Rights Reserved
 
-TESTBENCH_FILE    = ../src/rdselb_tb.v
-TESTBENCH_MODULE  = rdselb_tb
+TOP_MODULE        ?= rdselb
+TOP_FILE          ?= ../src/rdselb.v
 
-VCD_FILE          = rdselb_tb.vcd
-
-TOP_FILE          = ../src/rdselb.v
-TOP_MODULE        = rdselb
-
-TESTBENCH_DEPS    =
-
-TOP_DEPS          =
+TESTBENCH_MODULE  ?= rdselb_tb
+TESTBENCH_FILE    ?= ../src/rdselb_tb.v
 
 
 include ../../../Makefiles/common.mk
