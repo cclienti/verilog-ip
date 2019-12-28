@@ -6,7 +6,7 @@ VERIOBF_FLAGS     += --id-length 16 --seed 0
 REPO_PATH	   = $(shell git rev-parse --show-toplevel)
 VERIFLAT_PP_DIR    = preproc
 
-VERIFLAT_INPUTS    = $(TOP_FILE) $(TOP_DEPS)
+VERIFLAT_INPUTS    = $(ALL_TOP_FILES)
 VERIFLAT_PP        = $(subst $(REPO_PATH),$(VERIFLAT_PP_DIR),$(abspath $(VERIFLAT_INPUTS:.v=.pp)))
 
 VERIFLAT_OUTPUT    = $(TOP_MODULE)_flat.v
@@ -15,8 +15,8 @@ VERIOBF_OUTPUT     = $(TOP_MODULE)_obf.v
 
 
 help::
-	@echo "veriparse-obf - obfuscate flattened design using veriparse"
-	@echo "veriparse-flat - flatten design using veriparse"
+	@echo "veriobf - obfuscate flattened design using veriparse"
+	@echo "veriflat - flatten design using veriparse"
 
 veriobf: $(VERIOBF_OUTPUT)
 
@@ -36,7 +36,7 @@ preproc/%.pp: $(REPO_PATH)/%.v
 clean:: veriobf-clean veriflat-clean
 
 veriobf-clean:
-	@rm -rf $(VERIOBF_OUTPUT) $(VERIOBF_TESTBENCH) veriobf.log
+	rm -rf $(VERIOBF_OUTPUT) $(VERIOBF_TESTBENCH) veriobf.log
 
 veriflat-clean:
-	@rm -rf $(VERIFLAT_PP) $(VERIFLAT_OUTPUT) $(VERIFLAT_TESTBENCH) $(VERIFLAT_PP) veriflat.log
+	rm -rf $(VERIFLAT_PP_DIR) $(VERIFLAT_OUTPUT) $(VERIFLAT_TESTBENCH) veriflat.log

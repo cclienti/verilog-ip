@@ -14,8 +14,8 @@ TESTBENCH_DEPS    =
 TOP_DEPS          = ../src/simple_uart_rx.v ../src/simple_uart_tx.v
 
 
+include ../../../Makefiles/common.mk
 include ../../../Makefiles/wavedisp.mk
 include ../../../Makefiles/iverilog.mk
 include ../../../Makefiles/verilator.mk
 include ../../../Makefiles/xilinx.mk
-include ../../../Makefiles/common.mk

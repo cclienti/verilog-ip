@@ -1,11 +1,10 @@
 # Generic Xilinx Compilation with a Non-Project Flow
 # Copyright (C) 2013-2014 Christophe Clienti - All Rights Reserved
 
-XIL_PART ?= "xc7z020clg484-1"
+XIL_PART           ?= "xc7z020clg484-1"
+XIL_SYNTH_OPTIONS  ?= -flatten_hierarchy full -no_iobuf
+XIL_TCL_SCRIPT      = vivado.tcl
 
-XIL_SYNTH_OPTIONS ?= -flatten_hierarchy full -no_iobuf
-
-XIL_TCL_SCRIPT = vivado.tcl
 
 help::
 	@echo "xilinx_syn - synthesize using the vivado synthesizer (XIL_PART=$(XIL_PART))"
@@ -13,17 +12,16 @@ help::
 xilinx_syn: $(XIL_TCL_SCRIPT)
 	vivado -mode tcl -source $(XIL_TCL_SCRIPT)
 
-$(XIL_TCL_SCRIPT): $(TOP_DEPS) $(TOP_FILE)
+$(XIL_TCL_SCRIPT): $(ALL_TOP_FILES)
 	@echo "Generating $(XIL_TCL_SCRIPT)"
 	@echo "### Xilinx $(TOP_MODULE) project" > $(XIL_TCL_SCRIPT)
 	@echo "set outputDir ./xilinx/$(TOP_MODULE)" >> $(XIL_TCL_SCRIPT)
 	@echo 'file mkdir $$outputDir' >> $(XIL_TCL_SCRIPT)
 
-	@for dep in $(TOP_DEPS) ; do \
-		echo "read_verilog -sv $$dep" >> $(XIL_TCL_SCRIPT)  ; \
+	@for dep in $^ ; do \
+	    echo "read_verilog -sv $$dep" >> $(XIL_TCL_SCRIPT)  ; \
 	done
 
-	@echo "read_verilog $(TOP_FILE)" >> $(XIL_TCL_SCRIPT)
 	@echo "synth_design -top $(TOP_MODULE) -part $(XIL_PART) $(XIL_SYNTH_OPTIONS) -include_dirs \"$(INCLUDE_DIRS)\"" >> $(XIL_TCL_SCRIPT)
 	@echo 'write_verilog -force -include_xilinx_libs -mode funcsim $$outputDir/$(TOP_MODULE)_simsyn.v' >> $(XIL_TCL_SCRIPT)
 	@echo 'write_verilog -force -mode design $$outputDir/$(TOP_MODULE)_syn.v' >> $(XIL_TCL_SCRIPT)

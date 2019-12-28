@@ -17,8 +17,7 @@ TOP_DEPS          = ../../../../lib/sclkfifolut/src/sclkfifolut.v \
 					../../../../lib/gray2bin/src/gray2bin.v
 
 
-
+include ../../../../Makefiles/common.mk
 include ../../../../Makefiles/iverilog.mk
 include ../../../../Makefiles/verilator.mk
 include ../../../../Makefiles/xilinx.mk
-include ../../../../Makefiles/common.mk

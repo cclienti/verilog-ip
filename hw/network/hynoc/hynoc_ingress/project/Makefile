@@ -21,10 +21,8 @@ TOP_DEPS          = ../src/hynoc_ingress_routing_ucast.v \
 					../../../../lib/gray2bin/src/gray2bin.v
 
 
-
+include ../../../../Makefiles/common.mk
 include ../../../../Makefiles/iverilog.mk
 include ../../../../Makefiles/modelsim.mk
 include ../../../../Makefiles/verilator.mk
 include ../../../../Makefiles/xilinx.mk
-include ../../../../Makefiles/vtov.mk
-include ../../../../Makefiles/common.mk

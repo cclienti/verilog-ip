@@ -137,7 +137,7 @@ module smalldiv
    // Interconnect remaining lookup tables.
    genvar i;
    generate
-      for (i=0; i<NUM_DIGITS; i=i+1) begin
+      for (i=0; i<NUM_DIGITS; i=i+1) begin: GEN_LUT
          smalldiv_lut #(.DIGIT_WIDTH   (DIGIT_WIDTH),
                         .DIVIDER_VALUE (DIVIDER_VALUE),
                         .DIVIDER_WIDTH (DIVIDER_WIDTH))

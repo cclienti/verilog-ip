@@ -16,7 +16,7 @@ TOP_DEPS          = ../../hynoc_prra/src/hynoc_prra.v \
 
 
 
+include ../../../../Makefiles/common.mk
 include ../../../../Makefiles/iverilog.mk
 include ../../../../Makefiles/verilator.mk
 include ../../../../Makefiles/xilinx.mk
-include ../../../../Makefiles/common.mk

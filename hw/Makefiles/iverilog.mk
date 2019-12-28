@@ -1,11 +1,11 @@
 # Generic Icarus Verilog Makefile
 # Copyright (C) 2013-2016 Christophe Clienti - All Rights Reserved
 
-IVERILOG          = iverilog
-GTKWAVE           = gtkwave
-IVFLAGS          += -Wall -Wno-sensitivity-entire-array -g2005 $(foreach dir,$(INCLUDE_DIRS),-I$(dir))
-
-VCD_SAV           = $(subst .vcd,.sav,$(VCD_FILE))
+IVERILOG           ?= iverilog
+IVFLAGS            += -Wall -Wno-sensitivity-entire-array -g2005
+IVFLAGS            += $(foreach DIR,$(ALL_TOP_FILES),-I $(dir $(DIR)))
+GTKWAVE            ?= gtkwave
+VCD_FILE           ?= $(TESTBENCH_MODULE).vcd
 
 help::
 	@echo "trace - simulate design with iverilog and show the vcd with gtkwave"
@@ -25,9 +25,9 @@ check: $(TESTBENCH_MODULE)
 $(VCD_FILE): $(TESTBENCH_MODULE)
 	vvp ./$< -lxt2
 
-$(TESTBENCH_MODULE): $(TESTBENCH_FILE) $(TOP_FILE) $(TOP_DEPS) $(TESTBENCH_DEPS)
+$(TESTBENCH_MODULE): $(ALL_SOURCE_FILES)
 	$(IVERILOG) $(IVFLAGS)  -s $(TESTBENCH_MODULE) -o $(TESTBENCH_MODULE) \
-		$(sort $(TOP_DEPS) $(TESTBENCH_DEPS) $(TOP_FILE) $(TESTBENCH_FILE))
+		$(ALL_SOURCE_FILES)
 
 clean:: iverilog_clean
 

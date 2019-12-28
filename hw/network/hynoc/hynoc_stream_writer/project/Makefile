@@ -14,5 +14,5 @@ TESTBENCH_DEPS    =
 
 TOP_DEPS          =
 
-include ../../../../Makefiles/iverilog.mk
 include ../../../../Makefiles/common.mk
+include ../../../../Makefiles/iverilog.mk

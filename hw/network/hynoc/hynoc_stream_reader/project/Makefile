@@ -17,5 +17,5 @@ TESTBENCH_DEPS    = ../../hynoc_stream_writer/src/hynoc_stream_writer.v \
 
 TOP_DEPS          =
 
-include ../../../../Makefiles/iverilog.mk
 include ../../../../Makefiles/common.mk
+include ../../../../Makefiles/iverilog.mk

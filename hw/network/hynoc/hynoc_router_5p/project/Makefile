@@ -33,10 +33,8 @@ TOP_DEPS          = ../../hynoc_router_base/src/hynoc_router_base.v \
 					../../../../lib/bin2gray/src/bin2gray.v \
 					../../../../lib/gray2bin/src/gray2bin.v
 
+include ../../../../Makefiles/common.mk
 include ../../../../Makefiles/iverilog.mk
 include ../../../../Makefiles/verilator.mk
 include ../../../../Makefiles/xilinx.mk
-include ../../../../Makefiles/yosys.mk
 include ../../../../Makefiles/modelsim.mk
-include ../../../../Makefiles/vtov.mk
-include ../../../../Makefiles/common.mk

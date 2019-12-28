@@ -20,6 +20,6 @@ TOP_DEPS          = ../../hynoc_ingress/src/hynoc_ingress.v \
 			../../../../lib/gray2bin/src/gray2bin.v
 
 
+include ../../../../Makefiles/common.mk
 include ../../../../Makefiles/verilator.mk
 include ../../../../Makefiles/xilinx.mk
-include ../../../../Makefiles/common.mk
