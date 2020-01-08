@@ -75,7 +75,7 @@ $K+1$ bits. The most significant bit is the last bit and it indicates the last f
 The table \ref{packet_definition} shows the packet structure. A packet is built with at least one Routing flit followed
 by at least one Payload flit. If multiple header flits are used to encode the path through the network, the router will
 consider only the first flit as a header and the remaining flits as payload. When all hops of the header are marked
-used, this header flit will not be forwarded to the next router. Thus, the next router will use the next flit as a
+used, that header flit will not be forwarded to the next router. Thus, the next router will use the next flit as a
 header flit and so on.
 
 \begin{table}[h]
@@ -208,7 +208,7 @@ The multicast routing policy permits to target multiple egress ports at a time f
 the Hop field width is $W=P-1$ bits. The index field points the correct hop to be used by the router ingress port. The
 Gap width can be in $[0, W-1]$.
 
-As a reminder, the index must be initialized to $H-1$, because the ingress port forwards this flit by decrementing the
+As a reminder, the index must be initialized to $H-1$, because the ingress port forwards the flit by decrementing the
 index. A multicast flit can embed less than the maximum allowed number of hop fields by just initializing the index
 accordingly.
 
