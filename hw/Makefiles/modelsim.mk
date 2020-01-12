@@ -5,7 +5,7 @@ MODELSIM_VLOG      ?= vlog
 MODELSIM_VSIM      ?= vsim
 
 VLOG_FLAGS         += -lint +cover $(foreach DIR,$(ALL_TOP_FILES),+incdir+$(dir $(DIR)))
-VSIM_FLAGS         += -t ps
+VSIM_FLAGS         += -t ps + $(foreach PARAM,$(TESTBENCH_PARAMS),-G $(PARAM))
 
 GTKWAVE            ?= gtkwave
 VCD_FILE           ?= $(TESTBENCH_MODULE).vcd

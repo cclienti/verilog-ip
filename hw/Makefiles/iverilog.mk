@@ -3,7 +3,8 @@
 
 IVERILOG           ?= iverilog
 IVFLAGS            += -Wall -Wno-sensitivity-entire-array -g2005
-IVFLAGS            += $(foreach DIR,$(ALL_TOP_FILES),-I $(dir $(DIR)))
+IVFLAGS            += $(foreach DIR,$(ALL_TOP_FILES),-I$(dir $(DIR)))
+IVFLAGS            += $(foreach PARAM,$(TESTBENCH_PARAMS),-P$(TESTBENCH_MODULE).$(PARAM))
 GTKWAVE            ?= gtkwave
 VCD_FILE           ?= $(TESTBENCH_MODULE).vcd
 
