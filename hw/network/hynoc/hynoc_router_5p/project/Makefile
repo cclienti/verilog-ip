@@ -6,12 +6,13 @@ TOP_FILE          ?= ../src/hynoc_router_5p.v
 TOP_DEPS          ?= ../../hynoc_router_base
 
 TESTBENCH_MODULE  ?= hynoc_router_5p_tb5
-TESTBENCH_FILE    ?= ../src/hynoc_router_5p_tb5.v
+TESTBENCH_FILE    ?= ../src/$(TESTBENCH_MODULE).v
 TESTBENCH_DEPS    ?= ../../hynoc_stream_writer \
 			../../hynoc_stream_reader \
 			../../hynoc_local_interface \
 			../../../../lib/dclkfifolut
-
+TESTBENCH_PARAMS  ?=
+# TESTBENCH_PARAMS  ?= SINGLE_CLOCK_ROUTER=1
 
 include ../../../../Makefiles/common.mk
 include ../../../../Makefiles/iverilog.mk

@@ -17,19 +17,20 @@ module hynoc_router_5p_tb3;
    //----------------------------------------------------------------
    // Constants
    //----------------------------------------------------------------
+   parameter integer SINGLE_CLOCK_ROUTER   = 0;
+
    localparam integer INDEX_WIDTH          = 4;
    localparam integer LOG2_FIFO_DEPTH      = 5;
    localparam integer PAYLOAD_WIDTH        = 32;
    localparam integer FLIT_WIDTH           = (PAYLOAD_WIDTH+1);
    localparam integer PRRA_PIPELINE        = 0;
-   localparam integer SINGLE_CLOCK_ROUTER  = 0;
    localparam integer ENABLE_MCAST_ROUTING = 1;
    localparam integer ENABLE_XY_ROUTING    = 1;
 
    localparam integer NB_ADDRESS_FLITS    = 1;
    localparam integer FLIT_RANDOM_SEED    = 556;
    localparam integer NB_FLIT_RANDOM_SEED = 666;
-   localparam integer NB_PACKETS          = 1000;
+   localparam integer NB_PACKETS          = 100;
    localparam integer MAX_NB_FLITS        = 1024;
    localparam integer MAX_WAIT            = 2;
 
@@ -205,26 +206,43 @@ module hynoc_router_5p_tb3;
    // Clock and Reset Generation
    //----------------------------------------------------------------
    initial begin
-      local_clk          = 0;
       router_clk         = 0;
       arst               = 1;
       #10.2 arst         = 1;
       #20.4 arst         = 0;
    end
 
-   always
+   always begin
      #4 router_clk = !router_clk;
-
-   always
-     #3 local_clk = !local_clk;
+   end
 
    always @(posedge router_clk) begin
       router_srst <= arst;
    end
 
-   always @(posedge local_clk) begin
-      local_srst <= arst;
-   end
+   generate
+      if (SINGLE_CLOCK_ROUTER == 0) begin
+         initial begin
+            local_clk = 0;
+         end
+
+         always begin
+           #3 local_clk = !local_clk;
+         end
+
+         always @(posedge local_clk) begin
+            local_srst <= arst;
+         end
+      end
+      else begin
+         always @(*) begin
+            local_clk = router_clk;
+         end
+         always @(*) begin
+            local_srst = router_srst;
+         end
+      end
+   endgenerate
 
 
    //----------------------------------------------------------------
