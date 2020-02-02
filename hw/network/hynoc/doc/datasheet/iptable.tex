@@ -1,22 +1,33 @@
-\newcolumntype{R}{>{\raggedleft\arraybackslash}p{5cm}}
+The following table presents some place and route results. The figures given here are obtained with altera tools tuned
+for maximum performances in terms of frequency. The router considered uses 32-bit payload words with 16-element
+dual-clocked FIFO for each router interface. Here, the number of memory bit used is directly proportional to the size of
+the 16-element FIFOs used: for a 3-port 32-bit router it represents $3 \times 16 \times 32=1536$ bits.
 
-\begin{tabular}{p{2.25cm}|R}
+\begin{center}
+\newcolumntype{R}{>{\raggedleft\arraybackslash}p{1cm}}
+
+\begin{tabular}{p{1.25cm}|R|R|R|R|R}
   \toprule\hline
   %
-  \multicolumn{2}{c}{\textbf{Core Information}} \\
+  \multicolumn{6}{c}{\textbf{Core Information}} \\
   \hline
-  Supported FPGA family & Altera, Xilinx \\
+  \textbf{FPGA family} & \multicolumn{5}{c}{Altera, Xilinx} \\
   \hline
-  Supported FPGA family & AXI Stream \\
+  \textbf{Stream Protocol} & \multicolumn{5}{c}{AXI Stream} \\
   \hline\midrule
   %
-  \multicolumn{2}{c}{\textbf{Ressources}} \\
+  \multicolumn{6}{c}{\textbf{Resources example for Altera Cyclone IV E}} \\
   \hline
-  Supported FPGA family & AXI Stream \\
-  \hline\midrule
-  %
-  \multicolumn{2}{c}{\textbf{Test environment}} \\
+  \textbf{Router Type} & \textbf{LEs} &  \textbf{Mem (bits)} & \textbf{FFs} &
+  \textbf{Core $f_{max}$} & \textbf{Ifce $f_{max}$} \\
   \hline
-  Supported FPGA family & AXI Stream \\
-  \hline\bottomrule
+  32-bit 3-port & 730 & 1600 & 450 & 280 & 315 \\
+  \hline
+  32-bit 5-port & 1600 & 2650 & 750 & 245 & 315 \\
+  \hline
+  32-bit 7-port & 2860 & 3700 & 1113 & 245 & 315 \\
+  \hline
+  32-bit 9-port & 4250 & 4800 & 1500 & 230 & 315 \\
+ \hline\bottomrule
 \end{tabular}
+\end{center}

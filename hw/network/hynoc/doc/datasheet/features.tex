@@ -7,3 +7,10 @@ The HyNoC router is built upon following characteristics:
     \item Fully parallel round robin in each distributed arbiter,
     \item Dedicated clock domain to each port.
 \end{itemize}
+
+A router can be delivered in a fully synchronous way, ie the router and the port use the same clock domain. For more
+complex designs, the router can also be delivered with dedicated clock domains for the router itself (core clock) and
+for the interfaces (ifce clocks).
+
+A router can also be delivered with 3 to 9 interfaces, ask us for the exact topology you need. Each interface embeds a
+synchonous or asynchronous FIFO with a depth configurable between 2 to 64 elements.
