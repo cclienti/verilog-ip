@@ -12,7 +12,7 @@
 `timescale 1 ns / 100 ps
 
 module hynoc_local_interface
-  #(parameter integer LOG2_FIFO_DEPTH = 5,  //log2 depth of the ingress fifo
+  #(parameter integer LOG2_FIFO_DEPTH = 5,  //log2 depth of the egress fifo
     parameter integer FLIT_WIDTH      = 33,
     parameter integer SINGLE_CLOCK    = 0)
 

@@ -21,10 +21,9 @@ itself. Multiple paths inside the router can be opened at the same time thanks t
 scheme. Thus, each egress port embeds an output multiplexer and an arbiter to route, without starvation, data from the
 ingress ports that has requested a transfer.
 
-Figure \ref{hynoc_router_data_arch} presents the data paths between ingress and egress. Each ingress broadcasts its
-data to all egress ports except to the one which is grouped in the same router port. Then, the egress will forward data
-to the next router depending on the request asserted by the ingress ports and also depending on the state of the
-arbiter.
+Figure \ref{hynoc_router_data_arch} presents the data paths between ingress and egress. Each ingress broadcasts its data
+to all egress ports except to the one which is grouped in the same router port. Then, the egress will forward data to
+the next router depending on the request asserted by the ingress ports and also depending on the state of the arbiter.
 
 \begin{figure}[H]
   \centering
@@ -33,8 +32,8 @@ arbiter.
   \label{hynoc_router_data_arch}
 \end{figure}
 
-The control path is shown in the figure \ref{hynoc_router_control_arch}. Contrary to the data path structure, there
-is no broadcast of control signals. Each ingress has dedicated links with each egress to assert transmit requests and to
+The control path is shown in the figure \ref{hynoc_router_control_arch}. Contrary to the data path structure, there is
+no broadcast of control signals. Each ingress has dedicated links with each egress to assert transmit requests and to
 receive the grant from an egress. Once the grand is received, the ingress can push data.
 
 \begin{figure}[H]
@@ -53,13 +52,13 @@ in a fix latency.
 
 HyNoC uses source routing techniques to send data through routers. Instead of addressing node with coordinates, for
 instance (x,y) for a network with a mesh topology, we define in the packet's header the route to take through the
-network. This means that the header contains a list of output ports, called hops, of routers to cross. This technique
-is used by \cite{LIW2007} and \cite{MUB2010} to avoid congestion with a low packet header overhead using a simple encoding hop
-scheme.
+network. This means that the header contains a list of output ports, called hops, of routers to cross. This technique is
+used by \cite{LIW2007} and \cite{MUB2010} to avoid congestion with a low packet header overhead using a simple encoding
+hop scheme.
 
-A routing algorithm can be defined upon Source Routing network depending on topology. \cite{MUB2010} survey presents such a
-technique. The routing algorithm generates for each communication the list of hops either dynamically (in hardware in
-the local interface or in software using the node's processor) or statically at compilation time.
+A routing algorithm can be defined upon Source Routing network depending on topology. \cite{MUB2010} survey presents
+such a technique. The routing algorithm generates for each communication the list of hops either dynamically (in
+hardware in the local interface or in software using the node's processor) or statically at compilation time.
 
 Routes are established in a distributed way in each router, this technique is presented by \cite{PON2011}. Each egress
 interface manage itself and it is in charge of selecting the right ingress interface using a simple request/acknowledge
@@ -95,7 +94,8 @@ header flit and so on.
     1 & \multicolumn{2}{c}{last Payload flit} \\
     \hline\bottomrule
   \end{tabular}
-  \caption{\label{packet_definition} Packet definition}
+  \caption{Packet definition}
+  \label{packet_definition}
 \end{table}
 
 
@@ -113,7 +113,8 @@ that it can pass through depends on the protocol, the payload width and the numb
     1 & \multicolumn{2}{c}{last Payload flit} \\
     \hline\bottomrule
   \end{tabular}
-  \caption{\label{smallest_packet} Smallest packet}
+  \caption{Smallest packet}
+  \label{smallest_packet}
 \end{table}
 
 
@@ -135,7 +136,8 @@ Multiple protocols can be supported in a routing flit depending on the 4-bit Pro
     % 4'b1000 & XY routing\\
     \hline\bottomrule
   \end{tabular}
-  \caption{\label{supported_protocol} Supported routing protocols}
+  \caption{Supported routing protocols}
+  \label{supported_protocol}
 \end{table}
 
 
@@ -157,7 +159,8 @@ router ingress port. The Gap width can be in $[0, W-1]$.
     \hline
     \bottomrule
   \end{tabular}
-  \caption{\label{unicast_circuit_switch_field} Unicast Circuit Switch Field Description}
+  \caption{Unicast Circuit Switch Field Description}
+  \label{unicast_circuit_switch_field}
 \end{table}
 
 The index is numbered between $[0, H-1]$ for a flit with $H$ hops and is initialized to $H-1$. The index is decremented
@@ -223,19 +226,319 @@ accordingly.
     \hline
     \bottomrule
   \end{tabular}
-  \caption{\label{multicast_circuit_switch_field} Multicast Circuit Switch Field Description}
+  \caption{Multicast Circuit Switch Field Description}
+  \label{multicast_circuit_switch_field}
 \end{table}
 
 \subsubsection{Combining multiple routing policies}
 
 Multiple types of routing flits can be mixed at the beginning of a packet.
 
-\section{Router example: 32-bit 5-port}
+\section{Router example: 32-bit 3-port}
+
+\subsection{introduction}
+
+The 32-bit 3-port router is delivered with a testbench that demonstrates the functionality and the behavior of the
+router. The following subsections describe the packet structure used, the module parameters and ports description and an
+overview of the testing environment proposed.
 
 \subsection{Packet structure}
 
+The 32-bit 3-port NoC can hold up to 23 hops for unicast packets and up to 11 hops for multicast packets. The figures
+\ref{hynoc_unicast_packet_3port_32b} and \ref{hynoc_mcast_packet_3port_32b} describe the packets structures for both
+unicast and multicast protocol.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.7\linewidth]{figures/hynoc_unicast_packet_3port_32b.pdf}
+  \caption{Unicast packet structure for 3-port 32-bit NoC}
+  \label{hynoc_unicast_packet_3port_32b}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.7\linewidth]{figures/hynoc_mcast_packet_3port_32b.pdf}
+  \caption{Multicast packet structure for 3-port 32-bit NoC}
+  \label{hynoc_mcast_packet_3port_32b}
+\end{figure}
+
+
 \subsection{Parameters}
+
+The following module parameters declared in the 3-port router module are presented in the following table
+\ref{parameters_3port_router_32bit}. Please note that some can be directly inlined, depending on the delivery content.
+
+\begin{table}[h]
+  \centering
+  \begin{tabular}{l|l|p{7cm}}
+    \toprule
+    \hline
+    \textbf{Name} & \textbf{Default Value} & \textbf{Description}\\
+    \hline\hline
+    INDEX\_WIDTH & 5 & Bit width of the index in an address flit. \\
+    \hline
+    LOG2\_FIFO\_DEPTH & 5 & Size of the FIFO inserted in each port's ingress expressed in $log_2$ basis. \\
+    \hline
+    PAYLOAD\_WIDTH & 32 & Bit width of the payload. \\
+    \hline
+    FLIT\_WIDTH & $\text{PAYLOAD\_WIDTH}+1$ & Bit width of the flit. \\
+    \hline
+    PRRA\_PIPELINE & 0 & 2-cycle parallel round-robin arbiter response when set to 0 else 3-cycle. \\
+    \hline
+    SINGLE\_CLOCK\_ROUTER & 0 & When set to 1, each port uses the router clock instead of its own clock to reduce
+                                the traversal latency. \\
+    \hline
+    ENABLE\_MCAST\_ROUTING & 1 & When set to 1, enable the multicast routing protocol. \\
+    \hline
+    \bottomrule
+  \end{tabular}
+  \caption{Parameters of the 3-port 32-bit router}
+  \label{parameters_3port_router_32bit}
+\end{table}
+
 
 \subsection{Ports}
 
+The router ports description is presented in \ref{ports_3port_router_32bit}. The port is composed of two parts, an
+ingress side and an egress side. The ingress side receives data and the egress side sends data. When connecting two
+ports, the egress port X must be connected to ingress port Y and vice-versa.
+
+\begin{table}[h]
+  \centering
+  \begin{tabular}{l|l|l|p{7cm}}
+    \toprule
+    \hline
+    \textbf{Name} & \textbf{Dir} & \textbf{Width} & \textbf{Description}\\
+    \hline\hline
+    router\_clk & In & 1 & Internal router clock. \\
+    \hline
+    router\_srst & In & 1 & Internal router synchronous reset. \\
+    \hline
+    portX\_ingress\_clk & In & 1 & Clock of ingress port X,
+                                   not used if SINGLE\_CLOCK\_ROUTER is set to 1. \\
+    \hline
+    portX\_ingress\_srst & In & 1 & Synchronous reset of the ingress port X,
+                                    not used if SINGLE\_CLOCK\_ROUTER is set to 1. \\
+    \hline
+    portX\_ingress\_write & In & 1 & Send the word in the ingress port X.
+                                     Must be set only one cycle. \\
+    \hline
+    portX\_ingress\_data & In & FLIT\_WIDTH & Data to send to the ingress port X. \\
+    \hline
+    portX\_ingress\_full & Out & 1 & Full signal of the ingress port X.
+                                     If full, the write request is ignored. \\
+    \hline
+    portX\_ingress\_fifo\_level & Out & LOG2\_FIFO\_DEPTH+1 & FIFO level of the ingress port X.\\
+    \hline
+    portX\_egress\_clk & In & 1 & Clock of egress port X,
+                                  not used if SINGLE\_CLOCK\_ROUTER is set to 1. \\
+    \hline
+    portX\_egress\_srst & In & 1 & Synchronous reset of the egress port X,
+                                   not used if SINGLE\_CLOCK\_ROUTER is set to 1. \\
+    \hline
+    portX\_egress\_write & Out & 1 & A data is ready on egress port X,
+                                     set one cycle per data to read. \\
+    \hline
+    portX\_egress\_data & Out & FLIT\_WIDTH & Data to read on egress port X.\\
+    \hline
+    portX\_egress\_fifo\_level & In & LOG2\_FIFO\_DEPTH+1 & Input FIFO level on egress port X, it must be connected
+                                                            to another router. \\
+    \hline
+    \bottomrule
+  \end{tabular}
+  \caption{Ports of the 3-port 32-bit router}
+  \label{ports_3port_router_32bit}
+\end{table}
+
+\subsection{Local Interface}
+
+A local interface can be used in order to connect a client to a router port. The local interface instantiates an
+extra FIFO to the egress router port in order to let the client sends an receives data at its own pace.
+
+The local interface exposes a router side that connects to the egress/ingress router port and a local side that exposes
+FIFO interfaces to the client in order to send and receive data. The tables
+\ref{router_local_interface_port_description} and \ref{client_local_interface_port_description} presents the local
+interface ports.
+
+\begin{table}[h]
+  \centering
+  \begin{tabular}{l|l|l|p{7cm}}
+    \toprule
+    \hline
+    \multicolumn{4}{l}{\textbf{Router side}} \\
+    \hline
+    \textbf{Name} & \textbf{Dir} & \textbf{Width} & \textbf{Description}\\
+    \hline\hline
+    port\_ingress\_srst & Out & 1 & \\
+    \hline
+    port\_ingress\_clk  & Out & 1 & \\
+    \hline
+    port\_ingress\_write & Out & 1 & \\
+    \hline
+    port\_ingress\_data & Out & FLIT\_WIDTH & \\
+    \hline
+    port\_ingress\_full & In & 1 & \\
+    \hline
+    port\_ingress\_fifo\_level & In & LOG2\_FIFO\_DEPTH + 1 & \\
+    \hline
+    port\_egress\_srst & In & 1 & \\
+    \hline
+    port\_egress\_clk & In & 1 & \\
+    \hline
+    port\_egress\_write & In & 1 & \\
+    \hline
+    port\_egress\_data & In & FLIT\_WIDTH & \\
+    \hline
+    port\_egress\_fifo\_level & Out & LOG2\_FIFO\_DEPTH+1 & \\
+    \hline
+  \end{tabular}
+  \caption{Local interface port description - Router side}
+  \label{router_local_interface_port_description}
+\end{table}
+
+\begin{table}[h]
+  \centering
+  \begin{tabular}{l|l|l|p{7cm}}
+    \toprule
+    \hline
+    \multicolumn{4}{l}{\textbf{Client side}} \\
+    \hline
+    \textbf{Name} & \textbf{Dir} & \textbf{Width} & \textbf{Description}\\
+    \hline\hline
+    local\_clk & In & 1 & \\
+    \hline
+    local\_srst & In & 1 & \\
+    \hline
+    local\_ingress\_write & In & 1 & \\
+    \hline
+    local\_ingress\_data & In & FLIT\_WIDTH & \\
+    \hline
+    local\_ingress\_full & Out & 1 & \\
+    \hline
+    local\_ingress\_fifo\_level & Out & LOG2\_FIFO\_DEPTH + 1 & \\
+    \hline
+    local\_egress\_read & In & 1 & \\
+    \hline
+    local\_egress\_data & Out & FLIT\_WIDTH  & \\
+    \hline
+    local\_egress\_empty & Out  & 1 & \\
+    \hline
+    local\_egress\_fifo\_level & Out & LOG2\_FIFO\_DEPTH + 1 & \\
+    \hline
+    \bottomrule
+  \end{tabular}
+  \caption{Local interface port description - Client side}
+  \label{client_local_interface_port_description}
+\end{table}
+
 \subsection{Test environment}
+
+Two tests are delivered with the 3-port 32-bit NoC to illustrate the two possible communication modes: unicast and
+multicast. Both tests use the same network topology as depicted in the figure \ref{hynoc_test_topology_3port}. The
+design proposed here consist in 2 routers connected with 4 nodes and each node is connected to the router using a local
+interface (LI).
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.8\linewidth]{figures/hynoc_test_topology_3port.pdf}
+  \caption{Unicast test for 3-port 32-bit routers}
+  \label{hynoc_test_topology_3port}
+\end{figure}
+
+\paragraph{Unicast}
+
+The first test is related to unicast transfers, where each node send packets to all other nodes. The hops encoded in the
+routing flits can be established using the table \ref{unicast_routing_table_3port_32bit_router} and all node dialog
+combinations are listed hereafter:
+
+\begin{itemize}
+\item Node 0 $\rightarrow$ Node 1: hops $[0]$
+\item Node 0 $\rightarrow$ Node 2: hops $[1 \rightarrow 0]$
+\item Node 0 $\rightarrow$ Node 3: hops $[1 \rightarrow 1]$
+\end{itemize}
+\begin{itemize}
+\item Node 1 $\rightarrow$ Node 0: hops $[1]$
+\item Node 1 $\rightarrow$ Node 2: hops $[0 \rightarrow 0]$
+\item Node 1 $\rightarrow$ Node 3: hops $[0 \rightarrow 1]$
+\end{itemize}
+\begin{itemize}
+\item Node 2 $\rightarrow$ Node 0: hops $[1 \rightarrow 0]$
+\item Node 2 $\rightarrow$ Node 1: hops $[1 \rightarrow 1]$
+\item Node 2 $\rightarrow$ Node 3: hops $[0]$
+\end{itemize}
+\begin{itemize}
+\item Node 3 $\rightarrow$ Node 0: hops $[0 \rightarrow 0]$
+\item Node 3 $\rightarrow$ Node 1: hops $[0 \rightarrow 1]$
+\item Node 3 $\rightarrow$ Node 2: hops $[1]$
+\end{itemize}
+
+\begin{table}[h]
+  \centering
+  \begin{tabular}{c | c }
+    \toprule
+    \hline
+    \textbf{Direction} & \textbf{Unicast} \\
+    \hline\hline
+    P0 $\rightarrow$ P1 & 1'b0 \\
+    \hline
+    P0 $\rightarrow$ P2 & 1'b1 \\
+    \hline
+    P1 $\rightarrow$ P2 & 1'b0 \\
+    \hline
+    P1 $\rightarrow$ P0 & 1'b1 \\
+    \hline
+    P2 $\rightarrow$ P0 & 1'b0 \\
+    \hline
+    P2 $\rightarrow$ P1 & 1'b1 \\
+    \hline
+    \bottomrule
+  \end{tabular}
+  \caption{Unicast routing table of 3-port 32-bit router}
+  \label{unicast_routing_table_3port_32bit_router}
+\end{table}
+
+\paragraph{Multicast}
+
+The second test is a multicast transfer from node 0 to node 2 and node 3 and simultaneously from node 3 to node 0 and 1.
+The address flits can be deduced using the routing table \ref{multicast_routing_table_3port_32bit_router} and are
+presented hereafter:
+
+\begin{itemize}
+\item Node 0 $\rightarrow$ (Node 2, Node 3): hops $[b10 \rightarrow b11]$
+\item Node 3 $\rightarrow$ (Node 0, Node 1): hops $[b01 \rightarrow b11]$
+\end{itemize}
+
+\begin{table}[h]
+  \centering
+  \begin{tabular}{c | c }
+    \toprule
+    \hline
+    \textbf{Direction} & \textbf{Multicast} \\
+    \hline\hline
+    P0 $\rightarrow$ P1 & 2'bx1 \\
+    \hline
+    P0 $\rightarrow$ P2 & 2'b1x \\
+    \hline
+    P1 $\rightarrow$ P2 & 2'bx1 \\
+    \hline
+    P1 $\rightarrow$ P0 & 2'b1x \\
+    \hline
+    P2 $\rightarrow$ P0 & 2'bx1 \\
+    \hline
+    P2 $\rightarrow$ P1 & 2'b1x \\
+    \hline
+    \bottomrule
+  \end{tabular}
+  \caption{Multicast routing table of 3-port 32-bit router}
+  \label{multicast_routing_table_3port_32bit_router}
+\end{table}
+
+%% \section{Router example: 32-bit 5-port}
+
+%% \subsection{Packet structure}
+
+%% \subsection{Parameters}
+
+%% \subsection{Ports}
+
+%% \subsection{Test environment}
