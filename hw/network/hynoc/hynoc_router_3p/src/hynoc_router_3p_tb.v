@@ -16,6 +16,7 @@ module hynoc_router_3p_tb;
    //----------------------------------------------------------------
    // Constants
    //----------------------------------------------------------------
+`include "../../hynoc_ingress/src/hynoc_ingress_routing_list.v"
 
    localparam integer INDEX_WIDTH          = 5;
    localparam integer LOG2_FIFO_DEPTH      = 5;
@@ -366,24 +367,29 @@ module hynoc_router_3p_tb;
    // P2 -> P0: 1'b0
    // P2 -> P1: 1'b1
 
-   localparam [FLIT_WIDTH-1:0] UNICAST_L0_TO_L1 = {4'b0000, 23'd0, 5'h0};
-   localparam [FLIT_WIDTH-1:0] UNICAST_L0_TO_L2 = {4'b0000, 23'd2, 5'h1};
-   localparam [FLIT_WIDTH-1:0] UNICAST_L0_TO_L3 = {4'b0000, 23'd3, 5'h1};
+   localparam [FLIT_WIDTH-1:0] UNICAST_L0_TO_L1 = {PROTO_ROUTING_UCAST_CIRCUIT_SWITCH, 23'd0, 5'h0};
+   localparam [FLIT_WIDTH-1:0] UNICAST_L0_TO_L2 = {PROTO_ROUTING_UCAST_CIRCUIT_SWITCH, 23'd2, 5'h1};
+   localparam [FLIT_WIDTH-1:0] UNICAST_L0_TO_L3 = {PROTO_ROUTING_UCAST_CIRCUIT_SWITCH, 23'd3, 5'h1};
 
-   localparam [FLIT_WIDTH-1:0] UNICAST_L1_TO_L0 = {4'b0000, 23'd1, 5'h0};
-   localparam [FLIT_WIDTH-1:0] UNICAST_L1_TO_L2 = {4'b0000, 23'd0, 5'h1};
-   localparam [FLIT_WIDTH-1:0] UNICAST_L1_TO_L3 = {4'b0000, 23'd1, 5'h1};
+   localparam [FLIT_WIDTH-1:0] UNICAST_L1_TO_L0 = {PROTO_ROUTING_UCAST_CIRCUIT_SWITCH, 23'd1, 5'h0};
+   localparam [FLIT_WIDTH-1:0] UNICAST_L1_TO_L2 = {PROTO_ROUTING_UCAST_CIRCUIT_SWITCH, 23'd0, 5'h1};
+   localparam [FLIT_WIDTH-1:0] UNICAST_L1_TO_L3 = {PROTO_ROUTING_UCAST_CIRCUIT_SWITCH, 23'd1, 5'h1};
 
-   localparam [FLIT_WIDTH-1:0] UNICAST_L2_TO_L0 = {4'b0000, 23'd2, 5'h1};
-   localparam [FLIT_WIDTH-1:0] UNICAST_L2_TO_L1 = {4'b0000, 23'd3, 5'h1};
-   localparam [FLIT_WIDTH-1:0] UNICAST_L2_TO_L3 = {4'b0000, 23'd0, 5'h0};
+   localparam [FLIT_WIDTH-1:0] UNICAST_L2_TO_L0 = {PROTO_ROUTING_UCAST_CIRCUIT_SWITCH, 23'd2, 5'h1};
+   localparam [FLIT_WIDTH-1:0] UNICAST_L2_TO_L1 = {PROTO_ROUTING_UCAST_CIRCUIT_SWITCH, 23'd3, 5'h1};
+   localparam [FLIT_WIDTH-1:0] UNICAST_L2_TO_L3 = {PROTO_ROUTING_UCAST_CIRCUIT_SWITCH, 23'd0, 5'h0};
 
-   localparam [FLIT_WIDTH-1:0] UNICAST_L3_TO_L0 = {4'b0000, 23'd0, 5'h1};
-   localparam [FLIT_WIDTH-1:0] UNICAST_L3_TO_L1 = {4'b0000, 23'd1, 5'h1};
-   localparam [FLIT_WIDTH-1:0] UNICAST_L3_TO_L2 = {4'b0000, 23'd1, 5'h0};
+   localparam [FLIT_WIDTH-1:0] UNICAST_L3_TO_L0 = {PROTO_ROUTING_UCAST_CIRCUIT_SWITCH, 23'd0, 5'h1};
+   localparam [FLIT_WIDTH-1:0] UNICAST_L3_TO_L1 = {PROTO_ROUTING_UCAST_CIRCUIT_SWITCH, 23'd1, 5'h1};
+   localparam [FLIT_WIDTH-1:0] UNICAST_L3_TO_L2 = {PROTO_ROUTING_UCAST_CIRCUIT_SWITCH, 23'd1, 5'h0};
+
+   localparam [FLIT_WIDTH-1:0] MCAST_L0_TO_L2_L3 = {PROTO_ROUTING_MCAST_CIRCUIT_SWITCH, 1'b0,
+                                                    22'b00_00_00_00_00_00_00_00_00_10_11, 5'h1};
+   localparam [FLIT_WIDTH-1:0] MCAST_L3_TO_L0_L1 = {PROTO_ROUTING_MCAST_CIRCUIT_SWITCH, 1'b0,
+                                                    22'b00_00_00_00_00_00_00_00_00_01_11, 5'h1};
 
    initial begin
-      #10000;
+      #15000;
       $finish;
    end
 
@@ -393,6 +399,7 @@ module hynoc_router_3p_tb;
       send_packet(0, UNICAST_L0_TO_L1, 127);
       send_packet(0, UNICAST_L0_TO_L2, 128);
       send_packet(0, UNICAST_L0_TO_L3, 129);
+      send_packet(0, MCAST_L0_TO_L2_L3, 512);
    end
 
    // Local 1
@@ -417,6 +424,7 @@ module hynoc_router_3p_tb;
       send_packet(3, UNICAST_L3_TO_L0, 127);
       send_packet(3, UNICAST_L3_TO_L1, 128);
       send_packet(3, UNICAST_L3_TO_L2, 129);
-   end
+      send_packet(3, MCAST_L3_TO_L0_L1, 256);
+  end
 
 endmodule
