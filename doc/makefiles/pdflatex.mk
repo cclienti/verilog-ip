@@ -20,7 +20,7 @@ $(PDF_FILE): $(MAIN_TEX_FILE) $(DEP_TEX_FILES) $(BIB_FILE)
 	mv $(notdir $(MAIN_TEX_FILE:.tex=.pdf)) $(PDF_FILE)
 
 clean::
-	@rm -rf *.pdf *.toc *.aux *.log *.out *.bbl *.blg
+	@rm -rf *.pdf *.toc *.aux *.log *.out *.bbl *.blg *.brf
 
 print-%:
 	@echo $* = $($*)
