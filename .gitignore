@@ -23,6 +23,8 @@ venv/
 *.toc
 *.blg
 *.brf
+*.lot
+*.lof
 
 ##################
 # Build dir
