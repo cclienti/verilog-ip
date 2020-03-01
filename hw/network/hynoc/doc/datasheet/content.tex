@@ -126,14 +126,17 @@ Multiple protocols can be supported in a routing flit depending on the 4-bit Pro
 
 \begin{table}[h]
   \centering
-  \begin{tabular}{l | c}
+  \begin{tabular}{l | l}
     \toprule\hline
     \textbf{Proto value} & \textbf{Routing method} \\
     \hline\hline
-    4'b0000 & Unicast Circuit Switch \\
+    4'b0000 & Unicast Circuit Switch. \\
     \hline
-    4'b0001 & Multicast Circuit Switch \\
-    % 4'b1000 & XY routing\\
+    4'b0001 & Multicast Circuit Switch. \\
+    \hline
+    4'b1000 & XY routing (not yet implemented).\\
+    \hline
+    4'b1111 & Forbidden value. \\
     \hline\bottomrule
   \end{tabular}
   \caption{Supported routing protocols}
