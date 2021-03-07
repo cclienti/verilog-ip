@@ -2,7 +2,10 @@
 # Copyright (C) 2013-2016 Christophe Clienti - All Rights Reserved
 
 IVERILOG           ?= iverilog
-IVFLAGS            += -Wall -Wno-sensitivity-entire-array -g2005
+VVP                ?= vvp
+IVERILOG_PATH      ?=
+IVSTD              ?= -g2005
+IVFLAGS            += -Wall -Wno-sensitivity-entire-array $(IVSTD)
 IVFLAGS            += $(foreach DIR,$(ALL_TOP_FILES),-I$(dir $(DIR)))
 IVFLAGS            += $(foreach PARAM,$(TESTBENCH_PARAMS),-P$(TESTBENCH_MODULE).$(PARAM))
 GTKWAVE            ?= gtkwave
@@ -20,13 +23,13 @@ vcd: $(VCD_FILE)
 sim: $(VCD_FILE)
 
 check: $(TESTBENCH_MODULE)
-	! vvp ./$< -lxt2 | grep Error
+	! $(IVERILOG_PATH)/$(VVP) ./$< -lxt2 | grep Error
 
 $(VCD_FILE): $(TESTBENCH_MODULE)
-	vvp ./$< -lxt2
+	$(IVERILOG_PATH)/$(VVP) ./$< -lxt2
 
 $(TESTBENCH_MODULE): $(ALL_SOURCE_FILES)
-	$(IVERILOG) $(IVFLAGS)  -s $(TESTBENCH_MODULE) -o $(TESTBENCH_MODULE) \
+	$(IVERILOG_PATH)/$(IVERILOG) $(IVFLAGS) -s $(TESTBENCH_MODULE) -o $(TESTBENCH_MODULE) \
 		$(ALL_SOURCE_FILES)
 
 clean:: iverilog_clean
