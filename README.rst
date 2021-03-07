@@ -45,7 +45,7 @@ package can be easily retrieved using the python pip command.
 ::
 
    python3 -m venv venv  # the venv directory is added in the .gitignore
-   source venv-verilog-ip/bin/activate
+   source venv/bin/activate
    python -m pip install --upgrade pip
    pip install wheel
    pip install wavedisp
