@@ -9,7 +9,9 @@ Introduction
 Sources
 =======
 
+
 ::
+
    git clone https://github.com/cclienti/verilog-ip.git
    cd verilog-ip.git
 
@@ -25,11 +27,15 @@ First install the prerequisites to simulate and lint the designs. Depending on y
 distribution, the command can change.
 
 RPM based linux distributions:
+
 ::
+
    sudo dnf install iverilog verilator gtkwave make
 
 APT based linux distributions:
+
 ::
+
    sudo apt update
    sudo apt install iverilog verilator gtkwave make
 
@@ -37,6 +43,7 @@ A python package is used to properly import signals to monitor in the Gtkwave VC
 package can be easily retrieved using the python pip command.
 
 ::
+
    python3 -m venv venv  # the venv directory is added in the .gitignore
    source venv-verilog-ip/bin/activate
    python -m pip install --upgrade pip
@@ -52,5 +59,6 @@ In order to test your environment, you can go in a project directory and execute
 trace.
 
 ::
+
    cd hw/motor_control/pwm_generator/project
    make trace
