@@ -25,7 +25,7 @@ module asdpmem
    reg [WIDTH-1:0]    ram[2**DEPTH-1:0];
 
    always @ (posedge clka) begin
-      if(wea == 1'b1) begin
+      if((ena & wea) == 1'b1) begin
          ram[addra] <= dia;
       end
    end
