@@ -3,8 +3,7 @@
 
 IVERILOG           ?= iverilog
 VVP                ?= vvp
-IVERILOG_PATH      ?=
-IVSTD              ?= -g2005
+IVSTD              ?= -g2012
 IVFLAGS            += -Wall -Wno-sensitivity-entire-array $(IVSTD)
 IVFLAGS            += $(foreach DIR,$(ALL_TOP_FILES),-I$(dir $(DIR)))
 IVFLAGS            += $(foreach PARAM,$(TESTBENCH_PARAMS),-P$(TESTBENCH_MODULE).$(PARAM))
@@ -23,13 +22,13 @@ vcd: $(VCD_FILE)
 sim: $(VCD_FILE)
 
 check: $(TESTBENCH_MODULE)
-	! $(IVERILOG_PATH)/$(VVP) ./$< -lxt2 | grep Error
+	! $(VVP) ./$< -lxt2 | grep Error
 
 $(VCD_FILE): $(TESTBENCH_MODULE)
-	$(IVERILOG_PATH)/$(VVP) ./$< -lxt2
+	$(VVP) ./$< -lxt2
 
 $(TESTBENCH_MODULE): $(ALL_SOURCE_FILES)
-	$(IVERILOG_PATH)/$(IVERILOG) $(IVFLAGS) -s $(TESTBENCH_MODULE) -o $(TESTBENCH_MODULE) \
+	$(IVERILOG) $(IVFLAGS) -s $(TESTBENCH_MODULE) -o $(TESTBENCH_MODULE) \
 		$(ALL_SOURCE_FILES)
 
 clean:: iverilog_clean
