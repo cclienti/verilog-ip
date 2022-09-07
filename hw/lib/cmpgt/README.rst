@@ -1,0 +1,41 @@
+===============================================
+Asynchronous Signed/Unsigned Greater Comparator
+===============================================
+
+
+-----------
+Description
+-----------
+
+The design is a dynamically signed or unsigned "strictly greater than" comparator. By complementing
+the output, the comparator works as a "lower or equal" comparator.
+
+Using this comparator with the "strictly lower than" comparator and some simple logic functions, it
+is possible to describe all possible standard comparisons (<,<=,==,>=,>,!=).
+
+----------
+Parameters
+----------
+
+======  =====  ==============  ========================================
+Name    Type   Default value   Description
+======  =====  ==============  ========================================
+WIDTH          32              Input words width
+======  =====  ==============  ========================================
+
+
+-------
+Signals
+-------
+
+==========  ============  ============  ========================================
+Name        I/O type      Range         Description
+==========  ============  ============  ========================================
+a           input wire    [WIDTH-1:0]   input word
+----------  ------------  ------------  ----------------------------------------
+b           input wire    [WIDTH-1:0]   input word
+----------  ------------  ------------  ----------------------------------------
+is_signed   input wire    1             signed bit input
+----------  ------------  ------------  ----------------------------------------
+out         output wire   1             set if a>b, else reset
+==========  ============  ============  ========================================
