@@ -1,6 +1,6 @@
-===============================================
-Asynchronous Signed/Unsigned Greater Comparator
-===============================================
+====================================================
+Asynchronous Signed/Unsigned Greater Than Comparator
+====================================================
 
 
 -----------
@@ -8,9 +8,9 @@ Description
 -----------
 
 The design is a dynamically signed or unsigned "strictly greater than" comparator. By complementing
-the output, the comparator works as a "lower or equal" comparator.
+the output, the comparator works as a "less or equal" comparator.
 
-Using this comparator with the "strictly lower than" comparator and some simple logic functions, it
+Using this comparator with the "strictly less than" comparator and some simple logic functions, it
 is possible to describe all possible standard comparisons (<,<=,==,>=,>,!=).
 
 ----------
@@ -35,7 +35,7 @@ a           input wire    [WIDTH-1:0]   input word
 ----------  ------------  ------------  ----------------------------------------
 b           input wire    [WIDTH-1:0]   input word
 ----------  ------------  ------------  ----------------------------------------
-is_signed   input wire    1             signed bit input
+is_signed   input wire    1             signed if set else unsigned comparison
 ----------  ------------  ------------  ----------------------------------------
 out         output wire   1             set if a>b, else reset
 ==========  ============  ============  ========================================
