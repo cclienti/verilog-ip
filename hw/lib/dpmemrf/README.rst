@@ -8,9 +8,8 @@ Description
 -----------
 
 The design is a dual port memory with two read/write ports. The memory is called "read first": it
-reads before overwriting the data on the same port. By the way, reading on a port and writing on the
-other at the same address or writing on both ports at the same address produce an undefined
-behavior.
+reads before overwriting the data on the same port or on different ports. Writing on both ports at
+the same address produce an undefined behavior.
 
 The output memory latency is one or two cycles depending on the parameters used to instanciate the
 design.
