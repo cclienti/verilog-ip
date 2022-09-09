@@ -8,7 +8,6 @@ venv/
 ##################
 # Documents
 ##################
-*.png
 *.pdf
 *.eps
 *.done
