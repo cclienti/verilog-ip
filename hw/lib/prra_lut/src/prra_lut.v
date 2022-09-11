@@ -13,7 +13,7 @@
 
 module prra_lut
   #(parameter WIDTH        = 4,
-    parameter LOG2_WIDTH   = 2,
+    parameter LOG2_WIDTH   = $clog2(WIDTH),
     parameter STATE_OFFSET = 0)
 
    (input wire [WIDTH-1:0]      request,
