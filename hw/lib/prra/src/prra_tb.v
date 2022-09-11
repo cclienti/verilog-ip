@@ -1,5 +1,5 @@
 //                              -*- Mode: Verilog -*-
-// Filename        : hynoc_prra_tb.v
+// Filename        : prra_tb.v
 // Description     : Testbench of the Parallel Round Robin Arbiter
 // Author          : Christophe Clienti
 // Created On      : Tue Jun 25 16:51:42 2013
@@ -11,7 +11,7 @@
 
 `timescale 1 ns / 100 ps
 
-module hynoc_prra_tb();
+module prra_tb();
 
    //----------------------------------------------------------------
    // Constants
@@ -42,13 +42,13 @@ module hynoc_prra_tb();
    // DUT
    //----------------------------------------------------------------
 
-   hynoc_prra
+   prra
    #(
       .WIDTH      (WIDTH),
       .LOG2_WIDTH (LOG2_WIDTH),
       .PIPELINE   (PIPELINE)
    )
-   DUT
+   prra
    (
       .clk     (clk),
       .srst    (srst),
@@ -78,7 +78,7 @@ module hynoc_prra_tb();
    //----------------------------------------------------------------
 
    initial begin
-      $dumpfile ("hynoc_prra_tb.vcd");
+      $dumpfile ("prra_tb.vcd");
       $dumpvars;
    end
 
@@ -92,19 +92,19 @@ module hynoc_prra_tb();
    initial begin
       $display("LUT 0:");
       for(j=0 ; j<2**WIDTH ; j=j+1) begin
-         $display("\t %b -> %d", j[3:0], DUT.lut_gen[0].prra_lut_inst.lut[j]);
+         $display("\t %b -> %d", j[3:0], prra.lut_gen[0].prra_lut_inst.lut[j]);
       end
       $display("LUT 1:");
       for(j=0 ; j<2**WIDTH ; j=j+1) begin
-         $display("\t %b -> %d", j[3:0], DUT.lut_gen[1].prra_lut_inst.lut[j]);
+         $display("\t %b -> %d", j[3:0], prra.lut_gen[1].prra_lut_inst.lut[j]);
       end
       $display("LUT 2:");
       for(j=0 ; j<2**WIDTH ; j=j+1) begin
-         $display("\t %b -> %d", j[3:0], DUT.lut_gen[2].prra_lut_inst.lut[j]);
+         $display("\t %b -> %d", j[3:0], prra.lut_gen[2].prra_lut_inst.lut[j]);
       end
       $display("LUT 3:");
       for(j=0 ; j<2**WIDTH ; j=j+1) begin
-         $display("\t %b -> %d", j[3:0], DUT.lut_gen[3].prra_lut_inst.lut[j]);
+         $display("\t %b -> %d", j[3:0], prra.lut_gen[3].prra_lut_inst.lut[j]);
       end
    end
 

@@ -1,5 +1,5 @@
 //                              -*- Mode: Verilog -*-
-// Filename        : hynoc_prra.v
+// Filename        : prra.v
 // Description     : Parallel Round Robin Arbiter
 // Author          : Christophe Clienti
 // Created On      : Tue Jun 25 16:46:01 2013
@@ -11,9 +11,9 @@
 
 `timescale 1 ns / 100 ps
 
-module hynoc_prra
+module prra
   #(parameter WIDTH      = 4,
-    parameter LOG2_WIDTH = 2,
+    parameter LOG2_WIDTH = $clog2(WIDTH),
     parameter PIPELINE   = 1)
 
    (input wire                  clk,

@@ -3,7 +3,7 @@
 
 TOP_MODULE        ?= hynoc_egress
 TOP_FILE          ?= ../src/hynoc_egress.v
-TOP_DEPS          ?= ../../hynoc_prra
+TOP_DEPS          ?= ../../../../lib/prra
 
 TESTBENCH_MODULE  ?= hynoc_egress_tb
 TESTBENCH_FILE    ?= ../src/hynoc_egress_tb.v

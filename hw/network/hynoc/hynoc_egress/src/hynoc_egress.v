@@ -74,13 +74,13 @@ module hynoc_egress
    // Parallel Round Robin Arbiter
    //----------------------------------------------------------------
 
-   hynoc_prra
+   prra
    #(
       .WIDTH      (PRRA_WIDTH),
       .LOG2_WIDTH (LOG2_PRRA_STATES),
       .PIPELINE   (PRRA_PIPELINE)
    )
-   hynoc_prra_inst
+   prra_inst
    (
       .clk       (router_clk),
       .srst      (router_srst),

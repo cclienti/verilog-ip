@@ -25,7 +25,7 @@ The next figure presents a parallel implementation of the round robin. The state
 :math:`$P_k$` corresponds to the relation :math:`$P_k \leftarrow \text{request}[k]==1$`,
 :math:`$P_0$` is evaluated with the highest priority and :math:`$P_3$` with the lowest priority.
 
-An extra highest priority transition, which is not mentioned on the next figure, must be added to
+An extra highest priority transition, which is not mentioned in the next figure, must be added to
 all states to keep the current state until the granted request ends. This end condition is detected
 when a lowering edge of the request :math:`k` occurs when the arbiter is in state :math:`k`.
 
@@ -45,6 +45,30 @@ one ore two cycles latency.
 Parameters
 ----------
 
+===========  =====  ==============  ========================================
+Name         Type   Default value   Description
+===========  =====  ==============  ========================================
+WIDTH               4               Number of requester
+-----------  -----  --------------  ----------------------------------------
+LOG2_WIDTH          $clog2(WIDTH)   clog2 number of requester
+-----------  -----  --------------  ----------------------------------------
+PIPELINE            1               Add one register wall
+===========  =====  ==============  ========================================
+
 
 Signals
 -------
+
+========  ===========  =================  ========================================
+Name      I/O type     Range              Description
+========  ===========  =================  ========================================
+clk       input wire   1                  Clock
+--------  -----------  -----------------  ----------------------------------------
+srst      input wire   1                  Synchronous reset
+--------  -----------  -----------------  ----------------------------------------
+request   input wire   [WIDTH-1:0]        Request inputs
+--------  -----------  -----------------  ----------------------------------------
+state     output reg   [LOG2_WIDTH-1:0]   State of the round robin
+--------  -----------  -----------------  ----------------------------------------
+grant     output reg   [WIDTH-1:0]        Grant outputs
+========  ===========  =================  ========================================
