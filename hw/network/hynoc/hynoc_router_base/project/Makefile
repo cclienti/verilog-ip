@@ -8,6 +8,6 @@ TOP_DEPS          ?= ../../hynoc_ingress ../../hynoc_egress
 
 include ../../../../Makefiles/common.mk
 include ../../../../Makefiles/verilator.mk
-include ../../../../Makefiles/xilinx.mk
+include ../../../../Makefiles/vivado.mk
 include ../../../../Makefiles/quartus.mk
 include ../../../../Makefiles/veriparse.mk

@@ -13,4 +13,4 @@ include ../../../Makefiles/wavedisp.mk
 include ../../../Makefiles/iverilog.mk
 include ../../../Makefiles/verilator.mk
 include ../../../Makefiles/modelsim.mk
-include ../../../Makefiles/xilinx.mk
+include ../../../Makefiles/vivado.mk

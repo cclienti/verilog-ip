@@ -17,4 +17,4 @@ include ../../../../Makefiles/common.mk
 include ../../../../Makefiles/iverilog.mk
 include ../../../../Makefiles/modelsim.mk
 include ../../../../Makefiles/verilator.mk
-include ../../../../Makefiles/xilinx.mk
+include ../../../../Makefiles/vivado.mk

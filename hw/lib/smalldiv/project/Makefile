@@ -12,6 +12,6 @@ TESTBENCH_FILE    ?= ../src/smalldiv_tb.v
 include ../../../Makefiles/common.mk
 include ../../../Makefiles/iverilog.mk
 include ../../../Makefiles/verilator.mk
-include ../../../Makefiles/xilinx.mk
+include ../../../Makefiles/vivado.mk
 include ../../../Makefiles/quartus.mk
 include ../../../Makefiles/veriparse.mk
