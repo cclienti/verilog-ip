@@ -8,9 +8,11 @@ venv/
 ##################
 # Documents
 ##################
-*.pdf
-*.eps
 *.done
+**/figures/*.png
+**/figures/*.pdf
+**/figures/*.eps
+doc/logo/*png
 
 ##################
 # Latex
@@ -58,3 +60,9 @@ venv/
 **/project/*.jou
 **/project/vivado.tcl
 **/project/vivado.log
+**/project/vivado-*/
+
+##################
+# Quartus
+##################
+**/project/quartus-*/

@@ -9,7 +9,7 @@ QUARTUS_BOARDFILE       ?= ../boards/de0_nano/de0_nano_pin.tcl
 QUARTUS_CONSTFILE       ?= ../boards/de0_nano/de0_nano.sdc
 QUARTUS_CUSTOM_SCRIPT   ?= custom.tcl
 
-QUARTUS_PROJECT_FILES    = $(QUARTUS_PROJECT_NAME).qpf $(QUARTUS_PROJECT_NAME).qsf
+QUARTUS_PROJECT_FILES    = quartus-project/$(QUARTUS_PROJECT_NAME).qpf quartus-project/$(QUARTUS_PROJECT_NAME).qsf
 
 
 help::
@@ -18,6 +18,7 @@ help::
 quartus-project: $(QUARTUS_PROJECT_FILES)
 
 $(QUARTUS_PROJECT_FILES):
+	@echo mkdir -p quartus-project
 	@quartus_sh --prepare -f $(QUARTUS_FAMILY) -d $(QUARTUS_PART) \
 	    -t $(QUARTUS_TOP_MODULE) $(QUARTUS_PROJECT_NAME)
 	@echo "" >> $(QUARTUS_PROJECT_NAME).qsf # Add empty line
@@ -31,8 +32,8 @@ $(QUARTUS_PROJECT_FILES):
 distclean:: quartus-distclean
 
 quartus-distclean: clean
-	rm -rf *.qpf *.qsf *.summary
+	rm -rf quartus-project
 
 clean::
-	rm -rf *.rpt *.chg smart.log *.htm *.eqn *.pin *.sof *.pof db incremental_db *.qws
-	rm -rf *.done *.smsg *.jdi *.sld *.cdf
+	cd quartus-project > /dev/null 2>&1 && rm -rf *.rpt *.chg smart.log *.htm *.eqn *.pin *.sof *.pof db incremental_db *.qws || true
+	cd quartus-project > /dev/null 2>&1 && rm -rf *.done *.smsg *.jdi *.sld *.cdf 2> /dev/null 2>&1 || true
