@@ -18,3 +18,4 @@ include ../../../Makefiles/verilator.mk
 include ../../../Makefiles/modelsim.mk
 include ../../../Makefiles/quartus.mk
 include ../../../Makefiles/wavedisp.mk
+include ../../../Makefiles/vivado.mk
