@@ -7,7 +7,7 @@ IVSTD              ?= -g2012
 IVFLAGS            += -Wall -Wno-sensitivity-entire-array $(IVSTD)
 IVFLAGS            += $(foreach DIR,$(ALL_TOP_FILES),-I$(dir $(DIR)))
 IVFLAGS            += $(foreach PARAM,$(TESTBENCH_PARAMS),-P$(TESTBENCH_MODULE).$(PARAM))
-GTKWAVE            ?= gtkwave
+GTKWAVE            ?= gtkwave --rcvar "fontname_signals Monospace 10" --rcvar "fontname_waves Monospace 10"
 VCD_FILE           ?= $(TESTBENCH_MODULE).vcd
 
 help::
@@ -15,7 +15,7 @@ help::
 	@echo "vcd - simulate the design with iverilog"
 
 trace: vcd $(WAVEDISP_GTKWAVE_TCL)
-	gtkwave -S $(WAVEDISP_GTKWAVE_TCL) $(VCD_FILE)
+	$(GTKWAVE) -S $(WAVEDISP_GTKWAVE_TCL) $(VCD_FILE)
 
 vcd: $(VCD_FILE)
 
