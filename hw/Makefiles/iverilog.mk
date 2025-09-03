@@ -14,6 +14,8 @@ help::
 	@echo "trace - simulate design with iverilog and show the vcd with gtkwave"
 	@echo "vcd - simulate the design with iverilog"
 
+.phony: check
+
 trace: vcd $(WAVEDISP_GTKWAVE_TCL)
 	$(GTKWAVE) -S $(WAVEDISP_GTKWAVE_TCL) $(VCD_FILE)
 
@@ -22,7 +24,7 @@ vcd: $(VCD_FILE)
 sim: $(VCD_FILE)
 
 check: $(TESTBENCH_MODULE)
-	! $(VVP) ./$< -lxt2 | grep Error
+	! $(VVP) ./$< -lxt2 | grep -E '(-> Error|^ERROR:)'
 
 $(VCD_FILE): $(TESTBENCH_MODULE)
 	$(VVP) ./$< -lxt2
