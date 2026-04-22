@@ -59,3 +59,30 @@ wlevel   output reg   [LOG2_FIFO_DEPTH:0]   Write port number of words in the FI
 -------  -----------  --------------------  ----------------------------------------
 wfull    output reg   1                     Write port full signal
 =======  ===========  ====================  ========================================
+Functional Description
+----------------------
+
+The `dclkfifolut` module implements a dual clock FIFO using FPGA LUT memory. It manages clock domain crossing using Gray code pointers, following the method described by Clifford E. Cummings (SNUG 2002). All outputs on the read side are registered with `rclk`, and all outputs on the write side are registered with `wclk`. This module is ideal for safely transferring data between asynchronous clock domains.
+
+Example Instantiation
+---------------------
+
+.. code-block:: verilog
+
+   dclkfifolut #(
+     .LOG2_FIFO_DEPTH(3),
+     .FIFO_WIDTH(8)
+   ) u_dclkfifolut (
+     .rsrst(rsrst),
+     .rclk(rclk),
+     .ren(ren),
+     .rdata(rdata),
+     .rlevel(rlevel),
+     .rempty(rempty),
+     .wsrst(wsrst),
+     .wclk(wclk),
+     .wen(wen),
+     .wdata(wdata),
+     .wlevel(wlevel),
+     .wfull(wfull)
+   );

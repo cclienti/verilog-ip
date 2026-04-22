@@ -65,3 +65,32 @@ dib     input wire   [WIDTH-1:0]   Port B data input
 ------  -----------  ------------  ----------------------------------------
 dob     output reg   [WIDTH-1:0]   Port B data output
 ======  ===========  ============  ========================================
+Functional Description
+----------------------
+
+The `dpmemwf` module implements a dual-port RAM with two independent read/write ports (A and B). It is a "write first" memory: when a write occurs, the new data is immediately available on the output. Simultaneous access (read/write or write/write) to the same address on both ports results in undefined behavior. The output latency is one or two cycles, depending on the OUTREG parameters.
+
+Example Instantiation
+---------------------
+
+.. code-block:: verilog
+
+   dpmemwf #(
+     .DEPTH(10),
+     .WIDTH(32),
+     .OUTREGA(1),
+     .OUTREGB(1)
+   ) u_dpmemwf (
+     .clka(clka),
+     .ena(ena),
+     .wea(wea),
+     .addra(addra),
+     .dia(dia),
+     .doa(doa),
+     .clkb(clkb),
+     .enb(enb),
+     .web(web),
+     .addrb(addrb),
+     .dib(dib),
+     .dob(dob)
+   );

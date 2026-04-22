@@ -72,3 +72,24 @@ state     output reg   [LOG2_WIDTH-1:0]   State of the round robin
 --------  -----------  -----------------  ----------------------------------------
 grant     output reg   [WIDTH-1:0]        Grant outputs
 ========  ===========  =================  ========================================
+Functional Description
+----------------------
+
+The `prra` module implements a parallel round-robin arbiter. It accepts multiple request signals and grants one at a time in a fair, rotating priority order. The number of requesters is parameterizable. Optional pipelining can be enabled to reduce the critical path, resulting in a response latency of one or two cycles.
+
+Example Instantiation
+---------------------
+
+.. code-block:: verilog
+
+   prra #(
+     .WIDTH(4),
+     .LOG2_WIDTH($clog2(4)),
+     .PIPELINE(1)
+   ) u_prra (
+     .clk(clk),
+     .srst(srst),
+     .request(request),
+     .state(state),
+     .grant(grant)
+   );

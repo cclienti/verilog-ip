@@ -51,3 +51,27 @@ ex          input wire   [WIDTH-1:0]         Special value for out when shift is
 ----------  -----------  ------------------  -----------------------------------------------
 out         output reg   [WIDTH-1:0]         Shifted output
 ==========  ===========  ==================  ===============================================
+Functional Description
+----------------------
+
+The `barrel` module implements a right barrel shifter with dynamic shift amount and optional sign extension. When `is_signed` is set, the output is sign-extended. If the `shift` input equals `SHIFT_MAX+1`, the output is set to the value of `ex`. All inputs can be optionally registered if `IS_REG_IN` is set.
+
+Example Instantiation
+---------------------
+
+.. code-block:: verilog
+
+   barrel #(
+     .WIDTH(64),
+     .SHIFT_MAX(46),
+     .SHIFT_WIDTH($clog2(46+2)),
+     .IS_REG_IN(1)
+   ) u_barrel (
+     .clk(clk),
+     .enable(enable),
+     .is_signed(is_signed),
+     .shift(shift),
+     .in(in),
+     .ex(ex),
+     .out(out)
+   );

@@ -46,3 +46,25 @@ addrb   input wire    [DEPTH-1:0]   Read word address
 ------  ------------  ------------  ----------------------------------------
 dob     output wire   [WIDTH-1:0]   Read word
 ======  ============  ============  ========================================
+Functional Description
+----------------------
+
+The `asdpmem` module implements a simple dual-port RAM with a synchronous write port and an asynchronous read port. The write operation occurs on the rising edge of `clka` when both `ena` and `wea` are asserted. The read operation is asynchronous and provides the data at `dob` corresponding to the address `addrb`. This design is typically synthesized as a LUT-based memory in FPGAs.
+
+Example Instantiation
+---------------------
+
+.. code-block:: verilog
+
+   asdpmem #(
+     .DEPTH(6),
+     .WIDTH(32)
+   ) u_asdpmem (
+     .clka(clka),
+     .ena(ena),
+     .wea(wea),
+     .addra(addra),
+     .dia(dia),
+     .addrb(addrb),
+     .dob(dob)
+   );

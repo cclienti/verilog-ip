@@ -32,3 +32,19 @@ bin    input wire   [WIDTH-1:0]   Input binary word
 -----  -----------  ------------  ----------------------------------------
 gray   output reg   [WIDTH-1:0]   Output binary word
 =====  ===========  ============  ========================================
+Functional Description
+----------------------
+
+The `bin2gray` module converts a binary input word to its equivalent Gray code. This is commonly used for safe signal transitions between asynchronous clock domains, such as in dual-clock FIFOs. The conversion is performed combinationally.
+
+Example Instantiation
+---------------------
+
+.. code-block:: verilog
+
+   bin2gray #(
+     .WIDTH(4)
+   ) u_bin2gray (
+     .bin(bin),
+     .gray(gray)
+   );

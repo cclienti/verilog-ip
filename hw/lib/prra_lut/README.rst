@@ -38,3 +38,21 @@ request   input wire   [WIDTH-1:0]        Requests LUT input
 --------  -----------  -----------------  ----------------------------------------
 state     output reg   [LOG2_WIDTH-1:0]   State output
 ========  ===========  =================  ========================================
+Functional Description
+----------------------
+
+The `prra_lut` module implements a lookup table for round-robin arbitration. Given a set of requests, it outputs the next state (granted requester) based on round-robin priority. This module is used as a core component in parallel round-robin arbiters and shared memory interfaces. The number of requesters and the state offset are configurable via parameters.
+
+Example Instantiation
+---------------------
+
+.. code-block:: verilog
+
+   prra_lut #(
+     .WIDTH(4),
+     .LOG2_WIDTH($clog2(4)),
+     .STATE_OFFSET(0)
+   ) u_prra_lut (
+     .request(request),
+     .state(state)
+   );

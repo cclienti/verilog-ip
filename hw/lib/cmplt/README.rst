@@ -39,3 +39,21 @@ is_signed   input wire    1             signed if set else unsigned comparison
 ----------  ------------  ------------  ----------------------------------------
 out         output wire   1             set if a<b, else reset
 ==========  ============  ============  ========================================
+Functional Description
+----------------------
+
+The `cmplt` module compares two input words (`a`, `b`) and outputs `1` if `a` is strictly less than `b`, otherwise outputs `0`. The comparison is performed as signed if `is_signed` is set, or as unsigned otherwise. This module can be used to implement all standard comparison operations in combination with other comparators and logic.
+
+Example Instantiation
+---------------------
+
+.. code-block:: verilog
+
+   cmplt #(
+     .WIDTH(32)
+   ) u_cmplt (
+     .a(a),
+     .b(b),
+     .is_signed(is_signed),
+     .out(out)
+   );
