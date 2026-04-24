@@ -1,42 +1,31 @@
-=====================================
 Asynchronous Gray to Binary Converter
-=====================================
+======================================
 
-
------------
 Description
 -----------
 
-This design is a configurable gray to binary asynchronous converter. This module can be used in a
-dual clock FIFO for "safe" transitions between two clock domains.
+The ``gray2bin`` module is a configurable, combinational converter that transforms a Gray code input
+word (``gray``) into its equivalent binary value (``bin``). This is especially useful for safe
+signal transitions between asynchronous clock domains, such as in dual-clock FIFOs.
 
-
-----------
 Parameters
 ----------
 
-======  =====  ==============  ========================================
-Name    Type   Default value   Description
-======  =====  ==============  ========================================
-WIDTH          4               Input and output word with
-======  =====  ==============  ========================================
+======  ==============  ========================
+Name    Default value   Description
+======  ==============  ========================
+WIDTH   4               Input and output width
+======  ==============  ========================
 
-
--------
 Signals
 -------
 
-=====  ============  ============  ========================================
+=====  ============  ============  =======================
 Name   I/O type      Range         Description
-=====  ============  ============  ========================================
-gray   input wire    [WIDTH-1:0]   Input gray word
------  ------------  ------------  ----------------------------------------
+=====  ============  ============  =======================
+gray   input wire    [WIDTH-1:0]   Input Gray code word
 bin    output wire   [WIDTH-1:0]   Output binary word
-=====  ============  ============  ========================================
-Functional Description
-----------------------
-
-The `gray2bin` module converts a Gray code input word to its equivalent binary value. This is commonly used for safe signal transitions between asynchronous clock domains, such as in dual-clock FIFOs. The conversion is performed combinationally using a lookup table.
+=====  ============  ============  =======================
 
 Example Instantiation
 ---------------------
@@ -49,3 +38,19 @@ Example Instantiation
      .gray(gray),
      .bin(bin)
    );
+
+Simulation
+----------
+
+.. code-block:: bash
+
+   cd project
+   make sim    # Icarus Verilog simulation
+   make trace  # Simulate and open GTKWave
+   make lint   # Lint with Verilator
+
+License
+-------
+
+This module is licensed under the **CERN Open Hardware Licence Version 2 - Permissive (CERN-OHL-P-2.0)**.
+See `LICENSE <../../LICENSE>`_ for details.

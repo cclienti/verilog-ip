@@ -1,19 +1,14 @@
-==================================================
 Dual Clock FIFO implemented with FPGA LUT memories
 ==================================================
-
 
 -----------
 Description
 -----------
 
-The design is a dual clock FIFO implemented using FPGA LUT memories. The design manages the clock
-domain crossing using gray codes as depicted here: Simulation and Synthesis Techniques for
-Asynchronous FIFO Design, Clifford E. Cummings, SNUG 2002
-
-All output signal of the read side are registered using the rclk clock and all output signals of the
-write port are registered using the wclk clock.
-
+The `dclkfifolut` module is a dual clock FIFO implemented using FPGA LUT memories, designed for safe
+data transfer between asynchronous clock domains. It manages clock domain crossing using Gray code
+pointers, following the method described by Clifford E. Cummings (SNUG 2002). All outputs on the
+read side are registered with `rclk`, and all outputs on the write side are registered with `wclk`.
 
 ----------
 Parameters
@@ -26,7 +21,6 @@ LOG2_FIFO_DEPTH          3               Depth of the FIFO: 2^LOG2_FIFO_DEPTH
 ----------------  -----  --------------  ----------------------------------------
 FIFO_WIDTH               8               FIFO
 ================  =====  ==============  ========================================
-
 
 -------
 Signals
@@ -59,10 +53,6 @@ wlevel   output reg   [LOG2_FIFO_DEPTH:0]   Write port number of words in the FI
 -------  -----------  --------------------  ----------------------------------------
 wfull    output reg   1                     Write port full signal
 =======  ===========  ====================  ========================================
-Functional Description
-----------------------
-
-The `dclkfifolut` module implements a dual clock FIFO using FPGA LUT memory. It manages clock domain crossing using Gray code pointers, following the method described by Clifford E. Cummings (SNUG 2002). All outputs on the read side are registered with `rclk`, and all outputs on the write side are registered with `wclk`. This module is ideal for safely transferring data between asynchronous clock domains.
 
 Example Instantiation
 ---------------------

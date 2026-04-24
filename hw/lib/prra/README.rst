@@ -1,60 +1,57 @@
 Parallel Round-Robin Arbiter
-============================
-
+=============================
 
 Description
 -----------
 
-The basic structure of a sequential round-robin relies on a Finite State Machine (FSM) which scans a
-specific request at each clock cycle, every time in the same order. As show in the following figure,
-when a request is asserted, and if the round-robin is in the state dedicated to this request, the
-request will be granted. Once the request is cleared, the round-robin go to the next state and so
-on.
+The ``prra`` module implements a parallel round-robin arbiter that accepts multiple request signals
+and grants one at a time in a fair, rotating priority order. Unlike sequential round-robin arbiters,
+which scan requests one by one, this parallel implementation can jump directly to the state
+corresponding to an asserted request, reducing latency. The number of requesters is parameterizable
+(``WIDTH``), and optional pipelining (``PIPELINE``) can be enabled to reduce the critical path,
+resulting in a response latency of one or two cycles. The arbiter ensures fairness and prevents
+starvation by maintaining state until the granted request ends.
 
-.. image:: ./images/sequential_round_robin_fsm.png
+The basic structure of a sequential round-robin relies on a Finite State Machine (FSM) which scans a
+specific request at each clock cycle, always in the same order. When a request is asserted, and if
+the round-robin is in the state dedicated to this request, the request will be granted. Once the
+request is cleared, the round-robin moves to the next state.
 
 The major drawback of the sequential round-robin implementation is the latency introduced to scan
-every request input even if no requests are asserted.
+every request input even if no requests are asserted. The parallel implementation solves this by
+allowing the arbiter to jump directly to the state corresponding to the raised request.
 
-An optimization to reduce drastically the latency is to allow the arbiter to jump directly to the
-state corresponding to the request raised. To prevent starvation, priority must be introduced to
-grant requests in a fair way. Moreover, while a request is served or if no requests are asserted,
-the arbiter must not change its state.
+.. figure:: images/sequential_round_robin_fsm.png
+   :width: 60%
+   :align: center
+   :alt: Sequential Round-Robin FSM
 
-The next figure presents a parallel implementation of the round robin. The state transition
-:math:`$P_k$` corresponds to the relation :math:`$P_k \leftarrow \text{request}[k]==1$`,
-:math:`$P_0$` is evaluated with the highest priority and :math:`$P_3$` with the lowest priority.
+   Sequential Round-Robin FSM
 
-An extra highest priority transition, which is not mentioned in the next figure, must be added to
-all states to keep the current state until the granted request ends. This end condition is detected
-when a lowering edge of the request :math:`k` occurs when the arbiter is in state :math:`k`.
+.. figure:: images/parallel_round_robin_fsm.png
+   :width: 60%
+   :align: center
+   :alt: Parallel Round-Robin FSM
 
-.. image:: images/parallel_round_robin_fsm.png
-
-Architecture diagram of the parallel round-robin is depicted in the figure hereafter. The FSM
-transition's equations of each state are split into LUT. The right LUT is selected using a
-multiplexer depending on the state register. This type of implementation allows to provide a simple
-way to describe, using HDL languages, a generic parallel priority round-robin arbiter in terms of
-number of input requests. Moreover, the critical path can be reduced using optional pipeline
-registers just after the LUT outputs. Depending on these registers, the arbiter will respond with
-one ore two cycles latency.
+   Parallel Round-Robin FSM
 
 .. figure:: images/prra_arch.png
+   :width: 80%
+   :align: center
+   :alt: Parallel Round-Robin Arbiter Architecture
 
+   Parallel Round-Robin Arbiter Architecture
 
 Parameters
 ----------
 
-===========  =====  ==============  ========================================
-Name         Type   Default value   Description
-===========  =====  ==============  ========================================
-WIDTH               4               Number of requester
------------  -----  --------------  ----------------------------------------
-LOG2_WIDTH          $clog2(WIDTH)   clog2 number of requester
------------  -----  --------------  ----------------------------------------
-PIPELINE            1               Add one register wall
-===========  =====  ==============  ========================================
-
+===========  ==============  ========================================
+Name         Default value   Description
+===========  ==============  ========================================
+WIDTH        4               Number of requesters
+LOG2_WIDTH   $clog2(WIDTH)   Ceil log2 of number of requesters
+PIPELINE     1               Add one register stage (2-cycle latency)
+===========  ==============  ========================================
 
 Signals
 -------
@@ -63,19 +60,11 @@ Signals
 Name      I/O type     Range              Description
 ========  ===========  =================  ========================================
 clk       input wire   1                  Clock
---------  -----------  -----------------  ----------------------------------------
 srst      input wire   1                  Synchronous reset
---------  -----------  -----------------  ----------------------------------------
 request   input wire   [WIDTH-1:0]        Request inputs
---------  -----------  -----------------  ----------------------------------------
-state     output reg   [LOG2_WIDTH-1:0]   State of the round robin
---------  -----------  -----------------  ----------------------------------------
-grant     output reg   [WIDTH-1:0]        Grant outputs
+state     output reg   [LOG2_WIDTH-1:0]   Current arbiter state
+grant     output reg   [WIDTH-1:0]        Grant outputs (one-hot)
 ========  ===========  =================  ========================================
-Functional Description
-----------------------
-
-The `prra` module implements a parallel round-robin arbiter. It accepts multiple request signals and grants one at a time in a fair, rotating priority order. The number of requesters is parameterizable. Optional pipelining can be enabled to reduce the critical path, resulting in a response latency of one or two cycles.
 
 Example Instantiation
 ---------------------
@@ -93,3 +82,19 @@ Example Instantiation
      .state(state),
      .grant(grant)
    );
+
+Simulation
+----------
+
+.. code-block:: bash
+
+   cd project
+   make sim    # Icarus Verilog simulation
+   make trace  # Simulate and open GTKWave
+   make lint   # Lint with Verilator
+
+License
+-------
+
+This module is licensed under the **CERN Open Hardware Licence Version 2 - Permissive (CERN-OHL-P-2.0)**.
+See `LICENSE <../../LICENSE>`_ for details.

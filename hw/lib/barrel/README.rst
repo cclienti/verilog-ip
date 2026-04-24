@@ -1,36 +1,27 @@
-=======================
 Barrel Shifter
-=======================
+==============
 
-
------------
 Description
 -----------
 
-The design is a barrel shifter that dynamically shifts a word to the right of N bits at a time with
-dynamic sign bit extension capabilities. The barrel shifter can shift up to SHIFT_MAX + 2 values,
-from 0 to SHIFT_MAX + 1. When setting the shift word to SHIFT_MAX + 1, the "ex" word is copied to
-the output.
+The ``barrel`` module is a right barrel shifter that dynamically shifts a word (``in``) by a
+specified number of bits (``shift``), with support for dynamic sign extension when ``is_signed`` is
+set. The shift amount can range from 0 up to ``SHIFT_MAX + 1``; when ``shift`` equals
+``SHIFT_MAX + 1``, the output is set to the value of ``ex``. All inputs can be optionally
+registered if ``IS_REG_IN`` is set.
 
-
-----------
 Parameters
 ----------
 
-============  =====  ====================  ==========================================
-Name          Type   Default value         Description
-============  =====  ====================  ==========================================
-WIDTH                64                    Width of the work to shift
-------------  -----  --------------------  ------------------------------------------
-SHIFT_MAX            46                    Maximum right shift
-------------  -----  --------------------  ------------------------------------------
-SHIFT_WIDTH          $clog2(SHIFT_MAX+2)   Number of bits to encode the shift command
-------------  -----  --------------------  ------------------------------------------
-IS_REG_IN            1                     Register all inputs if IS_REG_IN != 0
-============  =====  ====================  ==========================================
+============  ====================  ==========================================
+Name          Default value         Description
+============  ====================  ==========================================
+WIDTH         64                    Width of the word to shift
+SHIFT_MAX     46                    Maximum right shift
+SHIFT_WIDTH   $clog2(SHIFT_MAX+2)   Number of bits to encode the shift command
+IS_REG_IN     1                     Register all inputs if IS_REG_IN != 0
+============  ====================  ==========================================
 
-
--------
 Signals
 -------
 
@@ -38,23 +29,13 @@ Signals
 Name        I/O type     Range               Description
 ==========  ===========  ==================  ===============================================
 clk         input wire   1                   Clock
-----------  -----------  ------------------  -----------------------------------------------
 enable      input wire   1                   Enable
-----------  -----------  ------------------  -----------------------------------------------
-is_signed   input wire   1                   sign extent the output if set
-----------  -----------  ------------------  -----------------------------------------------
-shift       input wire   [SHIFT_WIDTH-1:0]   Number of bit to right shift.
-----------  -----------  ------------------  -----------------------------------------------
+is_signed   input wire   1                   Sign extend the output if set
+shift       input wire   [SHIFT_WIDTH-1:0]   Number of bits to right shift
 in          input wire   [WIDTH-1:0]         Input word to right shift
-----------  -----------  ------------------  -----------------------------------------------
 ex          input wire   [WIDTH-1:0]         Special value for out when shift is SHIFT_MAX+1
-----------  -----------  ------------------  -----------------------------------------------
 out         output reg   [WIDTH-1:0]         Shifted output
 ==========  ===========  ==================  ===============================================
-Functional Description
-----------------------
-
-The `barrel` module implements a right barrel shifter with dynamic shift amount and optional sign extension. When `is_signed` is set, the output is sign-extended. If the `shift` input equals `SHIFT_MAX+1`, the output is set to the value of `ex`. All inputs can be optionally registered if `IS_REG_IN` is set.
 
 Example Instantiation
 ---------------------
@@ -75,3 +56,19 @@ Example Instantiation
      .ex(ex),
      .out(out)
    );
+
+Simulation
+----------
+
+.. code-block:: bash
+
+   cd project
+   make sim    # Icarus Verilog simulation
+   make trace  # Simulate and open GTKWave
+   make lint   # Lint with Verilator
+
+License
+-------
+
+This module is licensed under the **CERN Open Hardware Licence Version 2 - Permissive (CERN-OHL-P-2.0)**.
+See `LICENSE <../../LICENSE>`_ for details.
