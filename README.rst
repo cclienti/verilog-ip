@@ -169,6 +169,20 @@ Simulation
 Each IP core and subsystem has a `project/` directory containing a `Makefile` that wraps the simulation tools.
 The following simulators are supported: **Icarus Verilog**, **Verilator**, and **ModelSim/Questa**.
 
+**Waveform Display with wavedisp**
+
+Waveforms are managed using `wavedisp <https://github.com/cclienti/wavedisp>`_, a Python package
+that provides a portable way to describe and display waveforms across different HDL simulators and
+VCD viewers. It generates TCL scripts for **GTKWave**, **ModelSim**, and **RivieraPro** from a
+unique waveform description written in Python.
+
+Each module provides a ``<testbench>.wave.py`` file describing the waveform layout. The
+``make trace`` target automatically generates the TCL script and opens GTKWave with the correct
+waveform configuration.
+
+``wavedisp`` is automatically installed in a local Python virtual environment (``hw/.venv``) on
+the first use of ``make trace`` or ``make wavedisp``. No manual installation is required.
+
 **Icarus Verilog**
 
 To run a simulation and generate a VCD waveform file:
@@ -275,6 +289,9 @@ To run simulations on Linux, you need to install the following tools:
    # Verilator
    sudo apt install verilator
 
+   # Python venv support (required for wavedisp auto-install)
+   sudo apt install python3-venv
+
    # ModelSim/Questa (not available in official repositories)
    # Download and install from https://www.intel.com/content/www/us/en/software/programmable/quartus-prime/model-sim.html
 
@@ -287,6 +304,9 @@ To run simulations on Linux, you need to install the following tools:
 
    # Verilator
    sudo dnf install verilator
+
+   # Python venv support (required for wavedisp auto-install)
+   sudo apt install python3-venv
 
    # ModelSim/Questa (not available in official repositories)
    # Download and install from https://www.intel.com/content/www/us/en/software/programmable/quartus-prime/model-sim.html
