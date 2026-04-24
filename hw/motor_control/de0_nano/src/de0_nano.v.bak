@@ -1,3 +1,13 @@
+// SPDX-License-Identifier: SHL-2.1
+// Copyright (c) 2013-2026 Christophe Clienti
+//
+// This file is part of a project licensed under the Solderpad
+// Hardware License, Version 2.1.  See the LICENSE file in the project
+// root or visit https://solderpad.org/licenses/SHL-2.1/
+//
+// You may use, copy, modify, and/or distribute this file under the
+// terms of the Solderpad Hardware License, Version 2.1.
+
 module top_de0_nano
   (input wire CLOCK_50,
 

@@ -1,12 +1,15 @@
-//                              -*- Mode: Verilog -*-
-// Filename        : assert.v
-// Description     : assertion module
-// Author          : Christophe Clienti
-// Created On      : Sun Feb 24 17:23:00 2013
-// Last Modified By: Christophe Clienti
-// Last Modified On: Sun Feb 24 17:23:00 2013
-// Update Count    : 0
-// Status          : Unknown, Use with caution!
+// SPDX-License-Identifier: CERN-OHL-P-2.0
+// Copyright (c) 2013-2026 Christophe Clienti
+//
+// This source describes Open Hardware and is licensed under the CERN-OHL-P v2.
+// You may redistribute and modify this file under the terms of the CERN-OHL-P v2
+// (https://ohwr.org/cern_ohl_p_v2.txt).
+//
+// This source is distributed WITHOUT ANY EXPRESS OR IMPLIED WARRANTY, INCLUDING
+// OF MERCHANTABILITY, SATISFACTORY QUALITY AND FITNESS FOR A PARTICULAR PURPOSE.
+// Please see the CERN-OHL-P v2 for applicable conditions.
+
+
 
 // Picked from stackoverflow
 

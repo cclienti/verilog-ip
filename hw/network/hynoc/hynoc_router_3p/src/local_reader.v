@@ -1,13 +1,15 @@
-//                              -*- Mode: Verilog -*-
-// Filename        : local_reader.v
-// Description     : local interface reader
-// Author          : Christophe
-// Created On      : Sat Feb 22 14:41:44 2020
-// Last Modified By: Christophe
-// Last Modified On: Sat Feb 22 14:41:44 2020
-// Update Count    : 0
-// Status          : Unknown, Use with caution!
-// Copyright (C) 2013-2020 Christophe Clienti - All Rights Reserved
+// SPDX-License-Identifier: CERN-OHL-P-2.0
+// Copyright (c) 2013-2026 Christophe Clienti
+//
+// This source describes Open Hardware and is licensed under the CERN-OHL-P v2.
+// You may redistribute and modify this file under the terms of the CERN-OHL-P v2
+// (https://ohwr.org/cern_ohl_p_v2.txt).
+//
+// This source is distributed WITHOUT ANY EXPRESS OR IMPLIED WARRANTY, INCLUDING
+// OF MERCHANTABILITY, SATISFACTORY QUALITY AND FITNESS FOR A PARTICULAR PURPOSE.
+// Please see the CERN-OHL-P v2 for applicable conditions.
+
+
 
 module local_reader
   #(parameter integer LOCAL_ID      = 0,

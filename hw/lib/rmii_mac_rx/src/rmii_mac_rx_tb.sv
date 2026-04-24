@@ -1,18 +1,16 @@
-//-----------------------------------------------------------------------------
-// Title         : RMII MAC Receiver (Fast Ethernet)
-//-----------------------------------------------------------------------------
-// File          : rmii_mac_rx_tb.sv
-// Author        : Christophe Clienti <cclienti@wavecruncher.net>
-// Created       : 2025-07-28
-// Last modified : 2025-07-28
-//-----------------------------------------------------------------------------
-// Description :
-// Testbench of the RMII MAC Receiver module.
-//-----------------------------------------------------------------------------
-// Copyright (c) 2025 by Christophe Clienti. This model is the confidential and
-// proprietary property of Christophe Clienti and the possession or use of this
-// file requires a written license from Christophe Clienti.
-//------------------------------------------------------------------------------
+// SPDX-License-Identifier: CERN-OHL-P-2.0
+// Copyright (c) 2013-2026 Christophe Clienti
+//
+// This source describes Open Hardware and is licensed under the CERN-OHL-P v2.
+// You may redistribute and modify this file under the terms of the CERN-OHL-P v2
+// (https://ohwr.org/cern_ohl_p_v2.txt).
+//
+// This source is distributed WITHOUT ANY EXPRESS OR IMPLIED WARRANTY, INCLUDING
+// OF MERCHANTABILITY, SATISFACTORY QUALITY AND FITNESS FOR A PARTICULAR PURPOSE.
+// Please see the CERN-OHL-P v2 for applicable conditions.
+
+
+
 
 
 
