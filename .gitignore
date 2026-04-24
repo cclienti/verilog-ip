@@ -9,7 +9,6 @@ venv/
 # Documents
 ##################
 *.done
-**/figures/*.png
 **/figures/*.pdf
 **/figures/*.eps
 doc/logo/*png
