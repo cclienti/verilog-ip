@@ -32,6 +32,7 @@ Memory
 | `dpmemrf <dpmemrf/README.rst>`_                               | Dual Port Read First Memory                  |
 +---------------------------------------------------------------+----------------------------------------------+
 | `dpmemwf <dpmemwf/README.rst>`_                               | Dual Port Write First Memory                 |
+| `nrpmem <nrpmem/README.rst>`_                                 | N-Read-Port Memory (1 write, N async reads)  |
 +---------------------------------------------------------------+----------------------------------------------+
 | `shmemif <shmemif/README.rst>`_                               | Multiport Shared Memory Interface            |
 +---------------------------------------------------------------+----------------------------------------------+
