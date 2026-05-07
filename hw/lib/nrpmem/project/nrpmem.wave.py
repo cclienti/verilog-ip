@@ -1,18 +1,20 @@
-# -*- python -*-
-# To include in nrpmem_tb.wave.py:
+"""Wavedisp file for module nrpmem."""
 
-from wavedisp.ast import *
+from wavedisp.ast import Hierarchy
+from wavedisp.ast import Group
+from wavedisp.ast import Block
+from wavedisp.ast import Disp
+from wavedisp.ast import Divider
 
 
 def generator():
+    """Generator for module nrpmem."""
     blk = Block()
-    blk.add(Disp('clk',    radix='binary'))
-    blk.add(Disp('enable', radix='binary'))
-    blk.add(Divider('Write port'))
-    blk.add(Disp('wren',   radix='binary'))
-    blk.add(Disp('wraddr', radix='hexadecimal'))
-    blk.add(Disp('wrdata', radix='hexadecimal'))
-    blk.add(Divider('Read ports'))
-    blk.add(Disp('rdaddr', radix='hexadecimal'))
-    blk.add(Disp('rddata', radix='hexadecimal'))
+    blk.add(Disp("clk"))
+    blk.add(Disp("enable"))
+    blk.add(Disp("wraddr"))
+    blk.add(Disp("wren"))
+    blk.add(Disp("wrdata"))
+    blk.add(Disp("rdaddr"))
+    blk.add(Disp("rddata"))
     return blk
