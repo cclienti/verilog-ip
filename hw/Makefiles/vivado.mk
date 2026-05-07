@@ -1,6 +1,11 @@
 # Generic Xilinx Compilation with a Non-Project Flow
 # Copyright (C) 2013-2014 Christophe Clienti - All Rights Reserved
 
+VIVADO             ?= vivado
+VIVADO_BIN         := $(shell which $(VIVADO) 2>/dev/null)
+VIVADO_INSTALL_DIR := $(realpath $(dir $(VIVADO_BIN))/..)
+GLBL_SRC           := $(VIVADO_INSTALL_DIR)/data/verilog/src/glbl.v
+
 VIVADO_TOP_MODULE      ?= $(TOP_MODULE)
 VIVADO_PROJECT_NAME    ?= $(VIVADO_TOP_MODULE)
 VIVADO_PART            ?= "xc7z020clg484-1"
@@ -29,6 +34,7 @@ vivado-project.tcl: $(ALL_TOP_FILES)
 vivado-gen-post-syn: vivado-gen-post-syn.tcl
 	mkdir -p vivado-post-syn
 	cd vivado-post-syn && vivado -mode batch -source ../$^ -notrace -nolog -nojournal
+	cp $(GLBL_SRC) vivado-post-syn/glbl.v
 
 vivado-gen-post-syn.tcl: $(ALL_TOP_FILES)
 	@echo "Generating $@"
