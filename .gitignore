@@ -2,6 +2,7 @@
 # Python
 ##################
 **/__pycache__/
+**/.venv/
 venv/
 *.py[cod]
 
@@ -32,10 +33,16 @@ doc/logo/*png
 **/build/
 
 ##################
-# Verilog
+# Verilog simulation
 ##################
 **/project/*.vcd
 **/project/*_tb
+**/project/*_postsyn
+
+##################
+# Verilator
+##################
+**/project/obj_dir/
 
 ##################
 # Modelsim
@@ -43,7 +50,7 @@ doc/logo/*png
 **/project/modelsim.ini
 **/project/transcript
 **/project/*.wlf
-**/project/work
+**/project/work/
 
 ##################
 # Wavedisp
@@ -55,10 +62,14 @@ doc/logo/*png
 ##################
 # Vivado
 ##################
+.Xil/
+**/project/.Xil/
 **/project/xilinx/
 **/project/*.jou
-**/project/vivado.tcl
-**/project/vivado.log
+**/project/*.log
+**/project/*.rpt
+**/project/vivado-project.tcl
+**/project/vivado-gen-post-syn.tcl
 **/project/vivado-*/
 
 ##################
