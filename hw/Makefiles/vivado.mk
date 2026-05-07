@@ -13,7 +13,7 @@ help::
 
 vivado-project: vivado-project.tcl
 	mkdir -p vivado-project
-	cd vivado && vivado -mode batch -source ../$^ -tclargs $(VIVADO_PROJECT_NAME) $(VIVADO_TOP_MODULE) $(VIVADO_PART)
+	cd vivado-project && vivado -mode batch -source ../$^ -tclargs $(VIVADO_PROJECT_NAME) $(VIVADO_TOP_MODULE) $(VIVADO_PART)
 
 vivado-project.tcl: $(ALL_TOP_FILES)
 	@echo "Generating $@"
