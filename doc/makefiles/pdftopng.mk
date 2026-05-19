@@ -10,7 +10,9 @@ all::pdftopng
 pdftopng: $(PDF_TO_PNG_FILES)
 
 %.png: %.pdf
-	convert -bordercolor none -border 2 -density 200 $< $@
+	pdfcrop $< $<.cropped.pdf
+	convert -bordercolor none -border 2 -density 200 $<.cropped.pdf $@
+	rm -f $<.cropped.pdf
 
 clean::
 	rm -rf $(PDF_TO_PNG_FILES)

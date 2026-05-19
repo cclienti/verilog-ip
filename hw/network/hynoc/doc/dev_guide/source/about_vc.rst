@@ -3,7 +3,7 @@
 About Virtual Channels
 ======================
 
-HyNoC does not implement virtual channels, as proposed by Hermes, for performance reason. Due to multiple clock domains
+HyNoC does not implement virtual channels, as proposed by Hermes, for performance reason. HyNoC primarily targets **FPGA** platforms, where block RAMs used as FIFO buffers are a scarce and shared resource. Due to multiple clock domains on each router's port, virtual channels imply to multiply the number of input FIFO buffers. We must keep in mind that these input FIFO buffers are responsible of almost fifty percents of the total router area, and according to [MEL2005]_, doubling the number of virtual channels will double router area. On FPGAs this overhead is particularly significant, as each additional FIFO consumes block RAM or distributed LUT RAM that would otherwise be available to the application logic. Even if there is not multiple clock domains in a router, the virtual channel scheduling can not be synchronous to the whole network because of routing difficulty and efficiency. The Scheduling signal must be locally synchronous to one router which imply to use one FIFO buffer per virtual channel per router's port.
 on each router's port, virtual channels imply to multiply the number of input FIFO buffers. We must keep in mind that
 these input FIFO buffers are responsible of almost fifty percents of the total router area, and according to [MEL2005]_,
 doubling the number of virtual channels will double router area. Even if there is not multiple clock domains in a
@@ -59,13 +59,13 @@ equation :eq:`eq-n-m-permutations`. We can verify analytically with the network 
 :num:`figure-counting-problem`, that the number of shortest path is *6*.
 
 .. math::
-   p = {\left[(N-1) \cdot (M-1)\right]! \over {(N-1)! \cdot (M-1)!}}
+   p = {\left[(N-1) + (M-1)\right]! \over {(N-1)! \cdot (M-1)!}}
    :label: eq-n-m-permutations
 
 We can generalize the equation :eq:`eq-n-m-permutations` to n-dimensional :math:`n_1 \times n_2 \times \cdots \times n_K`
 network using the equation :eq:`eq-n-dim-permutations`.
 
-.. math:: p = {\left[\prod\limits^K_{i=1} n_i-1\right]! \over {\prod\limits^K_{i=1} (n_i-1)!}}
+.. math:: p = {\left[\sum\limits^K_{i=1} (n_i-1)\right]! \over {\prod\limits^K_{i=1} (n_i-1)!}}
    :label: eq-n-dim-permutations
 
 
@@ -117,9 +117,14 @@ shortest path length. For the same number of routers, when the dimension of inte
 number of shortest paths and their length will decrease. Reducing the number of shortest paths is a drawback while
 reducing their lengths is a benefit because the latency is reduced.
 
+Note that the path counts reported in the tables below represent the **maximum** number of shortest paths, computed between the two most distant nodes (corner-to-corner) of the network. For any other pair of nodes separated by :math:`(d_x, d_y)` hops, the number of shortest paths is :math:`\binom{d_x+d_y}{d_x}`, which is lower than the tabled maximum.
+
 
 Efficiency of virtual channels
 ------------------------------
+
+
+This analogy is an **upper bound**: it assumes that a packet can freely switch virtual channels at every hop, as if traversing an additional physical dimension. In practice, the virtual channel is typically assigned at the source and remains fixed for the entire path, which reduces the actual path diversity below the tabled values. The tables for virtual channels are therefore optimistic.
 
 Virtual channels can be viewed as an additional dimension to the network topology. This assumption fits well with the
 increase number of shortest path powered by virtual channels without increasing the number of routers.  The following
@@ -193,3 +198,13 @@ routers in the network dedicated to packet transfer without local interface to a
 drastically the number of shortest paths in the network and therefore will improve the latency and the reliability by
 minimizing congestion issues. If the latency is really a key point, topology with a higher number of dimension must be
 considered and some extra routers can be added to boost number of shortest routing paths.
+
+**Scope and limitations of this analysis.** Several important caveats must be kept in mind when interpreting the results above.
+
+First, counting shortest paths measures the *potential* routing diversity of a topology, not the diversity that is actually exploited. Realizing this diversity requires a routing algorithm — or a compiler, in the case of statically scheduled systems — that actively distributes traffic across available paths. Without such a mechanism, congestion can still occur even in a richly connected network.
+
+Second, the area model used for virtual channels, derived from [MEL2005]_, assumes a linear relationship between the number of virtual channels and router area. In practice, the crossbar logic and the VC scheduler also grow with the number of channels, making the VC area figures in the tables above optimistic. Conversely, adding physical routers introduces not only buffer area but also link wiring, which may be significant in ASIC implementations and is not captured in the router-count area metric.
+
+Third, this analysis addresses congestion and path diversity, but does not account for head-of-line blocking within a single physical channel. In HyNoC, once a channel is granted to a packet, it remains dedicated until the stop bit of the last flit is received. A long packet will therefore delay other packets competing for the same egress port. However, increasing the number of routers in the network — which is precisely one of the strategies advocated here — naturally reduces this effect by distributing traffic across more egress ports and shortening the average packet journey. The real cost of this mitigation is **latency**: additional hops increase the path establishment time and the end-to-end transfer time. This trade-off is acceptable for the target workload class, where packet sizes are bounded and communication schedules are known at compile time. Furthermore, when the egress port faces a network interface (NI), head-of-line blocking can be mitigated in a manner analogous to virtual channels: a node can expose multiple local interfaces connected to different router ports, providing as many independent logical channels as needed. This approach replicates the path diversity benefit of virtual channels without duplicating the internal router buffers.
+
+Finally, virtual channels remain the more appropriate solution when traffic patterns are entirely unpredictable at design time and topology enrichment is not feasible. The topology-based approach advocated here is most effective for systems — such as distributed VLIW processors on FPGA — where communication patterns are known at compile time, routes can be assigned statically to balance load, and FPGA resource budgets make buffer minimization a primary concern.
