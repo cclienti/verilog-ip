@@ -1,0 +1,53 @@
+\section{Implementation}
+\label{sec:implementation}
+
+\subsection{RTL Organization}
+
+The HyNoC RTL is written in Verilog and organized as follows:
+
+\begin{itemize}
+  \item \texttt{hynoc\_ingress}: ingress port (dual-clock FIFO, FSM, routing
+        protocol decoder for unicast and multicast);
+  \item \texttt{hynoc\_egress}: egress port (data multiplexer, PRRA);
+  \item \texttt{hynoc\_router\_base}: parameterized router base (crossbar wiring,
+        port instantiation);
+  \item \texttt{hynoc\_router\_3p} / \texttt{hynoc\_router\_5p}: 3-port and
+        5-port router instances with self-checking testbenches;
+  \item \texttt{hynoc\_local\_interface}: local interface for node attachment,
+        including the egress output FIFO for clock domain decoupling;
+  \item \texttt{hynoc\_stream\_reader} / \texttt{hynoc\_stream\_writer}:
+        DMA-style packet injection and reception modules.
+\end{itemize}
+
+The design is parameterized by: payload width (\texttt{PAYLOAD\_WIDTH}), FIFO
+depth (\texttt{LOG2\_FIFO\_DEPTH}: 2 to 64 entries), number of ports
+(\texttt{NB\_PORTS}: 3 to 9), index width (\texttt{INDEX\_WIDTH}), optional
+multicast routing (\texttt{ENABLE\_MCAST\_ROUTING}), and single-clock mode
+(\texttt{SINGLE\_CLOCK\_ROUTER}).
+
+\subsection{Simulation and Verification}
+
+Each module is delivered with a self-checking testbench. The 3-port router
+testbench exercises both unicast and multicast scenarios over a 2-router, 4-node
+topology. The 5-port router testbenches cover five distinct traffic scenarios,
+including simultaneous multi-path transfers that verify the PRRA's starvation-free
+behavior.
+
+Simulation is supported under Icarus Verilog, ModelSim, and Verilator. Waveform
+inspection is facilitated by Python-based waveform configuration scripts.
+
+\subsection{FPGA Target}
+
+The design targets Intel (Altera) and AMD (Xilinx) FPGA families. Reference board
+support is included for the DE0-Nano (Cyclone~IV) and the ZedBoard (Zynq-7000).
+Dual-clock FIFOs are implemented using the \texttt{dclkfifolut} module, which
+maps to distributed LUT RAM, avoiding dependency on vendor-specific FIFO IP and
+enabling portability across FPGA families.
+
+\subsection{License}
+
+HyNoC is released as open-source hardware under the
+\textbf{CERN-OHL-P~v2}~license~\cite{cernohl}, a permissive open hardware license.
+The complete source, including RTL, testbenches, documentation, and build
+infrastructure, is available at:
+\url{https://github.com/cclienti/verilog-ip}.

@@ -1,0 +1,87 @@
+\section{Related Work}
+\label{sec:related}
+
+\subsection{Switching Strategies}
+
+Three main switching strategies are found in the NoC literature.
+\emph{Store-and-forward} switching requires a complete packet to be buffered at
+each router before forwarding, providing clean error isolation but imposing large
+buffer requirements and high latency~\cite{dally2001}.
+\emph{Wormhole switching}~\cite{dally1987} pipelines flits across routers,
+dramatically reducing buffer depth requirements; latency depends on path length
+and contention.
+\emph{Circuit switching}~\cite{kumar2002} reserves a dedicated path before
+transmission, eliminating mid-network contention at the cost of reservation
+overhead.
+
+Hybrid approaches have been explored. Æthereal~\cite{goossens2005} combines
+guaranteed-throughput circuit-switched slots with best-effort wormhole traffic on
+the same physical links. HyNoC differs: it uses source routing to establish a
+dedicated path through a series of request/grant handshakes (the circuit phase),
+then streams flits in wormhole fashion along that path (the data phase), with no
+time-division multiplexing.
+
+\subsection{Routing Algorithms}
+
+XY deterministic routing~\cite{dally2001} is simple and deadlock-free on 2D
+meshes but provides only a single path between any pair of nodes. Adaptive
+routing~\cite{duato1993} improves load balancing but requires more complex router
+logic and typically needs virtual channels to avoid deadlock.
+
+\emph{Source routing} encodes the complete route in the packet header at the
+sender. This approach, studied for NoCs in~\cite{liwei2007} and~\cite{mubeen2010},
+shifts routing complexity from the router to the sending node or to an offline
+compilation step. The router itself becomes simpler: it only needs to decode the
+next hop from the current flit, forward it, and update the index. Source routing
+naturally supports any topology without per-router routing table storage, and
+allows the sender to choose among multiple paths.
+
+HyNoC adopts source routing with a compact \emph{relative} hop encoding: since a
+packet cannot exit from the same port it entered, a router with $P$ ports offers
+only $P-1$ egress choices, encoded in $\lceil\log_2(P-1)\rceil$ bits per hop.
+This reduces both header overhead and crossbar complexity simultaneously.
+
+\subsection{Virtual Channels}
+
+Virtual channels (VCs), introduced by Dally~\cite{dally1992}, multiplex several
+logical channels over a single physical link, providing additional routing paths
+and breaking deadlock cycles. Their main drawback is area: each VC requires a
+dedicated buffer, and~\cite{mello2005} shows that router area scales nearly
+linearly with VC count. On FPGAs, where block RAMs are shared between the
+application and the communication infrastructure, this overhead is particularly
+significant.
+
+Several works have explored VC reduction or elimination.
+Turn-model routing~\cite{glass1992} achieves deadlock freedom without VCs by
+restricting turns in the routing graph. HyNoC's approach---providing path diversity
+through richer topologies and compile-time route selection---aligns with this
+trend, and is analyzed quantitatively in Section~\ref{sec:switching}.
+
+\subsection{NoC Arbitration}
+
+Round-robin arbiters are widely used for their fairness guarantees. Sequential
+round-robin FSMs scan requests cyclically, introducing latency proportional to the
+number of ports. HyNoC implements a \emph{parallel round-robin arbiter} (PRRA)
+that combines the fairness of round-robin with a low-latency response: the arbiter
+transitions directly to the state of any pending request, respecting a rotating
+priority order, and responds in one or two cycles regardless of the number of
+ports. The implementation relies on a LUT-mux structure that keeps the critical
+path independent of port count.
+
+\subsection{FPGA-Targeted NoCs}
+
+Several NoC designs target FPGAs specifically. CONNECT~\cite{papamichael2012}
+provides a parameterized, synthesizable NoC generator. HopliteRT~\cite{nair2019}
+proposes a lightweight deflection-routing NoC without input buffers, achieving
+extremely small area at the cost of non-deterministic latency. HyNoC targets a
+different point: a fully parameterized, topology-agnostic NoC with bounded latency,
+suited to predictable VLIW workloads.
+
+\subsection{VLIW Many-Core Systems}
+
+VLIW architectures expose instruction-level parallelism explicitly, making them
+well suited for signal processing and scientific computing kernels~\cite{ellis1986}.
+Distributed VLIW many-core systems---exemplified by the Kalray
+MPPA~\cite{dinechin2013}---replicate simple VLIW cores connected through a NoC. In
+such systems, communication patterns can be determined at compile time, making
+static source routing particularly attractive.

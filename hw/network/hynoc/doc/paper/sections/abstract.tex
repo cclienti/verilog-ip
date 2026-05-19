@@ -1,0 +1,26 @@
+\begin{abstract}
+Network-on-Chip (NoC) architectures have become the standard interconnect fabric
+for many-core systems, yet most proposals face a fundamental trade-off between
+latency, area, and congestion management. This paper presents \textbf{HyNoC}
+(High-performance Network-on-Chip), an open-source NoC architecture that combines
+circuit-switch path establishment with wormhole data transfer, targeting
+distributed computing systems built around VLIW processor cores on FPGA.
+
+HyNoC employs source routing, where the complete path through the network is
+encoded in the packet header by the sender or statically at compile time, enabling
+both deterministic low-latency transfers and software-level hotspot avoidance
+without the area overhead of virtual channels. The router features a parallel
+round-robin arbiter (PRRA) with fixed grant latency, per-port independent clock
+domains, and support for both unicast and multicast routing.
+
+We discuss the design rationale, the hybrid switching model, and positioning
+relative to prior NoC art, and argue that a richer topology combined with
+compiler-assisted static routing is a competitive alternative to virtual channels
+for FPGA-based distributed VLIW systems. The complete RTL implementation is
+released as open-source hardware under the CERN-OHL-P~v2 license.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Network-on-Chip, FPGA, source routing, wormhole switching, circuit switching,
+VLIW, parallel round-robin arbiter, open-source hardware.
+\end{IEEEkeywords}

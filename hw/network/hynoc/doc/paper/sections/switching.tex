@@ -1,0 +1,124 @@
+\section{Hybrid Switching Model and Design Rationale}
+\label{sec:switching}
+
+\subsection{The Hybrid Switching Model}
+
+HyNoC's switching model is best described as \emph{circuit-switched wormhole}: it
+combines a \textbf{circuit-establishment phase} with a \textbf{wormhole data
+phase}.
+
+In the \textbf{circuit-establishment phase}, the ingress port asserts a request to
+a specific egress port (identified from the routing flit) and waits for a grant.
+This request/grant handshake propagates along the route: once the first router
+grants the request, the ingress begins forwarding flits, which in turn trigger the
+same handshake at the next router. A dedicated forwarding path through the network
+is thus progressively opened, hop by hop.
+
+In the \textbf{wormhole data phase}, payload flits are streamed flit-by-flit along
+the established path, regulated by FIFO-level flow control. The path remains
+dedicated to this packet until the stop bit is observed, ensuring in-order,
+contention-free delivery once the channel is open.
+
+This combination provides the \emph{low buffering} advantage of wormhole switching
+(only the ingress FIFO is needed, no full packet storage) while offering the
+\emph{path dedication} advantage of circuit switching (no mid-network arbitration
+contention during payload transfer). The trade-off is a path-establishment latency
+proportional to the route length before the first payload flit is delivered at the
+destination.
+
+\subsection{Static Route Management as an Alternative to Virtual Channels}
+
+Virtual channels were introduced primarily to: (1) provide additional logical paths
+to avoid deadlock; and (2) reduce head-of-line blocking under congestion. HyNoC
+addresses both goals differently.
+
+\textbf{Deadlock avoidance} is achieved through source routing itself: the
+complete path is determined by the sender and can be constrained to acyclic
+subgraphs (e.g., dimension-order routing) without any router-internal mechanism.
+
+\textbf{Congestion avoidance} is addressed at two levels. First, the compiler or
+runtime system assigns routes across multiple available shortest paths, distributing
+traffic away from known hotspots. The number of shortest paths between two nodes in
+an $N \times M$ mesh is a classical combinatorial result~\cite{knuth1997}: each path consists of a fixed sequence of moves along each dimension, taken in any order, and the count is given by the multinomial coefficient:
+
+\begin{equation}
+  p = \binom{(N-1)+(M-1)}{N-1} = \frac{[(N-1)+(M-1)]!}{(N-1)!\,(M-1)!}
+  \label{eq:paths2d}
+\end{equation}
+
+This generalizes to a $K$-dimensional network $n_1 \times n_2 \times \cdots \times
+n_K$ as:
+
+\begin{equation}
+  p = \frac{\left[\sum_{i=1}^{K}(n_i-1)\right]!}{\prod_{i=1}^{K}(n_i-1)!}
+  \label{eq:pathsnd}
+\end{equation}
+
+Note that~(\ref{eq:paths2d}) and~(\ref{eq:pathsnd}) give the number of shortest
+paths between the \emph{most distant} node pair (corner-to-corner). For an
+arbitrary pair separated by $(d_x, d_y)$ hops the count is $\binom{d_x+d_y}{d_x}$,
+which is lower. Table~\ref{tab:paths} reports corner-to-corner values for
+representative 2D mesh topologies.
+
+\begin{table}[h]
+\centering
+\caption{Shortest path counts in 2D mesh NoCs (corner-to-corner)}
+\label{tab:paths}
+\begin{tabular}{@{}lrrl@{}}
+\toprule
+Topology & Routers & Shortest paths & Path length \\
+\midrule
+$2\times 2$   &   4 &               2 &  2 \\
+$4\times 4$   &  16 &              20 &  6 \\
+$8\times 8$   &  64 &           3\,432 & 14 \\
+$16\times 16$ & 256 & 155\,117\,520    & 30 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Second, for applications with more dynamic traffic, the network topology can be
+enriched with additional relay routers (without local interfaces), increasing path
+diversity proportionally to the added area.
+
+\subsection{Area Comparison with Virtual Channels}
+
+Following~\cite{mello2005}, router area scales linearly with the number of VCs
+(each VC requires an additional input buffer per port). An $8\times 8$ mesh with
+4~VCs consumes the equivalent area of a $16\times 16$ mesh without VCs, yet the
+latter offers 66$\times$ more shortest paths between corner nodes. On FPGA, where
+block RAMs are scarce, minimizing buffer count is a primary concern.
+
+The VC area model is itself optimistic in two respects: (1) the crossbar logic and
+VC scheduler also grow with VC count; (2) VC path diversity is an upper bound,
+since in practice the VC is assigned at the source and remains fixed for the entire
+path, providing less diversity than a true additional physical dimension.
+Conversely, the physical router area model does not capture link wiring cost, which
+may be relevant in ASIC contexts.
+
+\subsection{Head-of-Line Blocking and Mitigations}
+
+Once a channel is granted, it remains dedicated until the stop bit of the last
+flit is received. A long packet therefore delays other packets competing for the
+same egress port. Two complementary mitigations are available in HyNoC:
+
+\begin{enumerate}
+  \item \textbf{Network enrichment}: adding more routers distributes traffic
+    across more egress ports, reducing the probability that multiple flows compete
+    for the same port. The cost is increased end-to-end \emph{latency} due to
+    additional hops---this is the primary performance trade-off, not throughput.
+  \item \textbf{Multiple local interfaces}: a node can expose several local
+    interfaces connected to different router ports, providing as many independent
+    logical channels as needed. This replicates the path diversity benefit of VCs
+    without duplicating internal router buffers. It is the recommended approach
+    when a node requires simultaneous, non-blocking communication with multiple
+    peers.
+\end{enumerate}
+
+\subsection{Scope and Limitations}
+
+The topology-based approach is most effective when traffic patterns are known at
+compile time and routes can be assigned statically. When traffic is entirely
+unpredictable at design time and topology enrichment is not feasible, virtual
+channels remain the more appropriate solution. HyNoC targets systems---distributed
+VLIW processors on FPGA---where compile-time route assignment is natural and FPGA
+resource budgets make buffer minimization a primary concern.

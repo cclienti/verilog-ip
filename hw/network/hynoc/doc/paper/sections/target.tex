@@ -1,0 +1,50 @@
+\section{Target Application: Distributed VLIW Computing}
+\label{sec:target}
+
+\subsection{VLIW Cores and Compile-Time Scheduling}
+
+VLIW processors expose multiple functional units to the compiler, which schedules
+operations explicitly in long instruction words~\cite{ellis1986}. This design
+philosophy shifts control complexity from hardware to software, resulting in
+simple, area-efficient cores well suited for replication in many-core arrays.
+Signal processing, scientific computing, and neural network inference kernels are
+representative workloads.
+
+In a distributed VLIW many-core system, each core executes a portion of a
+data-flow graph, passing intermediate results to neighboring cores through the
+NoC. The communication graph is typically known at compile time, enabling the
+compiler to:
+\begin{enumerate}
+  \item Assign each communication a source route through the NoC;
+  \item Schedule packet injections to avoid simultaneous contention on the same
+        egress port;
+  \item Guarantee bounded communication latency for critical paths.
+\end{enumerate}
+
+This compile-time visibility makes HyNoC's hybrid model particularly effective:
+the circuit-establishment latency is paid once per packet and is deterministic
+(bounded by route length and PRRA grant latency), and the wormhole payload
+transfer proceeds without further arbitration overhead.
+
+\subsection{Integration with the Local Interface}
+
+Each VLIW core connects to the NoC through a local interface, which presents a
+simple FIFO-based write/read API. The core writes routing flits followed by
+payload flits into the local interface's ingress FIFO; the local interface manages
+all handshaking with the router. On the receive side, incoming flits are deposited
+in the egress FIFO and read by the core at its own pace. The dual-FIFO structure
+fully decouples the core's clock domain from the router domain.
+
+For DMA-driven transfers, the \texttt{hynoc\_stream\_writer} and
+\texttt{hynoc\_stream\_reader} modules provide continuous packet injection and
+reception, maximizing channel utilization for bulk data movement.
+
+\subsection{Multicast for Broadcast Operations}
+
+VLIW many-core applications frequently require broadcast operations: distributing
+a coefficient matrix, a lookup table, or a control token to multiple cores
+simultaneously. HyNoC's multicast routing protocol supports this natively: a
+single packet with a multicast routing flit is replicated at each router toward
+all targeted egress ports, without requiring the sender to issue multiple unicast
+packets. This reduces network load and sender overhead for one-to-many
+communication patterns common in data-parallel VLIW workloads.

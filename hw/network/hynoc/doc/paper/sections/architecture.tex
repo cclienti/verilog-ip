@@ -1,0 +1,157 @@
+\section{HyNoC Architecture}
+\label{sec:architecture}
+
+\subsection{Overview}
+
+A HyNoC network is built by assembling routers with a configurable number of ports
+(3 to 9 in the current implementation). Each router port is full-duplex, composed
+of an ingress interface and an egress interface. Two neighboring routers are
+connected by cross-linking their egress and ingress interfaces. Processing nodes
+are attached through a \emph{local interface}, which adds an extra output FIFO to
+decouple the node's clock domain from the router.
+
+The router implements a \textbf{full crossbar}: any ingress port can simultaneously
+communicate with any egress port, subject to arbitration. Multiple paths can be
+open concurrently inside the same router, enabling full bisection bandwidth
+utilization when traffic permits. Figure~\ref{fig:noc-overview} shows the internal
+organization of 5-port routers and their interconnections.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{hynoc_noc_overview}
+  \caption{Router interconnections overview.}
+  \label{fig:noc-overview}
+\end{figure}
+
+\subsection{Ingress Port}
+
+The ingress port receives flits from the egress of a neighboring router. It buffers
+incoming flits in a dual-clock FIFO (configurable depth: 2 to 64 entries), which
+simultaneously handles clock domain crossing between the upstream router's clock
+domain and the local router domain.
+
+Once flits are available, the ingress FSM decodes the routing flit, extracts the
+next-hop egress port identifier, and asserts a \emph{request} signal to the
+corresponding egress port. It then waits for a \emph{grant}. Upon grant, the
+ingress begins forwarding flits: if the routing flit still carries hops for
+downstream routers (index $> 0$), it is updated (index decremented) and forwarded;
+if the index has reached zero, the routing flit is consumed locally and not
+forwarded. Subsequent payload flits are streamed directly to the granted egress
+until the stop bit of the last flit is detected, at which point the channel is
+released.
+
+Flow control is managed by monitoring the FIFO level of the downstream router's
+ingress FIFO. The ingress stalls when the downstream FIFO approaches full,
+preventing flit loss. The internal data path of a 3-port router is illustrated in
+Figure~\ref{fig:data-arch}.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{hynoc_router_data_arch}
+  \caption{Internal data path of a 3-port router.}
+  \label{fig:data-arch}
+\end{figure}
+
+\subsection{Egress Port}
+
+The egress port receives concurrent write requests from all $N-1$ ingress ports.
+It arbitrates among them using the PRRA, grants one request at a time, and
+connects the selected ingress data path to the downstream router's ingress FIFO.
+The downstream FIFO level is forwarded back to the granted ingress for flow
+control. The control path is shown in Figure~\ref{fig:ctrl-arch}: contrary to the
+data path, control signals are point-to-point between each ingress and each egress,
+avoiding broadcast of control information.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{hynoc_router_control_arch}
+  \caption{Internal control path of a 3-port router.}
+  \label{fig:ctrl-arch}
+\end{figure}
+
+\subsection{Parallel Round-Robin Arbiter (PRRA)}
+
+The standard sequential round-robin FSM introduces up to $N$ cycles of latency
+before granting a request. HyNoC replaces this with a \textbf{parallel
+round-robin arbiter}: a LUT-based FSM that evaluates all pending requests
+simultaneously, selects the highest-priority pending request according to a
+rotating priority order, and transitions directly to the corresponding state.
+
+The state transition $P_k$ is given by:
+\begin{equation}
+  P_k \leftarrow \text{request}[k] = 1
+  \label{eq:prra}
+\end{equation}
+where $P_0$ carries the highest priority and $P_{N-2}$ the lowest. An additional
+implicit transition keeps the current state while a granted request is active,
+preventing spurious re-arbitration during packet transfer.
+
+The arbiter responds in \textbf{one or two clock cycles} (configurable via the
+\texttt{PRRA\_PIPELINE} parameter), regardless of the number of ports. The
+critical path does not grow with $N$ because each state's transition equation is
+stored in a dedicated LUT, selected by a multiplexer from the state register.
+Starvation is prevented by the rotating priority: after serving request $k$,
+priority rotates to port $k+1$.
+
+\subsection{Clock Domain Architecture}
+
+Each router port operates in its own clock domain. The dual-clock FIFO at each
+ingress interface handles the crossing between the upstream port clock and the
+local router clock. For timing-critical designs, a single-clock mode
+(\texttt{SINGLE\_CLOCK\_ROUTER=1}) is available, reducing crossing latency.
+
+The local interface adds an extra FIFO at the egress output, fully decoupling the
+attached node's clock domain from the router.
+
+\subsection{First Layer Protocol}
+
+\subsubsection{Packet and Flit Structure}
+
+The network operates on flits of $(\mathtt{PAYLOAD\_WIDTH}+1)$ bits. The most
+significant bit is a \emph{stop bit}: when set, it marks the last flit of a
+packet. A packet consists of one or more \emph{routing flits} followed by one or
+more \emph{payload flits}. The routing flit carries a 4-bit \emph{Proto} field:
+
+\begin{table}[h]
+\centering
+\caption{Supported routing protocols}
+\label{tab:proto}
+\begin{tabular}{@{}ll@{}}
+\toprule
+Proto & Routing method \\
+\midrule
+\texttt{4'b0000} & Unicast circuit switch \\
+\texttt{4'b0001} & Multicast circuit switch \\
+\texttt{4'b1000} & XY routing (reserved) \\
+\texttt{4'b1111} & Forbidden \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Unicast Source Routing}
+
+The routing flit carries $H$ hop fields of $\lceil\log_2(P-1)\rceil$ bits each,
+encoding the relative egress port ID at the next router. An \emph{index} field
+(initialized to $H-1$) points to the hop to be consumed by the next router. The
+ingress port decrements the index after consuming a hop; if the index was already
+zero, the routing flit is not forwarded downstream. The relative hop encoding is
+illustrated in Figure~\ref{fig:hops}.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.85\columnwidth]{hynoc_hops_encoding}
+  \caption{Relative hop encoding for a $3\times 3$ mesh network.}
+  \label{fig:hops}
+\end{figure}
+
+The relative encoding (egress IDs numbered counterclockwise from the ingress port,
+excluding that port) reduces both the hop field width and the internal crossbar
+size.
+
+\subsubsection{Multicast Source Routing}
+
+In multicast mode, each hop field is a bitmask of width $P-1$, where each bit
+selects one egress port. The packet is duplicated and forwarded to all asserted
+egress ports simultaneously. Multiple routing flits with different multicast masks
+can be chained to address complex multicast trees. This is particularly useful for
+broadcast operations in VLIW many-core workloads.

@@ -1,0 +1,32 @@
+\section{Conclusion}
+\label{sec:conclusion}
+
+HyNoC is a hybrid circuit-switch/wormhole Network-on-Chip designed for distributed
+VLIW computing on FPGA. By combining source routing---which establishes a dedicated
+path through a distributed request/grant handshake---with wormhole flit streaming,
+HyNoC achieves bounded, deterministic transfer latency without the area overhead of
+virtual channels.
+
+Congestion is managed statically by the compiler or system software, which selects
+routes across the rich set of shortest paths available in mesh and
+higher-dimensional topologies. The combinatorial analysis presented in
+Section~\ref{sec:switching} shows that enriching the physical topology is more
+area-efficient than adding virtual channels for the targeted workload class,
+provided that a compile-time scheduler distributes traffic across available paths.
+
+The parallel round-robin arbiter provides starvation-free, fixed-latency
+arbitration at each egress port, and per-port independent clock domains allow the
+NoC to interface cleanly with heterogeneous processing elements running at
+different frequencies. The multiple local interface mechanism offers a practical
+alternative to virtual channels when a node requires simultaneous non-blocking
+communication with multiple peers.
+
+HyNoC is released as open-source hardware under the CERN-OHL-P~v2 license,
+providing a complete RTL implementation with simulation testbenches and FPGA board
+support.
+
+Future work includes: formal deadlock-freedom analysis for arbitrary source route
+sets; synthesis results and quantitative latency characterization on representative
+FPGA devices; integration with a VLIW compiler back-end for automatic route
+assignment and injection scheduling; and extension of the XY routing protocol
+placeholder to a full hardware implementation.
