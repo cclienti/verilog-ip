@@ -1,0 +1,50 @@
+\section{Introduction}
+\label{sec:introduction}
+
+As the number of processing elements integrated on a single chip increases,
+scalable on-chip communication becomes a first-class design concern.
+Network-on-Chip (NoC) architectures have emerged as the standard answer to this
+challenge, replacing shared buses and point-to-point links with a structured,
+packet-switched interconnect fabric~\cite{dally2001}.
+
+Existing NoC designs span a broad design space. Wormhole switching minimizes
+buffering by forwarding flits as soon as the header is decoded, but exposes the
+network to head-of-line blocking. Virtual channels (VCs) were introduced to
+mitigate this blocking~\cite{dally1992}, at the cost of duplicated buffers that
+can represent the dominant area contribution of a router~\cite{mello2005}. Circuit
+switching provides fully dedicated, contention-free paths but requires path
+reservation before any data can flow.
+
+\textbf{HyNoC} takes a different approach: it combines the path-dedication
+property of circuit switching---through a source-routed request/grant handshake at
+each hop---with the flit-level, FIFO-backed flow control of wormhole switching.
+This hybrid model is particularly well suited to FPGA targets, where block RAMs
+used as FIFOs are scarce resources, and to distributed VLIW computing workloads,
+where communication patterns are largely known at compile time and can therefore be
+routed statically to avoid congestion.
+
+Originally inspired by the Hermes NoC~\cite{moraes2004}, HyNoC departs
+significantly from its ancestor by introducing distributed arbitration, relative
+source routing with multicast support, per-port asynchronous clock domains, and a
+parallel round-robin arbiter that grants requests in a bounded number of cycles.
+
+The contributions of this paper are:
+\begin{itemize}
+  \item A precise characterization of HyNoC's hybrid switching model and its
+        implications for latency and area;
+  \item A discussion of static route management as an alternative to virtual
+        channels, supported by a combinatorial analysis of shortest-path counts
+        in mesh and higher-dimensional topologies;
+  \item An analysis of the scope and limitations of the no-VC design choice;
+  \item An open-source RTL implementation targeting both simulation and FPGA
+        synthesis.
+\end{itemize}
+
+The remainder of the paper is organized as follows.
+Section~\ref{sec:related} reviews related work.
+Section~\ref{sec:architecture} describes the HyNoC architecture.
+Section~\ref{sec:switching} details the hybrid switching model and the rationale
+for avoiding virtual channels.
+Section~\ref{sec:target} discusses the target application domain.
+Section~\ref{sec:implementation} presents implementation details, and
+Section~\ref{sec:conclusion} concludes.
