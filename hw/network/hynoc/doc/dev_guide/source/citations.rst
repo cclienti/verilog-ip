@@ -26,3 +26,7 @@
 
 	     .. .. [DAL2003] William Dally and Brian Towles. 2003. Principles and Practices of Interconnection Networks. Morgan Kaufmann
 		   Publishers Inc., San Francisco, CA, USA.
+
+.. [KNU1997] Donald E. Knuth, *The Art of Computer Programming, Volume 1:
+             Fundamental Algorithms*, 3rd ed., Addison-Wesley, 1997.
+             Section 1.2.5: Permutations and Factorials.

@@ -37,18 +37,21 @@ we will consider the *smallest* enclosing these two nodes. The figure :num:`figu
 
    The six shortest paths in a :math:`3 \times 3` network.
 
-Counting shortest paths is a problem related to `Catalan Number <http://en.wikipedia.org/wiki/Catalan_number>`_ which
-occurs in various counting problems and is equivalent to counting `Dyck words
-<http://en.wikipedia.org/wiki/Dyck_word#Applications_in_combinatorics>`_, with *X* corresponds to an horizontal move and
-*Y* to a vertical move.
+Counting shortest paths in a grid is a classical result in combinatorics. Each
+path from one corner to the other consists of a fixed number of horizontal moves
+*X* and vertical moves *Y*, taken in any order. The problem therefore reduces to
+counting the number of distinct arrangements of a multiset of symbols — a
+well-known result covered in standard combinatorics references [KNU1997]_.
 
-Using Dyck words, all shortest paths of a :math:`3 \times 3` network can be enumerated as follow: XXYY, XYYX, YYXX,
-XYXY, YXXY, YXYX.
+Using this enumeration, all shortest paths of a :math:`3 \times 3` network can be
+listed as follows: XXYY, XYYX, YYXX, XYXY, YXXY, YXYX.
 
-We can observe that our counting problem can be interpreted by looking for the number of different permutations of *n*
-objects, where there are *n*:sub:`1` indistinguishable objects of style 1, *n*:sub:`2` indistinguishable objects of
-style 2, ..., and *n*:sub:`K` indistinguishable objects of style K. The equation :eq:`eq-looking-for-permutations` gives
-the number *p* of these permutations.
+More formally, the problem is equivalent to counting the number of distinct
+permutations of *n* objects, where there are *n*:sub:`1` indistinguishable objects
+of type 1, *n*:sub:`2` indistinguishable objects of type 2, ..., and
+*n*:sub:`K` indistinguishable objects of type K. This is given by the
+**multinomial coefficient** [KNU1997]_, shown in equation
+:eq:`eq-looking-for-permutations`.
 
 .. math::
    p = {n! \over {\prod\limits^K_{i=1} n_i!}}
