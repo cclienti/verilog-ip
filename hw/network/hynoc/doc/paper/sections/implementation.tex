@@ -66,6 +66,26 @@ Dual-clock FIFOs are implemented using the \texttt{dclkfifolut} module, which
 maps to distributed LUT RAM, avoiding dependency on vendor-specific FIFO IP and
 enabling portability across FPGA families.
 
+\subsection{RTL Elaboration with Veriparse}
+
+HyNoC makes use of advanced Verilog constructs — in particular, \texttt{initial}
+blocks containing \texttt{for} loops and integer arithmetic — to pre-compute the
+PRRA lookup tables at elaboration time. While this is perfectly legal Verilog, some
+FPGA toolchains have limited support for such constructs in synthesizable RTL.
+
+Veriparse~\cite{veriparse} is a companion source-to-source transformation toolkit
+that addresses this issue. Its \texttt{veriflat} tool pre-processes a hierarchical
+design by flattening the module hierarchy, unrolling \texttt{generate} loops,
+constant-folding \texttt{localparam} expressions, and evaluating \texttt{initial}
+blocks into plain, widely-supported RTL. Applied to HyNoC, it produces a flat,
+fully unrolled Verilog file where each PRRA LUT entry is an explicit constant
+assignment — portable across any standard Verilog toolchain.
+
+The flattened output also benefits simulation: a single-module design with no
+hierarchy reduces simulator overhead and can significantly speed up large testbench
+runs. Veriparse is available at \url{https://github.com/cclienti/veriparse} under
+the LGPLv3 license.
+
 \subsection{License}
 
 HyNoC is released as open-source hardware under the
