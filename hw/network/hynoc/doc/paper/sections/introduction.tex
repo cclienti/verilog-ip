@@ -26,7 +26,7 @@ routed statically to avoid congestion.
 Originally inspired by the Hermes NoC~\cite{moraes2004}, HyNoC departs
 significantly from its ancestor by introducing distributed arbitration, relative
 source routing with multicast support, per-port asynchronous clock domains, and a
-parallel round-robin arbiter that grants requests in a bounded number of cycles.
+parallel round-robin arbiter that grants requests in a one or two cycles.
 
 The contributions of this paper are:
 \begin{itemize}
@@ -37,7 +37,9 @@ The contributions of this paper are:
         in mesh and higher-dimensional topologies;
   \item An analysis of the scope and limitations of the no-VC design choice;
   \item An open-source RTL implementation targeting both simulation and FPGA
-        synthesis.
+        synthesis, complemented by the Veriparse toolkit~\cite{veriparse} for
+        source-to-source elaboration of advanced RTL constructs and faster
+        simulation.
 \end{itemize}
 
 The remainder of the paper is organized as follows.
