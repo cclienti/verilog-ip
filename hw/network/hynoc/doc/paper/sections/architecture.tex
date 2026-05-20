@@ -52,6 +52,13 @@ Figure~\ref{fig:data-arch}.
   \label{fig:data-arch}
 \end{figure}
 
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{hynoc_ingress_arch}
+  \caption{Ingress port internal architecture: dual-clock FIFO and routing FSM.}
+  \label{fig:ingress-arch}
+\end{figure}
+
 \subsection{Egress Port}
 
 The egress port receives concurrent write requests from all $N-1$ ingress ports.
@@ -69,6 +76,12 @@ avoiding broadcast of control information.
   \label{fig:ctrl-arch}
 \end{figure}
 
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{hynoc_egress_arch}
+  \caption{Egress port internal architecture: PRRA arbiter and data multiplexer.}
+  \label{fig:egress-arch}
+\end{figure}
 \subsection{Parallel Round-Robin Arbiter (PRRA)}
 
 The standard sequential round-robin FSM scans requests one by one in a fixed
