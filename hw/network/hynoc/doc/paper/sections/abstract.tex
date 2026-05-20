@@ -2,7 +2,7 @@
 Network-on-Chip (NoC) architectures have become the standard interconnect fabric
 for many-core systems, yet most proposals face a fundamental trade-off between
 latency, area, and congestion management. This paper presents \textbf{HyNoC}
-(High-performance Network-on-Chip), an open-source NoC architecture that combines
+(Hybrid Network-on-Chip), an open-source NoC architecture that combines
 circuit-switch path establishment with wormhole data transfer, targeting
 distributed computing systems built around VLIW processor cores on FPGA.
 
@@ -17,7 +17,7 @@ We discuss the design rationale, the hybrid switching model, and positioning
 relative to prior NoC art, and argue that a richer topology combined with
 compiler-assisted static routing is a competitive alternative to virtual channels
 for FPGA-based distributed VLIW systems. The complete RTL implementation is
-released as open-source hardware under the CERN-OHL-P~v2 license.
+released as open-source hardware under the CERN-OHL-P~v2 license. The Veriparse source-to-source elaboration toolkit~cite{veriparse} is provided as a companion tool to handle advanced RTL constructs and accelerate simulation.
 \end{abstract}
 
 \begin{IEEEkeywords}
