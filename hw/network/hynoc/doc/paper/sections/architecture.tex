@@ -132,8 +132,17 @@ ingress interface handles the crossing between the upstream port clock and the
 local router clock. For timing-critical designs, a single-clock mode
 (\texttt{SINGLE\_CLOCK\_ROUTER=1}) is available, reducing crossing latency.
 
-The local interface adds an extra FIFO at the egress output, fully decoupling the
-attached node's clock domain from the router.
+\subsection{Local Interface}
+
+Any router port can be connected to a processing node instead of a neighboring
+router. The \texttt{hynoc\_local\_interface} module handles this attachment by
+instantiating an additional FIFO at the egress output. This FIFO serves two
+purposes: it fully decouples the node's clock domain from the router clock domain,
+and it smooths traffic bursts, preventing the node from becoming a bottleneck when
+it cannot consume data fast enough. From the router's perspective, the local
+interface is indistinguishable from a downstream router's ingress port, preserving
+the uniformity of the flow control mechanism across all port types.
+
 
 \subsection{First Layer Protocol}
 
