@@ -35,9 +35,10 @@ all handshaking with the router. On the receive side, incoming flits are deposit
 in the egress FIFO and read by the core at its own pace. The dual-FIFO structure
 fully decouples the core's clock domain from the router domain.
 
-For DMA-driven transfers, the \texttt{hynoc\_stream\_writer} and
-\texttt{hynoc\_stream\_reader} modules provide continuous packet injection and
-reception, maximizing channel utilization for bulk data movement.
+The \texttt{hynoc\_stream\_writer} and \texttt{hynoc\_stream\_reader} modules are
+simulation utilities that generate and check random packet streams, respectively.
+They serve as traffic generators in the testbench environment, verifying the
+correctness of the NoC under various load conditions.
 
 \subsection{Multicast for Broadcast Operations}
 
