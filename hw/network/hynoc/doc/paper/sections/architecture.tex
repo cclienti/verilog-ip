@@ -24,22 +24,24 @@ organization of 5-port routers and their interconnections.
 \end{figure}
 
 \subsection{Ingress Port}
-
 The ingress port receives flits from the egress of a neighboring router. It buffers
-incoming flits in a dual-clock FIFO (configurable depth: 2 to 64 entries), which
+incoming flits in a dual-clock FIFO ($2^D$ entries of $K+1$ bits), which
 simultaneously handles clock domain crossing between the upstream router's clock
 domain and the local router domain.
 
-Once flits are available, the ingress FSM decodes the routing flit, extracts the
-next-hop egress port identifier, and asserts a \emph{request} signal to the
-corresponding egress port. It then waits for a \emph{grant}. Upon grant, the
-ingress begins forwarding flits: if the routing flit still carries hops for
-downstream routers (index $> 0$), it is updated (index decremented) and forwarded;
-if the index has reached zero, the routing flit is consumed locally and not
-forwarded. Subsequent payload flits are streamed directly to the granted egress
-until the stop bit of the last flit is detected, at which point the channel is
-released.
+Once flits are buffered, the FSM inspects the two most significant bits of the
+first flit to identify the flit type (routing or payload). It then extracts the
+next-hop egress port identifier, asserts the matching \emph{request} bit among the
+$N-1$ available egress ports, and waits for the corresponding \emph{grant}. Upon
+grant, the ingress forwards the routing flit updated to the next hop (index
+decremented); if the index has already reached zero, the routing flit is consumed
+locally and not forwarded. Subsequent payload flits are streamed directly to the
+granted egress until the stop bit of the last flit is detected, at which point the
+channel is released.
 
+Flow control is managed by monitoring both the downstream router's ingress FIFO
+level and the local ingress FIFO level. The ingress stalls when either FIFO
+approaches full, preventing flit loss.
 Flow control is managed by monitoring the FIFO level of the downstream router's
 ingress FIFO. The ingress stalls when the downstream FIFO approaches full,
 preventing flit loss. The internal data path of a 3-port router is illustrated in
@@ -61,13 +63,15 @@ Figure~\ref{fig:data-arch}.
 
 \subsection{Egress Port}
 
-The egress port receives concurrent write requests from all $N-1$ ingress ports.
-It arbitrates among them using the PRRA, grants one request at a time, and
-connects the selected ingress data path to the downstream router's ingress FIFO.
-The downstream FIFO level is forwarded back to the granted ingress for flow
-control. The control path is shown in Figure~\ref{fig:ctrl-arch}: contrary to the
-data path, control signals are point-to-point between each ingress and each egress,
-avoiding broadcast of control information.
+The egress port is connected to $N-1$ ingress ports via a $(K+1)$-bit wide data
+path. It arbitrates among concurrent write requests using the PRRA, which responds
+in one cycle when the port is idle, and grants one ingress at a time without
+starvation. Once a grant is issued, the data and write-enable signals from the
+winning ingress are routed directly to the downstream router's ingress FIFO. The
+downstream FIFO level is forwarded back to the granted ingress for flow control.
+The control path is shown in Figure~\ref{fig:ctrl-arch}: contrary to the data
+path, control signals are point-to-point between each ingress and each egress,
+avoiding any broadcast of control information.
 
 \begin{figure}[t]
   \centering
