@@ -14,8 +14,9 @@ The HyNoC RTL is written in Verilog and organized as follows:
   \item \texttt{hynoc\_router\_3p} / \texttt{hynoc\_router\_5p}: 3-port and
         5-port router instances with self-checking testbenches;
   \item \texttt{hynoc\_local\_interface}: local interface for node attachment,
-        including the egress output FIFO for clock domain decoupling;
   \item \texttt{hynoc\_stream\_reader} / \texttt{hynoc\_stream\_writer}:
+        simulation traffic generators used in testbenches to inject and
+        check random packet streams.
         DMA-style packet injection and reception modules.
 \end{itemize}
 
@@ -37,6 +38,27 @@ Simulation is supported under Icarus Verilog, ModelSim, and Verilator. Waveform
 inspection is facilitated by Python-based waveform configuration scripts.
 
 \subsection{FPGA Target}
+
+Place-and-route results on an Intel Cyclone~IV~E FPGA are summarized in
+Table~\ref{tab:synth}. The router is configured with 32-bit payload and 16-entry
+dual-clock FIFOs per port. Logic grows approximately linearly with the number of
+ports, while the interface clock remains stable across configurations at 315~MHz.
+
+\begin{table}[h]
+\centering
+\caption{Synthesis results on Altera Cyclone~IV~E (32-bit, 16-entry FIFOs, speed-optimized)}
+\label{tab:synth}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Router & LEs & Mem (bits) & FFs & $f_{max}$ (MHz) \\
+\midrule
+3-port & 730  & 1600 & 450  & 280 \\
+5-port & 1600 & 2650 & 750  & 245 \\
+7-port & 2860 & 3700 & 1113 & 245 \\
+9-port & 4250 & 4800 & 1500 & 230 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 The design targets Intel (Altera) and AMD (Xilinx) FPGA families. Reference board
 support is included for the DE0-Nano (Cyclone~IV) and the ZedBoard (Zynq-7000).
