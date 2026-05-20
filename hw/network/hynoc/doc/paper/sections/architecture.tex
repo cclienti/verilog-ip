@@ -71,27 +71,42 @@ avoiding broadcast of control information.
 
 \subsection{Parallel Round-Robin Arbiter (PRRA)}
 
-The standard sequential round-robin FSM introduces up to $N$ cycles of latency
-before granting a request. HyNoC replaces this with a \textbf{parallel
-round-robin arbiter}: a LUT-based FSM that evaluates all pending requests
-simultaneously, selects the highest-priority pending request according to a
-rotating priority order, and transitions directly to the corresponding state.
+The standard sequential round-robin FSM scans requests one by one in a fixed
+order, introducing up to $N$ cycles of latency before granting a pending request
+(Figure~\ref{fig:prra-fsm}). HyNoC replaces this with a \textbf{parallel
+round-robin arbiter (PRRA)}: a set of $N$ combinatorial LUT-based state functions
+that evaluate all pending requests simultaneously and jump directly to the winning
+state, regardless of how many ports are idle.
 
-The state transition $P_k$ is given by:
-\begin{equation}
-  P_k \leftarrow \text{request}[k] = 1
-  \label{eq:prra}
-\end{equation}
-where $P_0$ carries the highest priority and $P_{N-2}$ the lowest. An additional
-implicit transition keeps the current state while a granted request is active,
-preventing spurious re-arbitration during packet transfer.
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{parallel_round_robin_fsm}
+  \caption{Parallel Round-Robin FSM: direct state transitions avoid scanning idle ports.}
+  \label{fig:prra-fsm}
+\end{figure}
 
-The arbiter responds in \textbf{one or two clock cycles} (configurable via the
-\texttt{PRRA\_PIPELINE} parameter), regardless of the number of ports. The
-critical path does not grow with $N$ because each state's transition equation is
-stored in a dedicated LUT, selected by a multiplexer from the state register.
-Starvation is prevented by the rotating priority: after serving request $k$,
-priority rotates to port $k+1$.
+The architecture instantiates $N$ \texttt{prra\_lut} modules in parallel
+(Figure~\ref{fig:prra-arch}), each pre-computing the next granted port for a
+different starting priority offset. The LUT corresponding to the current state is
+selected by a multiplexer; its output feeds the state register. The state
+transitions only when the currently granted request is de-asserted (end of packet)
+or when no request is active, locking the grant for the entire packet transfer and
+preventing spurious re-arbitration.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{prra_arch}
+  \caption{PRRA architecture: $N$ parallel LUTs, one per priority offset.}
+  \label{fig:prra-arch}
+\end{figure}
+
+The arbiter responds in \textbf{one or two clock cycles} depending on the
+\texttt{PIPELINE} parameter: without pipelining the LUTs are purely combinatorial
+and the grant is issued in one cycle; with pipelining an extra register stage
+on the LUT outputs reduces the critical path at the cost of one additional cycle.
+The critical path does not grow with $N$ because each LUT is independent and
+selected, not chained. Starvation is prevented by the rotating priority: after
+serving port $k$, priority rotates to port $k+1 \mod N$.
 
 \subsection{Clock Domain Architecture}
 
