@@ -148,10 +148,31 @@ the uniformity of the flow control mechanism across all port types.
 
 \subsubsection{Packet and Flit Structure}
 
-The network operates on flits of $(\mathtt{PAYLOAD\_WIDTH}+1)$ bits. The most
-significant bit is a \emph{stop bit}: when set, it marks the last flit of a
-packet. A packet consists of one or more \emph{routing flits} followed by one or
-more \emph{payload flits}. The routing flit carries a 4-bit \emph{Proto} field:
+The network operates on flits of $K+1$ bits ($K = \mathtt{PAYLOAD\_WIDTH}$). The
+most significant bit is a \emph{stop bit}: when set, it marks the last flit of a
+packet. A packet is built with at least one \emph{Network Hops flit} (routing
+flit) followed by at least one \emph{payload flit}, as shown in
+Figure~\ref{fig:pkt-struct}. If multiple routing flits are present, intermediate
+routers treat all but the first as payload; each router consumes one routing flit
+from the front of the chain. The MSB of a routing flit is always zero, reserving
+space for future sub-type extensions. Figure~\ref{fig:pkt-min} shows the smallest
+valid packet.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.85\columnwidth]{hynoc_packet_definition_payload}
+  \caption{Packet structure: Network Hops flit(s) followed by payload flits.}
+  \label{fig:pkt-struct}
+\end{figure}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.85\columnwidth]{hynoc_packet_definition_min_example}
+  \caption{Minimal HyNoC packet (one routing flit, one payload flit).}
+  \label{fig:pkt-min}
+\end{figure}
+
+The routing flit carries a 4-bit \emph{Proto} field:
 
 \begin{table}[h]
 \centering
@@ -171,12 +192,20 @@ Proto & Routing method \\
 
 \subsubsection{Unicast Source Routing}
 
-The routing flit carries $H$ hop fields of $\lceil\log_2(P-1)\rceil$ bits each,
-encoding the relative egress port ID at the next router. An \emph{index} field
-(initialized to $H-1$) points to the hop to be consumed by the next router. The
-ingress port decrements the index after consuming a hop; if the index was already
-zero, the routing flit is not forwarded downstream. The relative hop encoding is
-illustrated in Figure~\ref{fig:hops}.
+The Network Hops flit structure is shown in Figure~\ref{fig:net-hops}. It carries
+$H$ hop fields of $\lceil\log_2(P-1)\rceil$ bits each, encoding the relative
+egress port ID at the next router, together with an \emph{index} field initialized
+to $H-1$. The index directly feeds the multiplexer selecting the active hop in the
+ingress port. It is decremented after each hop is consumed; if the index is already
+zero before path opening, the routing flit is not forwarded downstream. The
+relative hop encoding is illustrated in Figure~\ref{fig:hops}.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.85\columnwidth]{hynoc_packet_definition_net_hops}
+  \caption{Network Hops flit structure.}
+  \label{fig:net-hops}
+\end{figure}
 
 \begin{figure}[t]
   \centering
@@ -185,6 +214,9 @@ illustrated in Figure~\ref{fig:hops}.
   \label{fig:hops}
 \end{figure}
 
+The relative encoding (egress IDs numbered counterclockwise from the ingress port,
+excluding that port) reduces both the hop field width and the internal crossbar
+size.
 The relative encoding (egress IDs numbered counterclockwise from the ingress port,
 excluding that port) reduces both the hop field width and the internal crossbar
 size.
