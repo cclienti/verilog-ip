@@ -12,9 +12,8 @@ decouple the node's clock domain from the router.
 
 The router implements a \textbf{full crossbar}: any ingress port can simultaneously
 communicate with any egress port, subject to arbitration. Multiple paths can be
-open concurrently inside the same router, enabling full bisection bandwidth
-utilization when traffic permits. Figure~\ref{fig:noc-overview} shows the internal
-organization of 5-port routers and their interconnections.
+open concurrently inside the same router, allowing concurrent transfers between different ingress-egress pairs.
+Figure~\ref{fig:noc-overview} shows the internal organization of 5-port routers and their interconnections.
 
 \begin{figure}[t]
   \centering
