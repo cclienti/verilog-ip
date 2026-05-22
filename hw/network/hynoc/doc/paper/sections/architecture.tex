@@ -203,7 +203,7 @@ Proto & Routing method \\
 \subsubsection{Unicast Source Routing}
 
 The Network Hops flit structure is shown in Figure~\ref{fig:net-hops}. It carries
-$H$ hop fields of $\lceil\log_2(P-1)\rceil$ bits each, encoding the relative
+$H$ hop fields of $\lceil\log_2(N-1)\rceil$ bits each, encoding the relative
 egress port ID at the next router, together with an \emph{index} field initialized
 to $H-1$. The index directly feeds the multiplexer selecting the active hop in the
 ingress port. It is decremented after each hop is consumed; if the index is already
@@ -224,13 +224,14 @@ relative hop encoding is illustrated in Figure~\ref{fig:hops}.
   \label{fig:hops}
 \end{figure}
 
-The relative encoding (egress IDs numbered counterclockwise from the ingress port,
-excluding that port) reduces both the hop field width and the internal crossbar
-size.
-The relative encoding (egress IDs numbered counterclockwise from the ingress port,
-excluding that port) reduces both the hop field width and the internal crossbar
-size.
-
+Since a packet cannot exit through the same port it entered, each ingress port has
+only $N-1$ reachable egress ports. Hop fields therefore require only
+$\lceil\log_2(N-1)\rceil$ bits, which yields particularly compact encodings for
+the most common router sizes: a 3-port router encodes hops on 1~bit, a 5-port
+router on 2~bits, and a 9-port router on 3~bits. This reduction simultaneously
+shrinks the routing flit header overhead and the internal crossbar size, since the
+crossbar itself does not need to include the loopback path from ingress to its
+paired egress.
 \subsubsection{Multicast Source Routing}
 
 In multicast mode, each hop field is a bitmask of width $N-1$, where each bit
