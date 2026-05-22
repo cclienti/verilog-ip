@@ -42,10 +42,7 @@ channel is released.
 Flow control is managed by monitoring both the downstream router's ingress FIFO
 level and the local ingress FIFO level. The ingress stalls when either FIFO
 approaches full, preventing flit loss.
-Flow control is managed by monitoring the FIFO level of the downstream router's
-ingress FIFO. The ingress stalls when the downstream FIFO approaches full,
-preventing flit loss. The internal data path of a 3-port router is illustrated in
-Figure~\ref{fig:data-arch}.
+The internal data path of a 3-port router is illustrated in Figure~\ref{fig:data-arch}.
 
 \begin{figure}[t]
   \centering
