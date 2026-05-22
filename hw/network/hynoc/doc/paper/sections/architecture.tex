@@ -143,6 +143,16 @@ it cannot consume data fast enough. From the router's perspective, the local
 interface is indistinguishable from a downstream router's ingress port, preserving
 the uniformity of the flow control mechanism across all port types.
 
+\textbf{AXI-Stream compatibility.} The port-level handshake is deliberately
+modeled after the AXI-Stream protocol~\cite{arm_axi}: the \texttt{write} signal
+corresponds to \texttt{TVALID}, the \texttt{full} signal to the negation of
+\texttt{TREADY}, the data bus to \texttt{TDATA}, and the stop bit to
+\texttt{TLAST}. This mapping makes the interface immediately familiar to hardware
+designers working in the FPGA ecosystem. The only extension beyond standard
+AXI-Stream is the \texttt{fifo\_level} sideband, which exposes the downstream
+buffer occupancy to allow the sender to anticipate back-pressure before the
+\texttt{full} condition is reached.
+
 
 \subsection{First Layer Protocol}
 
