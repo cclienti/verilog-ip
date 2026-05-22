@@ -163,20 +163,33 @@ Figure~\ref{fig:pkt-struct}. If multiple routing flits are present, intermediate
 routers treat all but the first as payload; each router consumes one routing flit
 from the front of the chain. The MSB of a routing flit is always zero, reserving
 space for future sub-type extensions. Figure~\ref{fig:pkt-min} shows the smallest
-valid packet.
+valid packet: one routing flit (stop bit must be zero) followed by one payload flit.
 
 \begin{figure}[t]
-  \centering
-  \includegraphics[width=0.64\columnwidth]{hynoc_packet_definition_payload}
-  \caption{Packet structure: Network Hops flit(s) followed by payload flits.}
-  \label{fig:pkt-struct}
+\centering
+\begin{bytefield}[bitwidth=0.55em, endianness=big]{33}
+  \bitheader{32,31,28,0} \\
+  \bitbox{1}{\tiny 0} & \bitbox{4}{\tiny Proto} & \bitbox{28}{\small Routing flit (hops + index)} \\
+  \bitbox{1}{\tiny 0} & \bitbox{32}{\small Payload flit} \\
+  \bitbox{1}{\tiny $\cdots$} & \bitbox{32}{\small $\cdots$} \\
+  \bitbox{1}{\tiny 1} & \bitbox{32}{\small Last payload flit} \\
+\end{bytefield}
+\caption{Packet structure: routing flit(s) followed by payload flits.
+         The MSB is the stop bit (0=intermediate, 1=last flit).}
+\label{fig:pkt-struct}
 \end{figure}
 
 \begin{figure}[t]
-  \centering
-  \includegraphics[width=0.64\columnwidth]{hynoc_packet_definition_min_example}
-  \caption{Minimal HyNoC packet (one routing flit, one payload flit).}
-  \label{fig:pkt-min}
+\centering
+\begin{bytefield}[bitwidth=0.55em, endianness=big]{33}
+  \bitheader{32,31,28,0} \\
+  \bitbox{1}{\tiny 0} & \bitbox{4}{\tiny Proto} & \bitbox{28}{\small Routing flit (hops + index)} \\
+  \bitbox{1}{\tiny 1} & \bitbox{32}{\small Last payload flit} \\
+\end{bytefield}
+\caption{Minimal HyNoC packet: one routing flit (stop bit = 0) followed by
+         one payload flit (stop bit = 1). The routing flit stop bit must be
+         zero since the ingress FSM rejects routing flits with stop bit set.}
+\label{fig:pkt-min}
 \end{figure}
 
 The routing flit carries a 4-bit \emph{Proto} field:
@@ -208,12 +221,22 @@ zero before path opening, the routing flit is not forwarded downstream. The
 relative hop encoding is illustrated in Figure~\ref{fig:hops}.
 
 \begin{figure}[t]
-  \centering
-  \includegraphics[width=0.64\columnwidth]{hynoc_packet_definition_net_hops}
-  \caption{Network Hops flit structure.}
-  \label{fig:net-hops}
+\centering
+\begin{bytefield}[bitwidth=0.55em, endianness=big]{33}
+  \bitheader{32,31,28,27,24,13,12,5,4,0} \\
+  \bitbox{1}{\tiny 0} &
+  \bitbox{4}{\tiny Proto} &
+  \bitbox{4}{\tiny Gap} &
+  \bitbox{9}{\small Hop $H-1$} &
+  \bitbox{1}{\tiny $\cdots$} &
+  \bitbox{8}{\small Hop $0$} &
+  \bitbox{5}{\small Index} \\
+\end{bytefield}
+\caption{Network Hops flit structure (unicast example, $K=32$ bits).
+         The \emph{Index} field (initialized to $H-1$) selects the active hop.
+         The \emph{Gap} field pads unused bits between the proto and the hops.}
+\label{fig:net-hops}
 \end{figure}
-
 \begin{figure}[t]
   \centering
   \includegraphics[width=0.85\columnwidth]{hynoc_hops_encoding}
