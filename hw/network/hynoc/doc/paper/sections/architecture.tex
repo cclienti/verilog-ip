@@ -204,11 +204,17 @@ Proto & Routing method \\
 \midrule
 \texttt{4'b0000} & Unicast circuit switch \\
 \texttt{4'b0001} & Multicast circuit switch \\
-\texttt{4'b1000} & XY routing (reserved) \\
+\texttt{4'b1000} & XY routing (slot reserved, not yet implemented) \\
 \texttt{4'b1111} & Forbidden \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+The proto value \texttt{4'b1000} is reserved for future XY routing support.
+XY routing would allow destination-addressed packets using (x,y) coordinates
+rather than explicit hop lists, enabling simpler packet construction at the
+cost of restricting the topology to 2D meshes. The ingress FSM currently
+flushes any packet carrying this proto value.
 
 \subsubsection{Unicast Source Routing}
 
