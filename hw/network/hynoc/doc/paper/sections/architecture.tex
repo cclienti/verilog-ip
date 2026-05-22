@@ -86,9 +86,9 @@ avoiding any broadcast of control information.
 \subsection{Parallel Round-Robin Arbiter (PRRA)}
 
 The standard sequential round-robin FSM scans requests one by one in a fixed
-order, introducing up to $N$ cycles of latency before granting a pending request
+order, introducing up to $N-1$ cycles of latency before granting a pending request
 (Figure~\ref{fig:prra-fsm}). HyNoC replaces this with a \textbf{parallel
-round-robin arbiter (PRRA)}: a set of $N$ combinatorial LUT-based state functions
+round-robin arbiter (PRRA)}: a set of $N-1$ combinatorial LUT-based state functions
 that evaluate all pending requests simultaneously and jump directly to the winning
 state, regardless of how many ports are idle.
 
@@ -99,7 +99,7 @@ state, regardless of how many ports are idle.
   \label{fig:prra-fsm}
 \end{figure}
 
-The architecture instantiates $N$ \texttt{prra\_lut} modules in parallel
+The architecture instantiates $N-1$ \texttt{prra\_lut} modules in parallel
 (Figure~\ref{fig:prra-arch}), each pre-computing the next granted port for a
 different starting priority offset. The LUT corresponding to the current state is
 selected by a multiplexer; its output feeds the state register. The state
@@ -110,7 +110,7 @@ preventing spurious re-arbitration.
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{hynoc_prra_arch}
-  \caption{PRRA architecture: $N$ parallel LUTs, one per priority offset.}
+  \caption{PRRA architecture: $N-1$ parallel LUTs, one per priority offset.}
   \label{fig:prra-arch}
 \end{figure}
 
