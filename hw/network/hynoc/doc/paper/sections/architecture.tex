@@ -232,6 +232,12 @@ router on 2~bits, and a 9-port router on 3~bits. This reduction simultaneously
 shrinks the routing flit header overhead and the internal crossbar size, since the
 crossbar itself does not need to include the loopback path from ingress to its
 paired egress.
+
+More precisely, the encoding constrains $N$ to satisfy $2^{\lceil\log_2(N-1)\rceil} + 1 = N$,
+meaning only $N \in \{3, 5, 9\}$ are valid port counts. This constraint is enforced
+at elaboration time in the RTL. The relative hop ID is computed counterclockwise
+from the ingress port: hop~0 always refers to the next counterclockwise egress,
+and the ingress FSM resolves the relative ID into a one-hot physical egress request.
 \subsubsection{Multicast Source Routing}
 
 In multicast mode, each hop field is a bitmask of width $N-1$, where each bit
