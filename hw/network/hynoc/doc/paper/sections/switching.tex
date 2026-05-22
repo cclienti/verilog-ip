@@ -39,10 +39,10 @@ subgraphs (e.g., dimension-order routing) without any router-internal mechanism.
 \textbf{Congestion avoidance} is addressed at two levels. First, the compiler or
 runtime system assigns routes across multiple available shortest paths, distributing
 traffic away from known hotspots. The number of shortest paths between two nodes in
-an $N \times M$ mesh is a classical combinatorial result~\cite{knuth1997}: each path consists of a fixed sequence of moves along each dimension, taken in any order, and the count is given by the multinomial coefficient:
+an $R \times C$ mesh is a classical combinatorial result~\cite{knuth1997}: each path consists of a fixed sequence of moves along each dimension, taken in any order, and the count is given by the multinomial coefficient:
 
 \begin{equation}
-  p = \binom{(N-1)+(M-1)}{N-1} = \frac{[(N-1)+(M-1)]!}{(N-1)!\,(M-1)!}
+  p = \binom{(R-1)+(C-1)}{R-1} = \frac{[(R-1)+(C-1)]!}{(R-1)!\,(C-1)!}
   \label{eq:paths2d}
 \end{equation}
 

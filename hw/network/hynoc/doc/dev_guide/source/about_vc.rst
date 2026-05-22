@@ -57,12 +57,12 @@ of type 1, *n*:sub:`2` indistinguishable objects of type 2, ..., and
    p = {n! \over {\prod\limits^K_{i=1} n_i!}}
    :label: eq-looking-for-permutations
 
-Applying the equation :eq:`eq-looking-for-permutations` to a network with :math:`N \times M` routers, we obtain the
+Applying the equation :eq:`eq-looking-for-permutations` to a network with :math:`R \times C` routers, we obtain the
 equation :eq:`eq-n-m-permutations`. We can verify analytically with the network :math:`3 \times 3`, proposed in figure
 :num:`figure-counting-problem`, that the number of shortest path is *6*.
 
 .. math::
-   p = {\left[(N-1) + (M-1)\right]! \over {(N-1)! \cdot (M-1)!}}
+   p = {\left[(R-1) + (C-1)\right]! \over {(R-1)! \cdot (C-1)!}}
    :label: eq-n-m-permutations
 
 We can generalize the equation :eq:`eq-n-m-permutations` to n-dimensional :math:`n_1 \times n_2 \times \cdots \times n_K`
