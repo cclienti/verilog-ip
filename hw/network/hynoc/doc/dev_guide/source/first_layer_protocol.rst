@@ -92,6 +92,34 @@ network. This NoC is built upon 5-port routers and only two bits are needed to e
 
    Hops values to communicate between nodes :math:`(0,0)` and :math:`(2,2)` in a :math:`3 \times 3` mesh network.
 
+
+**Router port count constraint.** The relative encoding imposes a structural
+constraint on the number of ports: since :math:`H = \lceil\log_2(N-1)\rceil`
+bits must address exactly :math:`N-1` egress ports without waste, the only valid
+port counts are those satisfying :math:`2^H + 1 = N`, i.e.:
+
++--------+------------+------------------+
+| N      | H (bits)   | Addressable hops |
++========+============+==================+
+| 3      | 1          | 2                |
++--------+------------+------------------+
+| 5      | 2          | 4                |
++--------+------------+------------------+
+| 9      | 3          | 8                |
++--------+------------+------------------+
+
+This constraint is enforced at elaboration time in the RTL. Note that the
+number of addressable hops (:math:`2^H`) is slightly larger than :math:`N-1`
+for :math:`N > 3`; the extra codes are unused and serve as natural padding.
+
+The relative hop ID for a given ingress-to-egress transfer is computed as
+follows: egress ports are re-indexed from 0 to :math:`N-2` in counterclockwise
+order starting from the port immediately after the ingress port. Hop value 0
+therefore always refers to the next counterclockwise egress, and the mapping
+depends on which port the packet entered from. This relative addressing is
+resolved in hardware by the ingress FSM, which decodes the hop value into a
+one-hot request vector targeting the correct physical egress port.
+
 The drawback of this encoding is that each ports encodes the next counterclockwise egress with the zero id. In other
 words, the selected egress id must be calculated by taking into account the ingress id, this is relative egress
 addressing.
