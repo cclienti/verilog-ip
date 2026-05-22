@@ -66,6 +66,13 @@ Dual-clock FIFOs are implemented using the \texttt{dclkfifolut} module, which
 maps to distributed LUT RAM, avoiding dependency on vendor-specific FIFO IP and
 enabling portability across FPGA families.
 
+The AXI-Stream-compatible port interface (see Section~\ref{sec:architecture})
+simplifies integration with standard FPGA IP cores. On Zynq devices for instance,
+the HyNoC local interface connects directly to the Processing System AXI-Stream
+DMA engine with only a thin adapter to bridge the \texttt{fifo\_level} sideband.
+This reduces integration effort and allows reuse of existing AXI-Stream
+verification infrastructure.
+
 \subsection{RTL Elaboration with Veriparse}
 
 HyNoC makes use of advanced Verilog constructs — in particular, \texttt{initial}
