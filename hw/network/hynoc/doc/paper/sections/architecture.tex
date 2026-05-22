@@ -222,19 +222,34 @@ relative hop encoding is illustrated in Figure~\ref{fig:hops}.
 
 \begin{figure}[t]
 \centering
-\begin{bytefield}[bitwidth=0.55em, endianness=big]{33}
-  \bitheader{32,31,28,27,24,13,12,5,4,0} \\
+\small
+\begin{bytefield}[bitwidth=0.9em, endianness=big]{17}
+  \bitheader{16,15,12,11,8,3,2,0} \\
+  \bitbox{1}{\tiny 0} &
+  \bitbox{4}{Proto} &
+  \bitbox{4}{Hop $H{-}1$} &
+  \bitbox{1}{$\cdots$} &
+  \bitbox{4}{Hop 0} &
+  \bitbox{3}{Idx} \\
+\end{bytefield}
+
+\medskip
+\textbf{Example:} 5-port router, $K=32$-bit payload
+($W_h=2$, $H=12$, $W_{idx}=4$, no gap)
+
+\begin{bytefield}[bitwidth=0.4em, endianness=big]{33}
+  \bitheader{32,31,28,27,26,5,4,3,0} \\
   \bitbox{1}{\tiny 0} &
   \bitbox{4}{\tiny Proto} &
-  \bitbox{4}{\tiny Gap} &
-  \bitbox{9}{\small Hop $H-1$} &
-  \bitbox{1}{\tiny $\cdots$} &
-  \bitbox{8}{\small Hop $0$} &
-  \bitbox{5}{\small Index} \\
+  \bitbox{2}{\tiny H11} &
+  \bitbox{20}{\small $\cdots$ 10 hops $\cdots$} &
+  \bitbox{2}{\tiny H0} &
+  \bitbox{4}{\small Index} \\
 \end{bytefield}
-\caption{Network Hops flit structure (unicast example, $K=32$ bits).
-         The \emph{Index} field (initialized to $H-1$) selects the active hop.
-         The \emph{Gap} field pads unused bits between the proto and the hops.}
+\caption{Network Hops flit structure. Top: generic layout
+         ($W_h = \lceil\log_2(N-1)\rceil$ bits per hop, $H$ hops, Index width
+         $W_{idx}$). Bottom: concrete instance for a 5-port, 32-bit router
+         (12 hops of 2 bits each, 4-bit index, no gap).}
 \label{fig:net-hops}
 \end{figure}
 \begin{figure}[t]
