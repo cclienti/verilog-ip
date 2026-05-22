@@ -4,7 +4,8 @@
 \subsection{Overview}
 
 A HyNoC network is built by assembling routers with a configurable number of ports
-(3 to 9 in the current implementation). Each router port is full-duplex, composed
+$N$ (3 to 9 in the current implementation), where each flit is $K+1$ bits wide
+($K = \mathtt{PAYLOAD\_WIDTH}$, the extra bit being the stop bit). Each router port is full-duplex, composed
 of an ingress interface and an egress interface. Two neighboring routers are
 connected by cross-linking their egress and ingress interfaces. Processing nodes
 are attached through a \emph{local interface}, which adds an extra output FIFO to
@@ -232,7 +233,7 @@ size.
 
 \subsubsection{Multicast Source Routing}
 
-In multicast mode, each hop field is a bitmask of width $P-1$, where each bit
+In multicast mode, each hop field is a bitmask of width $N-1$, where each bit
 selects one egress port. The packet is duplicated and forwarded to all asserted
 egress ports simultaneously. Multiple routing flits with different multicast masks
 can be chained to address complex multicast trees. This is particularly useful for

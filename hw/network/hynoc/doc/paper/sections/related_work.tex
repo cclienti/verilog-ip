@@ -37,8 +37,8 @@ naturally supports any topology without per-router routing table storage, and
 allows the sender to choose among multiple paths.
 
 HyNoC adopts source routing with a compact \emph{relative} hop encoding: since a
-packet cannot exit from the same port it entered, a router with $P$ ports offers
-only $P-1$ egress choices, encoded in $\lceil\log_2(P-1)\rceil$ bits per hop.
+packet cannot exit from the same port it entered, a router with $N$ ports offers
+only $N-1$ egress choices, encoded in $\lceil\log_2(N-1)\rceil$ bits per hop.
 This reduces both header overhead and crossbar complexity simultaneously.
 
 \subsection{Virtual Channels}
