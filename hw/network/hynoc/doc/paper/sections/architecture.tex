@@ -232,8 +232,11 @@ relative hop encoding is illustrated in Figure~\ref{fig:hops}.
   \bitbox{4}{\small Index} \\
 \end{bytefield}
 \caption{Network Hops flit structure for a 5-port, 32-bit router (unicast,
-         12 hops of 2~bits, 4-bit index, no gap). The \emph{Index} field
-         (initialized to $H-1$) selects the active hop in the ingress FSM.}
+         12 hops of 2~bits, 4-bit index). The layout from MSB to LSB is:
+         stop bit, Proto, \emph{Gap} (if any), Hop $H-1$ \ldots Hop~0, Index.
+         The Gap absorbs unused bits between the Proto field and the first hop,
+         and is zero in this particular configuration.
+         The \emph{Index} field (initialized to $H-1$) selects the active hop.}
 \label{fig:net-hops}
 \end{figure}
 \begin{figure}[t]
