@@ -220,7 +220,11 @@ relative hop encoding is illustrated in Figure~\ref{fig:hops}.
 \begin{figure}[t]
   \centering
   \includegraphics[width=0.85\columnwidth]{hynoc_hops_encoding}
-  \caption{Relative hop encoding for a $3\times 3$ mesh network.}
+  \caption{Relative hop encoding for a $3\times 3$ mesh network built with 5-port
+           routers. The hop list $[0 \to 2 \to 0 \to 1 \to 2]$ establishes a
+           path from node $(0,0)$ to node $(2,2)$. Each hop ID is relative to
+           the ingress port: hop~0 denotes the next counterclockwise egress,
+           excluding the ingress port itself.}
   \label{fig:hops}
 \end{figure}
 
