@@ -61,40 +61,64 @@ including simultaneous multi-path transfers that verify the PRRA's starvation-fr
 behavior.
 
 Simulation is supported under Icarus Verilog and ModelSim. Verilator is
-integrated in the build infrastructure for linting only (\texttt{--lint-only});
-full Verilator-based simulation is left as future work. Waveform inspection is
+integrated in the build infrastructure both for linting (\texttt{--lint-only})
+and for C++ co-simulation: a multi-instance Verilator model is used in
+Section~\ref{sec:evaluation} to characterize end-to-end latency and link
+utilization on a $4\times4$ mesh.  Waveform inspection is
 automated using Wavedisp~\cite{wavedisp}, a Python module that generates
 simulator-specific signal configuration scripts from a single source description,
 targeting GTKWave, ModelSim, and Riviera-PRO.
 
 \subsection{FPGA Target}
 
-Place-and-route results on an Intel Cyclone~IV~E FPGA are summarized in
-Table~\ref{tab:synth}. The router is configured with 32-bit payload and 16-entry
-dual-clock FIFOs per port. Logic grows approximately linearly with the number of
-ports, while the interface clock remains stable across configurations at 315~MHz.
+Table~\ref{tab:synth-k7} reports post-place-and-route results on two Xilinx
+7-series devices: a Kintex-7 (xc7k160t-fbg484, speed grade~$-2$) targeting
+370\,MHz and a Zynq-7020 (xc7z020clg484, speed grade~$-1$) targeting 200\,MHz.
+Both runs use 32-bit payload and 32-entry single-clock FIFOs
+(\texttt{sclkfifolut}).  \textbf{WNS} (Worst Negative Slack) is the tightest
+setup slack across all register-to-register timing paths; a positive value
+means the target is met, and $f_\text{max} = 1\,/\,(T_\text{clk} - \text{WNS})$.
 
 \begin{table}[h]
 \centering
-\caption{Synthesis results on Altera Cyclone~IV~E (32-bit, 16-entry FIFOs, speed-optimized)}
-\label{tab:synth}
-\begin{tabular}{@{}lrrrr@{}}
+\footnotesize
+\setlength{\tabcolsep}{2pt}
+\caption{P\&R results on two Xilinx 7-series devices (32-bit,
+         32-entry \texttt{sclkfifolut}; 24\,LUT-RAM/port for ingress FIFOs).
+         WNS in ns; $f_\text{max}$ in MHz.}
+\label{tab:synth-k7}
+\begin{tabular}{@{}l rr r rr rr@{}}
 \toprule
-Router & LEs & Mem (bits) & FFs & $f_{max}$ (MHz) \\
+& & & &
+  \multicolumn{2}{c}{\shortstack{Kintex-7\;$-2$\\(370\,MHz)}} &
+  \multicolumn{2}{c}{\shortstack{Zynq-7020\;$-1$\\(200\,MHz)}} \\
+\cmidrule(lr){5-6}\cmidrule(lr){7-8}
+Router & LUT & LUT & FFs & WNS & $f_\text{max}$ & WNS & $f_\text{max}$ \\
+       & (log.) & (RAM) & & (ns) & (MHz) & (ns) & (MHz) \\
 \midrule
-3-port & 730  & 1600 & 450  & 280 \\
-5-port & 1600 & 2650 & 750  & 245 \\
-7-port & 2860 & 3700 & 1113 & 245 \\
-9-port & 4250 & 4800 & 1500 & 230 \\
+3-port &  253 &  72 &  327 & $+$0.079 & 381 & $+$0.034 & 201 \\
+5-port &  596 & 120 &  590 & $+$0.127 & 389 & $+$0.101 & 204 \\
+7-port & 1259 & 168 &  889 & $+$0.070 & 380 & $+$0.032 & 201 \\
+9-port & 1806 & 216 & 1215 & $+$0.003 & 371 & $+$0.034 & 201 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The design targets Intel (Altera) and AMD (Xilinx) FPGA families. Reference board
-support is included for the DE0-Nano (Cyclone~IV) and the ZedBoard (Zynq-7000).
-Dual-clock FIFOs are implemented using the \texttt{dclkfifolut} module, which
-maps to distributed LUT RAM, avoiding dependency on vendor-specific FIFO IP and
-enabling portability across FPGA families.
+LUT-RAM usage is exactly 24 per port in every configuration, reflecting the
+fixed-depth FIFO at each ingress; no block RAM is consumed.  LUT counts are
+device-independent to within 1\% (synthesis tool variation).  Logic LUTs grow
+superlinearly with port count, driven by the PRRA whose table size scales as
+$2^{N-1}$ per egress port.  FFs grow nearly linearly (109 to 135 per port),
+consistent with the per-port register cost of the ingress FSM and FIFO control.
+All four port counts meet their respective frequency targets on both devices,
+with the 5-port configuration consistently achieving the best timing margin.
+
+The design has been validated on both Intel (Altera) and AMD (Xilinx) FPGA
+families; reference board support is included for the DE0-Nano (Cyclone~IV)
+and the ZedBoard (Zynq-7000).  Both \texttt{dclkfifolut} (dual-clock) and
+\texttt{sclkfifolut} (single-clock) map exclusively to distributed LUT RAM,
+avoiding dependency on vendor-specific FIFO IP and ensuring portability across
+FPGA families.
 
 The AXI-Stream-compatible port interface (see Section~\ref{sec:architecture})
 simplifies integration with standard FPGA IP cores. On Zynq devices for instance,

@@ -16,6 +16,7 @@ SECTIONS = sections/abstract.tex        \
            sections/switching.tex       \
            sections/target.tex          \
            sections/implementation.tex  \
+           sections/evaluation.tex      \
            sections/conclusion.tex
 
 .PHONY: all clean distclean
