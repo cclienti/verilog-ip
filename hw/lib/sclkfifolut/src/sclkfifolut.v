@@ -23,7 +23,7 @@ module sclkfifolut
     output reg [LOG2_FIFO_DEPTH:0] level,
 
     input wire                     ren,
-    output reg [FIFO_WIDTH-1:0]    rdata,
+    output wire [FIFO_WIDTH-1:0]   rdata,
     output reg                     rempty,
 
     input wire                     wen,
@@ -37,7 +37,7 @@ module sclkfifolut
    reg [LOG2_FIFO_DEPTH:0]   level_comb;
    reg                       rempty_comb, wfull_comb;
 
-   reg [FIFO_WIDTH-1:0]      ram[2**LOG2_FIFO_DEPTH-1:0];
+   (* ram_style = "distributed" *) reg [FIFO_WIDTH-1:0] ram[2**LOG2_FIFO_DEPTH-1:0];
 
    reg wen_protect, ren_protect;
 
@@ -62,12 +62,7 @@ module sclkfifolut
          ram[wptr] <= wdata;
       end
    end
-
-   always @(posedge clk) begin
-      if(ren_protect  == 1'b1) begin
-         rdata <= ram[rptr];
-      end
-   end
+   assign rdata = ram[rptr];
 
    //----------------------------------------------------------------
    // Manage pointers
