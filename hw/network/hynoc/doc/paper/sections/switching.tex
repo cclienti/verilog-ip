@@ -26,15 +26,60 @@ contention during payload transfer). The trade-off is a path-establishment laten
 proportional to the route length before the first payload flit is delivered at the
 destination.
 
+\subsection{End-to-End Latency Model}
+
+The end-to-end latency $L$ of a packet traversing $H$ hops with $P$ payload flits
+decomposes into two additive terms.
+
+\emph{Setup phase.} The routing flit propagates hop by hop; at each hop the
+ingress FSM reads the flit from the FIFO, asserts a request, and waits for a
+grant. Per-hop setup latency is:
+\begin{equation}
+  T_\text{hop} = T_\text{FIFO} + 1 + T_\text{PRRA}
+  \label{eq:thop}
+\end{equation}
+where $T_\text{FIFO}$ is the FIFO read latency (1~cycle in single-clock mode;
+$\approx$3~cycles in dual-clock mode due to the gray-code CDC synchronisation
+pipeline~\cite{dally1987}), the $+1$ accounts for the FSM decode cycle, and
+$T_\text{PRRA} \in \{1, 2\}$ is the arbiter grant latency controlled by the
+\texttt{PIPELINE} parameter.
+
+\emph{Transfer phase.} Once the path is established, $P$ payload flits are
+pipelined at one flit per hop: the first flit arrives at the destination after
+$H$ cycles, and the last after $H + P - 1$ cycles.
+
+The total latency is therefore:
+\begin{equation}
+  L = H \cdot (T_\text{FIFO} + 2 + T_\text{PRRA}) + P - 1
+  \label{eq:latency}
+\end{equation}
+
+In the minimum configuration (single-clock, \texttt{PIPELINE=0}):
+$L = 4H + P - 1$.
+In the maximum configuration (dual-clock, \texttt{PIPELINE=1}):
+$L = 7H + P - 1$.
+Both bounds are tight and deterministic: $L$ depends only on the
+statically-known route length $H$ and packet size $P$, with no
+congestion-dependent term once the path is open.
+
 \subsection{Static Route Management as an Alternative to Virtual Channels}
 
 Virtual channels were introduced primarily to: (1) provide additional logical paths
 to avoid deadlock; and (2) reduce head-of-line blocking under congestion. HyNoC
 addresses both goals differently.
 
-\textbf{Deadlock avoidance} is achieved through source routing itself: the
-complete path is determined by the sender and can be constrained to acyclic
-subgraphs (e.g., dimension-order routing) without any router-internal mechanism.
+\textbf{Deadlock avoidance.} Deadlock in wormhole networks arises from cyclic
+dependencies in the channel dependency graph (CDG)~\cite{dally1987}: a set of
+flits each waiting for a channel held by the next forms an unbreakable cycle.
+With source routing, the complete path is fixed at injection time by the sender.
+Deadlock freedom therefore reduces to a property of the \emph{route set}: if
+every injected route follows a routing function whose CDG is acyclic ---
+dimension-order routing being the canonical example --- no cycle can form,
+regardless of traffic load. This analysis is performed once, statically, by the
+compiler or network configurator; the router itself carries no deadlock-prevention
+logic. The guarantee is strictly stronger than VC-based approaches, where
+deadlock freedom depends on runtime routing decisions and requires the router to
+maintain channel state across multiple virtual queues.
 
 \textbf{Congestion avoidance} is addressed at two levels. First, the compiler or
 runtime system assigns routes across multiple available shortest paths, distributing

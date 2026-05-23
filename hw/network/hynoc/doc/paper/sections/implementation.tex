@@ -1,23 +1,49 @@
 \section{Implementation}
 \label{sec:implementation}
 
+\subsection{Repository Organization}
+
+HyNoC is part of a larger open-source IP library hosted at
+\url{https://github.com/cclienti/verilog-ip}. The repository is organized into
+two complementary layers under the \texttt{hw/} directory:
+
+\begin{itemize}
+  \item \texttt{hw/lib/}: a collection of reusable, standalone Verilog IP cores
+        covering arithmetic, memories, FIFOs, and arbiters. Each module ships
+        with its own parameterized RTL and self-checking testbench.
+  \item \texttt{hw/network/hynoc/}: the HyNoC subsystem, which builds on top of
+        \texttt{hw/lib/} and is described in detail in this paper.
+\end{itemize}
+
+HyNoC directly instantiates three library modules:
+\texttt{dclkfifolut} (dual-clock FIFO mapped to distributed LUT RAM, used in
+\texttt{hynoc\_ingress} and \texttt{hynoc\_local\_interface}),
+\texttt{sclkfifolut} (single-clock variant, used in single-clock mode), and
+\texttt{prra} together with its \texttt{prra\_lut} sub-module (the parallel
+round-robin arbiter, used in \texttt{hynoc\_egress}).
+These components are independently verified and reusable outside HyNoC.
+Relying on shared library primitives rather than vendor-specific FIFO or
+arbitration IP is what makes the design portable across FPGA families.
+
 \subsection{RTL Organization}
 
 The HyNoC RTL is written in Verilog and organized as follows:
 
 \begin{itemize}
-  \item \texttt{hynoc\_ingress}: ingress port (dual-clock FIFO, FSM, routing
-        protocol decoder for unicast and multicast);
-  \item \texttt{hynoc\_egress}: egress port (data multiplexer, PRRA);
+  \item \texttt{hynoc\_ingress}: ingress port (dual-clock FIFO via
+        \texttt{dclkfifolut}/\texttt{sclkfifolut}, routing FSM, unicast and
+        multicast protocol decoder);
+  \item \texttt{hynoc\_egress}: egress port (data multiplexer, PRRA via
+        \texttt{prra}/\texttt{prra\_lut});
   \item \texttt{hynoc\_router\_base}: parameterized router base (crossbar wiring,
         port instantiation);
   \item \texttt{hynoc\_router\_3p} / \texttt{hynoc\_router\_5p}: 3-port and
         5-port router instances with self-checking testbenches;
-  \item \texttt{hynoc\_local\_interface}: local interface for node attachment,
+  \item \texttt{hynoc\_local\_interface}: local interface for node attachment
+        (output FIFO via \texttt{dclkfifolut}/\texttt{sclkfifolut});
   \item \texttt{hynoc\_stream\_reader} / \texttt{hynoc\_stream\_writer}:
         simulation traffic generators used in testbenches to inject and
         check random packet streams.
-        DMA-style packet injection and reception modules.
 \end{itemize}
 
 The design is parameterized by: payload width (\texttt{PAYLOAD\_WIDTH}), FIFO
@@ -34,8 +60,12 @@ topology. The 5-port router testbenches cover five distinct traffic scenarios,
 including simultaneous multi-path transfers that verify the PRRA's starvation-free
 behavior.
 
-Simulation is supported under Icarus Verilog, ModelSim, and Verilator. Waveform
-inspection is facilitated by Python-based waveform configuration scripts.
+Simulation is supported under Icarus Verilog and ModelSim. Verilator is
+integrated in the build infrastructure for linting only (\texttt{--lint-only});
+full Verilator-based simulation is left as future work. Waveform inspection is
+automated using Wavedisp~\cite{wavedisp}, a Python module that generates
+simulator-specific signal configuration scripts from a single source description,
+targeting GTKWave, ModelSim, and Riviera-PRO.
 
 \subsection{FPGA Target}
 
@@ -81,12 +111,88 @@ PRRA lookup tables at elaboration time. While this is perfectly legal Verilog, s
 FPGA toolchains have limited support for such constructs in synthesizable RTL.
 
 Veriparse~\cite{veriparse} is a companion source-to-source transformation toolkit
-that addresses this issue. Its \texttt{veriflat} tool pre-processes a hierarchical
-design by flattening the module hierarchy, unrolling \texttt{generate} loops,
-constant-folding \texttt{localparam} expressions, and evaluating \texttt{initial}
-blocks into plain, widely-supported RTL. Applied to HyNoC, it produces a flat,
-fully unrolled Verilog file where each PRRA LUT entry is an explicit constant
-assignment — portable across any standard Verilog toolchain.
+that addresses this issue. Its \texttt{veriflat} tool performs a sequence of
+elaboration-time passes on the full module hierarchy: \emph{parameter and
+localparam inlining} substitutes all parameter values at instantiation sites;
+\emph{constant folding} and \emph{expression evaluation} reduce symbolic
+expressions to integer literals; \emph{loop unrolling} expands \texttt{for},
+\texttt{while}, and \texttt{repeat} constructs; \emph{generate-block elaboration}
+resolves \texttt{generate}/\texttt{endgenerate} sections; \emph{variable folding}
+evaluates \texttt{initial} blocks whose control flow is entirely determined by
+inlined constants; and \emph{dead-code elimination} prunes branches that can never
+be taken after constant propagation. The \emph{module flattener} then inlines the
+full instantiation hierarchy into a single, parameter-free module. The resulting
+RTL contains only plain assignments, registers, and combinational logic, with no
+remaining parametric expressions — portable across any standard Verilog toolchain.
+
+Figure~\ref{fig:veriflat-router} illustrates parameter inlining and constant
+folding on the module boundary: the parameterized \texttt{hynoc\_router\_5p}
+declaration, whose port widths are symbolic expressions of \texttt{PAYLOAD\_WIDTH}
+and \texttt{LOG2\_FIFO\_DEPTH}, becomes a flat declaration with all widths
+resolved to integer literals. The 5-port, 32-bit configuration yields
+\texttt{[32:0]} data buses and \texttt{[5:0]} FIFO level signals in the output.
+
+\begin{figure}[t]
+\textbf{Before (parameterized):}
+\begin{lstlisting}
+module hynoc_router_5p
+  #(parameter PAYLOAD_WIDTH   = 32,
+    parameter LOG2_FIFO_DEPTH = 5, ...)
+   (...
+    input  wire [PAYLOAD_WIDTH:0]   port0_ingress_data,
+    output wire [LOG2_FIFO_DEPTH:0] port0_ingress_fifo_level,
+    ...);
+\end{lstlisting}
+\textbf{After \texttt{veriflat} (parameters inlined):}
+\begin{lstlisting}
+module hynoc_router_5p
+   (...
+    input  wire [32:0] port0_ingress_data,
+    output wire [5:0]  port0_ingress_fifo_level,
+    ...);
+\end{lstlisting}
+\caption{\texttt{veriflat} resolves parameterized port widths into constants.}
+\label{fig:veriflat-router}
+\end{figure}
+
+Figure~\ref{fig:veriflat-prra} shows a complementary transformation class
+supported by \texttt{veriflat}: variable folding combined with loop unrolling.
+The \texttt{initial} block of \texttt{prra\_lut} — which computes the
+round-robin priority table through nested \texttt{for} loops and modular
+arithmetic over inlined constants — is fully evaluated at elaboration time;
+the resulting \texttt{initial} block contains only explicit constant assignments.
+
+\begin{figure}[t]
+\textbf{Before (algorithmic \texttt{initial} block):}
+\begin{lstlisting}
+initial begin
+  lut[0] = STATE_OFFSET[LOG2_WIDTH-1:0];
+  for (j=1; j<lut_length; j=j+1) begin
+    lut_index = j[WIDTH-1:0];
+    value = -1;
+    for (k=0; k<WIDTH; k=k+1) begin
+      l = (k + STATE_OFFSET + 1) % WIDTH;
+      if (lut_index[l] == 1'b1)
+        if (value == -1) value = l;
+    end
+    lut[j] = value[LOG2_WIDTH-1:0];
+  end
+end
+\end{lstlisting}
+\textbf{After \texttt{veriflat} (pre-computed, \texttt{STATE\_OFFSET=0}):}
+\begin{lstlisting}
+initial begin
+  lut[0]=2'd0; lut[1]=2'd0; lut[2]=2'd1; lut[3]=2'd1;
+  lut[4]=2'd2; lut[5]=2'd2; lut[6]=2'd1; lut[7]=2'd1;
+  lut[8]=2'd3; lut[9]=2'd3; lut[10]=2'd1; lut[11]=2'd1;
+  lut[12]=2'd2; lut[13]=2'd2; lut[14]=2'd1; lut[15]=2'd1;
+end
+\end{lstlisting}
+\caption{\texttt{veriflat} evaluates the \texttt{prra\_lut} \texttt{initial}
+         block: nested loops and modular arithmetic are replaced by 16 explicit
+         constant assignments (4-port arbiter, \texttt{STATE\_OFFSET=0}).}
+\label{fig:veriflat-prra}
+\end{figure}
 
 The flattened output also benefits simulation: a single-module design with no
 hierarchy reduces simulator overhead and can significantly speed up large testbench
@@ -95,8 +201,11 @@ the LGPLv3 license.
 
 \subsection{License}
 
-HyNoC is released as open-source hardware under the
-\textbf{CERN-OHL-P~v2}~license~\cite{cernohl}, a permissive open hardware license.
-The complete source, including RTL, testbenches, documentation, and build
-infrastructure, is available at:
+HyNoC has been in development since 2013, as reflected in the copyright headers
+of every RTL source file. The source code was first published in 2019; the
+repository was formally placed under the
+\textbf{CERN-OHL-P~v2}~license~\cite{cernohl} in 2026. This permissive open
+hardware license allows use, modification, and redistribution with no copyleft
+obligation on the end product. The complete source, including RTL, testbenches,
+documentation, and build infrastructure, is available at:
 \url{https://github.com/cclienti/verilog-ip}.
