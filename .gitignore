@@ -43,6 +43,9 @@ doc/logo/*png
 # Verilator
 ##################
 **/project/obj_dir/
+*.o
+*.a
+*.d
 
 ##################
 # Modelsim
