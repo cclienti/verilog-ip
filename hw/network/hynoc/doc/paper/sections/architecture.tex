@@ -270,6 +270,36 @@ meaning only $N \in \{3, 5, 9\}$ are valid port counts. This constraint is enfor
 at elaboration time in the RTL. The relative hop ID is computed counterclockwise
 from the ingress port: hop~0 always refers to the next counterclockwise egress,
 and the ingress FSM resolves the relative ID into a one-hot physical egress request.
+
+Given a flit of $K+1$ bits, a 4-bit Proto field, and an \texttt{INDEX\_WIDTH}-bit
+index field, the number of available hop bits is $K - 3 - \mathtt{INDEX\_WIDTH}$,
+and the maximum hop count is:
+\begin{equation}
+  H_\text{max} = \left\lfloor \frac{K - 3 - \mathtt{INDEX\_WIDTH}}
+                                    {\lceil\log_2(N-1)\rceil} \right\rfloor
+  \label{eq:hmax}
+\end{equation}
+
+Table~\ref{tab:hops} gives the resulting values for the three valid router sizes
+in the default configuration ($K=32$, $\mathtt{INDEX\_WIDTH}=4$), for both
+unicast and multicast routing (which uses $N-1$ bits per hop instead of
+$\lceil\log_2(N-1)\rceil$).
+
+\begin{table}[h]
+\centering
+\caption{Maximum hop count per routing mode ($K=32$, \texttt{INDEX\_WIDTH}=4)}
+\label{tab:hops}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Router & \multicolumn{2}{c}{Unicast} & \multicolumn{2}{c}{Multicast} \\
+       & bits/hop & $H_\text{max}$ & bits/hop & $H_\text{max}$ \\
+\midrule
+3-port & 1 & 24 & 2 & 12 \\
+5-port & 2 & 12 & 4 &  6 \\
+9-port & 3 &  8 & 8 &  3 \\
+\bottomrule
+\end{tabular}
+\end{table}
 \subsubsection{Multicast Source Routing}
 
 In multicast mode, each hop field is a bitmask of width $N-1$, where each bit

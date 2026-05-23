@@ -13,6 +13,16 @@
 \usepackage{xcolor}
 \usepackage{hyperref}
 \usepackage{microtype}
+\usepackage{listings}
+\lstset{
+  basicstyle=\ttfamily\scriptsize,
+  columns=flexible,
+  keepspaces=true,
+  frame=single,
+  xleftmargin=2pt,
+  xrightmargin=2pt,
+  framexleftmargin=2pt,
+}
 
 \graphicspath{{../datasheet/figures/}{../dev_guide/source/figures/}}
 
@@ -40,6 +50,12 @@ Computing on FPGA}
 \input{sections/target}
 \input{sections/implementation}
 \input{sections/conclusion}
+
+\section*{Acknowledgment}
+The author used Claude Sonnet~4.6 (Anthropic) as an AI writing assistant during
+the preparation of this manuscript, including for drafting and revising text,
+literature analysis, and \LaTeX{} editing. All technical content, claims, and
+results have been verified by the author.
 
 \bibliographystyle{IEEEtran}
 \bibliography{references}
