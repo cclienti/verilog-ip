@@ -4,7 +4,8 @@
 TOP_MODULE        ?= hynoc_router_base
 TOP_FILE          ?= ../src/hynoc_router_base.v
 TOP_DEPS          ?= ../../hynoc_ingress ../../hynoc_egress
-
+VIVADO_BOARDFILE  := $(abspath vivado.xdc)
+VIVADO_PART       := xc7z020clg484-1  #xc7k160tfbg484-2
 
 include ../../../../Makefiles/common.mk
 include ../../../../Makefiles/verilator.mk

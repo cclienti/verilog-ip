@@ -73,6 +73,7 @@ doc/logo/*png
 **/project/*.rpt
 **/project/vivado-project.tcl
 **/project/vivado-gen-post-syn.tcl
+**/project/vivado-gen-post-impl.tcl
 **/project/vivado-*/
 
 ##################
