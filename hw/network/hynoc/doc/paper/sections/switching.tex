@@ -132,7 +132,8 @@ diversity proportionally to the added area.
 Following~\cite{mello2005}, router area scales linearly with the number of VCs
 (each VC requires an additional input buffer per port). An $8\times 8$ mesh with
 4~VCs consumes the equivalent area of a $16\times 16$ mesh without VCs, yet the
-latter offers 66$\times$ more shortest paths between corner nodes. On FPGA, where
+latter offers over 45,000$\times$ more shortest paths between corner nodes
+(Table~\ref{tab:paths}: 155,117,520 vs.\ 3,432). On FPGA, where
 block RAMs are scarce, minimizing buffer count is a primary concern.
 
 The VC area model is itself optimistic in two respects: (1) the crossbar logic and

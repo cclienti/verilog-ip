@@ -6,6 +6,3 @@ include ../../../../../../doc/makefiles/odgtopdf.mk
 PDF_FILES = $(ODG_FILES:.odg=.pdf)
 include ../../../../../../doc/makefiles/pdftopng.mk
 include ../../../../../../doc/makefiles/pdftoeps.mk
-
-clean::
-	rm -f $(FROM_PYTHON)

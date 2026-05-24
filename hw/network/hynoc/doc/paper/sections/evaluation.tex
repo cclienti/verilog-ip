@@ -12,7 +12,7 @@ HyNoC mesh, each targeting a different evaluation goal:
         GeMV at LLaMA~3~8B FFN up-projection dimensions
         ($14336\times4096$) with Q8\_0 weights and BF16 activations
         demonstrates the network under realistic AI inference workload.
-  \item \textbf{Four-master throughput scaling.}  The same LLaMA-scale
+  \item \textbf{Four-master throughput scaling.}  The same LLaMA~3~8B-scale
         benchmark is replicated across four corner masters, each owning a
         $2\times2$ quadrant, to quantify the speedup from distributed
         injection.
@@ -140,7 +140,9 @@ computation completes), yielding clean linear fits.
 \footnotesize
 \setlength{\tabcolsep}{4pt}
 \caption{Return-path latency ($P=2$) vs.\ hop count.
-         $\Delta$ = Dual$-$Single.}
+         Dual = dual-clock FIFO (\texttt{SINGLE\_CLOCK\_ROUTER=0});
+         Single = single-clock FIFO (\texttt{SINGLE\_CLOCK\_ROUTER=1});
+         $\Delta$ = Dual$-$Single (cycles).}
 \label{tab:latency}
 \begin{tabular}{@{}rrrrrrrr@{}}
 \toprule
@@ -252,12 +254,14 @@ flit --- $P_\text{ret}=2$ payload flits, identical to the latency experiment.
 $14336/16 = 896$ output rows; the master at $(0,0)$ also computes 896~rows
 locally.  Workers decode Q8\_0 weights to FP32 and accumulate the dot product
 in FP32.  Local computation is modeled as instantaneous: injecting one forward
-packet at 3202~flit-cycles already exceeds the dot-product budget of a real
-VLIW unit over 4096~elements, so arithmetic is not the bottleneck.  All
+packet takes 3202~clock cycles (one per flit), which already exceeds the
+dot-product budget of a real VLIW unit over 4096~elements, so arithmetic
+is not the bottleneck.  All
 14\,336~results are verified for exact FP32 equality against a software
 reference.
 
 \textbf{Throughput.}  The simulation completes in \textbf{43\,102\,246~cycles}
+(dual-clock FIFO, \texttt{SINGLE\_CLOCK\_ROUTER=0})
 with the master's single egress port sustaining near-100\% injection throughout.
 Link utilization (Table~\ref{tab:links-llama}) shows the consequence of this
 sustained injection: the first East-bound segment of row~0 reaches 79.9\%,
@@ -267,7 +271,11 @@ subsequent segment.  South-bound links absorb $\tfrac{1}{4}$ of the total
 traffic each.  Return-path links (West and North) are negligible at $<$0.1\%.
 The overall average of \textbf{6.7\%} reflects the single-port injection
 bottleneck: 47~of 48~directed links are underutilised while one port
-saturates.
+saturates.  Single-clock mode (\texttt{SINGLE\_CLOCK\_ROUTER=1}) would reduce
+the cycle count by factor $9/12=0.75$ to approximately 32\,M cycles, as
+predicted by the validated latency model~(\ref{eq:lfit-single}); the $5\times$
+speedup of the four-master configuration is mode-independent since both
+configurations use the same clock setting.
 
 \begin{table}[h]
 \centering
@@ -396,7 +404,7 @@ East+South to $(1,1)$.
 (row $mQ + t(N_W+1)$ in round~$t$, for $t = 0,\ldots,895$), for a total
 of 896 local rows per master and 3584 across all four.  Local dot products
 are modeled as instantaneous: a VLIW unit over $D_\text{in}=4096$ elements
-completes well within the $3\times3202$-cycle injection window per round,
+completes well within the $3\times3202$ clock-cycle injection window per round,
 so arithmetic is not on the critical path.  All 14\,336 results are verified
 for exact FP32 equality against a software reference.
 
