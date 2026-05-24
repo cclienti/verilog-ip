@@ -130,9 +130,9 @@ vendor-specific and not accessible as a soft IP.
 Hermes~\cite{moraes2004}, the direct ancestor of HyNoC, demonstrated low-area
 wormhole switching on FPGA with a 2D mesh topology and XY routing. Its
 asynchronous variant Hermes-A~\cite{pontes2011} explored per-port independent
-clock domains through asynchronous handshaking, an approach HyNoC generalizes
-using synchronous dual-clock FIFOs that bridge arbitrary clock domain boundaries
-at each ingress port.
+clock domains through asynchronous handshaking. HyNoC addresses the same
+requirement using synchronous dual-clock FIFOs, which bridge arbitrary clock
+domain boundaries at each ingress port without requiring asynchronous logic.
 
 HyNoC targets a distinct point in this space: topology-agnostic source routing
 with bounded latency, no virtual channels, and LUT-RAM-based FIFOs that avoid
