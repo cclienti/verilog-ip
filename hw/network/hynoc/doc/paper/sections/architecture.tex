@@ -88,13 +88,13 @@ avoiding any broadcast of control information.
 The standard sequential round-robin FSM scans requests one by one in a fixed
 order, introducing up to $N-1$ cycles of latency before granting a pending request
 (Figure~\ref{fig:prra-fsm}). HyNoC replaces this with a \textbf{parallel
-round-robin arbiter (PRRA)}: a set of $N-1$ combinatorial LUT-based state functions
+  round-robin arbiter (PRRA)}: a set of $N-1$ combinatorial LUT-based state functions
 that evaluate all pending requests simultaneously and jump directly to the winning
 state, regardless of how many ports are idle.
 
 \begin{figure}[t]
   \centering
-  \includegraphics[width=\columnwidth]{hynoc_parallel_round_robin_fsm}
+  \includegraphics[width=0.75\columnwidth]{hynoc_parallel_round_robin_fsm}
   \caption{Parallel Round-Robin FSM: direct state transitions avoid scanning idle ports.}
   \label{fig:prra-fsm}
 \end{figure}
@@ -109,7 +109,7 @@ preventing spurious re-arbitration.
 
 \begin{figure}[t]
   \centering
-  \includegraphics[width=\columnwidth]{hynoc_prra_arch}
+  \includegraphics[width=0.75\columnwidth]{hynoc_prra_arch}
   \caption{PRRA architecture: $N-1$ parallel LUTs, one per priority offset.}
   \label{fig:prra-arch}
 \end{figure}
@@ -166,49 +166,49 @@ space for future sub-type extensions. Figure~\ref{fig:pkt-min} shows the smalles
 valid packet: one routing flit (stop bit must be zero) followed by one payload flit.
 
 \begin{figure}[t]
-\centering
-\begin{bytefield}[bitwidth=0.55em, endianness=big]{33}
-  \bitheader{32,31,28,0} \\
-  \bitbox{1}{\tiny 0} & \bitbox{4}{\tiny Proto} & \bitbox{28}{\small Routing flit (hops + index)} \\
-  \bitbox{1}{\tiny 0} & \bitbox{32}{\small Payload flit} \\
-  \bitbox{1}{\tiny $\vdots$} & \bitbox{32}{\small $\cdots$} \\
-  \bitbox{1}{\tiny 1} & \bitbox{32}{\small Last payload flit} \\
-\end{bytefield}
-\caption{Packet structure: routing flit(s) followed by payload flits.
-         The MSB is the stop bit (0=intermediate, 1=last flit).}
-\label{fig:pkt-struct}
+  \centering
+  \begin{bytefield}[bitwidth=0.55em, endianness=big]{33}
+    \bitheader{32,31,28,0} \\
+    \bitbox{1}{\tiny 0} & \bitbox{4}{\tiny Proto} & \bitbox{28}{\small Routing flit (hops + index)} \\
+    \bitbox{1}{\tiny 0} & \bitbox{32}{\small Payload flit} \\
+    \bitbox{1}{\tiny $\vdots$} & \bitbox{32}{\small $\cdots$} \\
+    \bitbox{1}{\tiny 1} & \bitbox{32}{\small Last payload flit} \\
+  \end{bytefield}
+  \caption{Packet structure: routing flit(s) followed by payload flits.
+    The MSB is the stop bit (0=intermediate, 1=last flit).}
+  \label{fig:pkt-struct}
 \end{figure}
 
 \begin{figure}[t]
-\centering
-\begin{bytefield}[bitwidth=0.55em, endianness=big]{33}
-  \bitheader{32,31,28,0} \\
-  \bitbox{1}{\tiny 0} & \bitbox{4}{\tiny Proto} & \bitbox{28}{\small Routing flit (hops + index)} \\
-  \bitbox{1}{\tiny 1} & \bitbox{32}{\small Last payload flit} \\
-\end{bytefield}
-\caption{Minimal HyNoC packet: one routing flit (stop bit = 0) followed by
-         one payload flit (stop bit = 1). The routing flit stop bit must be
-         zero since the ingress FSM rejects routing flits with stop bit set.}
-\label{fig:pkt-min}
+  \centering
+  \begin{bytefield}[bitwidth=0.55em, endianness=big]{33}
+    \bitheader{32,31,28,0} \\
+    \bitbox{1}{\tiny 0} & \bitbox{4}{\tiny Proto} & \bitbox{28}{\small Routing flit (hops + index)} \\
+    \bitbox{1}{\tiny 1} & \bitbox{32}{\small Last payload flit} \\
+  \end{bytefield}
+  \caption{Minimal HyNoC packet: one routing flit (stop bit = 0) followed by
+    one payload flit (stop bit = 1). The routing flit stop bit must be
+    zero since the ingress FSM rejects routing flits with stop bit set.}
+  \label{fig:pkt-min}
 \end{figure}
 
 The routing flit carries a 4-bit \emph{Proto} field (Table~\ref{tab:proto}):
 
 \begin{table}[h]
-\centering
-\footnotesize
-\caption{Supported routing protocols}
-\label{tab:proto}
-\begin{tabular}{@{}ll@{}}
-\toprule
-Proto & Routing method \\
-\midrule
-\texttt{4'b0000} & Unicast circuit switch \\
-\texttt{4'b0001} & Multicast circuit switch \\
-\texttt{4'b1000} & XY routing (slot reserved, not yet implemented) \\
-\texttt{4'b1111} & Forbidden \\
-\bottomrule
-\end{tabular}
+  \centering
+  \footnotesize
+  \caption{Supported routing protocols}
+  \label{tab:proto}
+  \begin{tabular}{@{}ll@{}}
+    \toprule
+    Proto & Routing method \\
+    \midrule
+    \texttt{4'b0000} & Unicast circuit switch \\
+    \texttt{4'b0001} & Multicast circuit switch \\
+    \texttt{4'b1000} & XY routing (slot reserved, not yet implemented) \\
+    \texttt{4'b1111} & Forbidden \\
+    \bottomrule
+  \end{tabular}
 \end{table}
 
 The proto value \texttt{4'b1000} is reserved for future XY routing support.
@@ -228,32 +228,32 @@ zero before path opening, the routing flit is not forwarded downstream. The
 relative hop encoding is illustrated in Figure~\ref{fig:hops}.
 
 \begin{figure}[t]
-\centering
-\begin{bytefield}[bitwidth=0.75em, endianness=big]{33}
-  \bitheader{32,31,28,27,26,5,4,3,0} \\
-  \bitbox{1}{\tiny 0} &
-  \bitbox{4}{\small Proto} &
-  \bitbox{2}{\small H11} &
-  \bitbox{20}{\small Hops 10 -- 1} &
-  \bitbox{2}{\small H0} &
-  \bitbox{4}{\small Index} \\
-\end{bytefield}
-\caption{Network Hops flit structure for a 5-port, 32-bit router (unicast,
-         12 hops of 2~bits, 4-bit index). The layout from MSB to LSB is:
-         stop bit, Proto, \emph{Gap} (if any), Hop $H-1$ \ldots Hop~0, Index.
-         The Gap absorbs unused bits between the Proto field and the first hop,
-         and is zero in this particular configuration.
-         The \emph{Index} field (initialized to $H-1$) selects the active hop.}
-\label{fig:net-hops}
+  \centering
+  \begin{bytefield}[bitwidth=0.75em, endianness=big]{33}
+    \bitheader{32,31,28,27,26,5,4,3,0} \\
+    \bitbox{1}{\tiny 0} &
+    \bitbox{4}{\small Proto} &
+    \bitbox{2}{\small H11} &
+    \bitbox{20}{\small Hops 10 -- 1} &
+    \bitbox{2}{\small H0} &
+    \bitbox{4}{\small Index} \\
+  \end{bytefield}
+  \caption{Network Hops flit structure for a 5-port, 32-bit router (unicast,
+    12 hops of 2~bits, 4-bit index). The layout from MSB to LSB is:
+    stop bit, Proto, \emph{Gap} (if any), Hop $H-1$ \ldots Hop~0, Index.
+    The Gap absorbs unused bits between the Proto field and the first hop,
+    and is zero in this particular configuration.
+    The \emph{Index} field (initialized to $H-1$) selects the active hop.}
+  \label{fig:net-hops}
 \end{figure}
 \begin{figure}[t]
   \centering
   \includegraphics[width=0.85\columnwidth]{hynoc_hops_encoding}
   \caption{Relative hop encoding for a $3\times 3$ mesh network built with 5-port
-           routers. The hop list $[0 \to 2 \to 0 \to 1 \to 2]$ establishes a
-           path from node $(0,0)$ to node $(2,2)$. Each hop ID is relative to
-           the ingress port: hop~0 denotes the next counterclockwise egress,
-           excluding the ingress port itself.}
+    routers. The hop list $[0 \to 2 \to 0 \to 1 \to 2]$ establishes a
+    path from node $(0,0)$ to node $(2,2)$. Each hop ID is relative to
+    the ingress port: hop~0 denotes the next counterclockwise egress,
+    excluding the ingress port itself.}
   \label{fig:hops}
 \end{figure}
 
@@ -277,7 +277,7 @@ index field, the number of available hop bits is $K - 3 - \mathtt{INDEX\_WIDTH}$
 and the maximum hop count is:
 \begin{equation}
   H_\text{max} = \left\lfloor \frac{K - 3 - \mathtt{INDEX\_WIDTH}}
-                                    {\lceil\log_2(N-1)\rceil} \right\rfloor
+  {\lceil\log_2(N-1)\rceil} \right\rfloor
   \label{eq:hmax}
 \end{equation}
 
@@ -287,20 +287,20 @@ unicast and multicast routing (which uses $N-1$ bits per hop instead of
 $\lceil\log_2(N-1)\rceil$).
 
 \begin{table}[h]
-\centering
-\footnotesize
-\caption{Maximum hop count per routing mode ($K=32$, \texttt{INDEX\_WIDTH}=4)}
-\label{tab:hops}
-\begin{tabular}{@{}lrrrr@{}}
-\toprule
-Router & \multicolumn{2}{c}{Unicast} & \multicolumn{2}{c}{Multicast} \\
-       & bits/hop & $H_\text{max}$ & bits/hop & $H_\text{max}$ \\
-\midrule
-3-port & 1 & 24 & 2 & 12 \\
-5-port & 2 & 12 & 4 &  6 \\
-9-port & 3 &  8 & 8 &  3 \\
-\bottomrule
-\end{tabular}
+  \centering
+  \footnotesize
+  \caption{Maximum hop count per routing mode ($K=32$, \texttt{INDEX\_WIDTH}=4)}
+  \label{tab:hops}
+  \begin{tabular}{@{}lrrrr@{}}
+    \toprule
+    Router & \multicolumn{2}{c}{Unicast} & \multicolumn{2}{c}{Multicast} \\
+    & bits/hop & $H_\text{max}$ & bits/hop & $H_\text{max}$ \\
+    \midrule
+    3-port & 1 & 24 & 2 & 12 \\
+    5-port & 2 & 12 & 4 &  6 \\
+    9-port & 3 &  8 & 8 &  3 \\
+    \bottomrule
+  \end{tabular}
 \end{table}
 \subsubsection{Multicast Source Routing}
 
