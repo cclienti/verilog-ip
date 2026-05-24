@@ -21,6 +21,17 @@ different frequencies. The multiple local interface mechanism offers a practical
 alternative to virtual channels when a node requires simultaneous non-blocking
 communication with multiple peers.
 
+Verilator co-simulation on a $4\times4$ mesh validates the analytical latency
+model: measured return-path latency satisfies $L=12H+P-1$ (dual-clock) and
+$L=9H+P-1$ (single-clock), with the $3H$ gap between modes explained exactly
+by the CDC pipeline overhead eliminated in single-clock operation.  A
+LLaMA~3~8B FFN up-projection benchmark (Q8\_0 weights, BF16 activations,
+$14336\times4096$) with a single master completes in 43\,M cycles; a
+four-master quadrant configuration, where each corner master owns a $2\times2$
+traffic-isolated quadrant, reduces this to 8.6\,M cycles---a $5\times$ speedup
+with zero cross-quadrant link utilization, confirming the deterministic
+throughput scaling predicted by the link-disjoint topology design.
+
 HyNoC is released as open-source hardware under the CERN-OHL-P~v2 license,
 providing a complete RTL implementation with simulation testbenches and FPGA board
 support.

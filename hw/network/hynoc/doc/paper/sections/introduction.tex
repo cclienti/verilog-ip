@@ -39,7 +39,10 @@ The contributions of this paper are:
   \item An open-source RTL implementation targeting both simulation and FPGA
         synthesis, complemented by the Veriparse toolkit~\cite{veriparse} for
         source-to-source elaboration of advanced RTL constructs and faster
-        simulation.
+        simulation;
+  \item Verilator co-simulation results validating the analytical latency model
+        and benchmarking a LLaMA~3~8B-scale distributed GeMV, demonstrating a
+        $5\times$ throughput gain from a four-master quadrant configuration.
 \end{itemize}
 
 The remainder of the paper is organized as follows.
@@ -48,5 +51,6 @@ Section~\ref{sec:architecture} describes the HyNoC architecture.
 Section~\ref{sec:switching} details the hybrid switching model and the rationale
 for avoiding virtual channels.
 Section~\ref{sec:target} discusses the target application domain.
-Section~\ref{sec:implementation} presents implementation details, and
+Section~\ref{sec:implementation} presents implementation details.
+Section~\ref{sec:evaluation} reports simulation results, and
 Section~\ref{sec:conclusion} concludes.
