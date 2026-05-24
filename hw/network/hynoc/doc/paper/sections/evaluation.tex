@@ -1,12 +1,24 @@
 \section{Evaluation: Distributed Matrix-Vector Multiplication}
 \label{sec:evaluation}
 
-To validate the latency model of Section~\ref{sec:switching} and to demonstrate
-HyNoC in a concrete distributed computing scenario, we implemented a
-Verilator~\cite{verilator}-based simulation of a $4\times4$ mesh executing a
-distributed matrix-vector multiplication.  The benchmark covers the full
-communication cycle: data scatter from a master, computation at worker nodes, and
-result gather back to the master.
+We present three Verilator~\cite{verilator}-based simulations on a $4\times4$
+HyNoC mesh, each targeting a different evaluation goal:
+\begin{enumerate}
+  \item \textbf{Latency model validation.}  A lightweight GeMV with a
+        $16\times4$ matrix produces clean per-hop measurements that validate
+        the analytical model of Section~\ref{sec:switching}.
+  \item \textbf{LLaMA~3~8B FFN benchmark (single master).}  A full-scale
+        GeMV at LLaMA~3~8B FFN up-projection dimensions
+        ($14336\times4096$) with Q8\_0 weights and BF16 activations
+        demonstrates the network under realistic AI inference workload.
+  \item \textbf{Four-master throughput scaling.}  The same LLaMA-scale
+        benchmark is replicated across four corner masters, each owning a
+        $2\times2$ quadrant, to quantify the speedup from distributed
+        injection.
+\end{enumerate}
+All three benchmarks share the same 16-router $4\times4$ mesh and cover the
+full communication cycle: data scatter from the master(s), computation at
+worker nodes, and result gather.
 
 \subsection{Network Topology}
 
@@ -199,7 +211,237 @@ East-bound utilization halves at each column of row~0, consistent with XY
 routing: each router delivers one packet to its local worker and forwards the
 rest eastward.  The overall average of 3.3\% reflects the sequential master
 bottleneck: with a single sender issuing one packet at a time, most links are
-idle.  In a multi-master or pipelined injection scenario, utilization scales
-proportionally with the number of concurrent senders, and the rich path
-diversity of the mesh (20 shortest paths between corner nodes,
-Table~\ref{tab:paths}) provides ample room for congestion distribution.
+idle.
+
+\subsection{LLaMA~3~8B FFN Benchmark — Single Master}
+\label{sec:large-matmul}
+
+To assess HyNoC under a realistic AI inference workload we scale the benchmark
+to the LLaMA~3~8B~\cite{llama3} FFN up-projection layer:
+$\mathbf{y}=W\mathbf{x}$ with $W\in\mathbb{R}^{14336\times4096}$ and
+$\mathbf{x}\in\mathbb{R}^{4096}$.  Weights are stored in the Q8\_0 format
+used by llama.cpp~\cite{llama_cpp}: 8-bit integers with one FP16 scale per
+block of 32 weights.  Activations are BF16, packed two per 32-bit flit.
+
+\textbf{Forward packet} (master to worker, for one output row): one routing
+flit, one tag flit, 128~Q8\_0 blocks~$\times$~(1~scale flit + 8~weight flits),
+and 2048~BF16 activation flits, totaling $P_\text{fwd}=3201$ payload flits.
+
+\textbf{Return packet}: one routing flit, one tag flit, and one FP32 result
+flit --- $P_\text{ret}=2$ payload flits, identical to the latency experiment.
+
+\textbf{Computation model.}  Each of the 15~worker nodes is assigned
+$14336/16 = 896$ output rows; the master at $(0,0)$ also computes 896~rows
+locally.  Workers decode Q8\_0 weights to FP32 and accumulate the dot product
+in FP32.  Local computation is modeled as instantaneous: injecting one forward
+packet at 3202~flit-cycles already exceeds the dot-product budget of a real
+VLIW unit over 4096~elements, so arithmetic is not the bottleneck.  All
+14\,336~results are verified for exact FP32 equality against a software
+reference.
+
+\textbf{Throughput.}  The simulation completes in \textbf{43\,102\,246~cycles}
+with the master's single egress port sustaining near-100\% injection throughout.
+Link utilization (Table~\ref{tab:links-llama}) shows the consequence of this
+sustained injection: the first East-bound segment of row~0 reaches 79.9\%,
+carrying packets bound for all 12~workers that require at least one East hop.
+Utilization drops in proportion to the number of workers remaining on each
+subsequent segment.  South-bound links absorb $\tfrac{1}{4}$ of the total
+traffic each.  Return-path links (West and North) are negligible at $<$0.1\%.
+The overall average of \textbf{6.7\%} reflects the single-port injection
+bottleneck: 47~of 48~directed links are underutilised while one port
+saturates.
+
+\begin{table}[h]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\caption{Link utilization (\%) by direction, LLaMA~3~8B single-master run
+         (43\,102\,246~cycles).  Seg.\,$k$: $k$-th segment from master $(0,0)$.
+         Return-path links ($<$0.1\%) omitted.}
+\label{tab:links-llama}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Direction & Seg.\,1 & Seg.\,2 & Seg.\,3 \\
+\midrule
+$\to$East, row\,0  & 79.9 & 53.2 & 26.6 \\
+$\to$South, col\,0 & 20.0 & 13.3 &  6.7 \\
+$\to$South, col\,1 & 20.0 & 13.3 &  6.7 \\
+$\to$South, col\,2 & 20.0 & 13.3 &  6.7 \\
+$\to$South, col\,3 & 20.0 & 13.3 &  6.7 \\
+\midrule
+\multicolumn{4}{@{}l}{\textbf{Overall average: 6.7\%}} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The load on each segment is strictly proportional to the number of destinations
+reachable through it (East: 12, 8, 4 workers; South per column: 3, 2, 1
+workers), with no hot-spots beyond the first East segment.  Nonetheless, the
+bottleneck remains the single injection port, motivating the multi-master
+extension.
+
+\subsection{Four-Master Quadrant Configuration}
+\label{sec:4master}
+
+The single master at $(0,0)$ creates an injection bottleneck: all 15 forward
+packets per round enter through one port, and all result packets return to
+that same port.  We now distribute injection across the four corner nodes by
+assigning each a $2\times2$ quadrant.
+
+Table~\ref{tab:quadrants} lists the assignment.  Master~$m$ handles
+$Q = D_\text{out}/4 = 3584$ output rows.  With $N_W=3$ workers per quadrant
+and one row computed locally per round, each master executes
+$\mathrm{ROUNDS}=Q/(N_W+1)=896$ rounds---the same count as the single-master
+case---but all four proceed simultaneously.
+
+\begin{table}[h]
+\centering
+\footnotesize
+\caption{Quadrant assignment: masters, workers, and row ranges.}
+\label{tab:quadrants}
+\begin{tabular}{@{}clll@{}}
+\toprule
+Master & Position & Workers & Rows \\
+\midrule
+$M_0$ & $(0,0)$ & $(0,1),(1,0),(1,1)$ & $0$--$3583$ \\
+$M_1$ & $(0,3)$ & $(0,2),(1,3),(1,2)$ & $3584$--$7167$ \\
+$M_2$ & $(3,0)$ & $(3,1),(2,0),(2,1)$ & $7168$--$10751$ \\
+$M_3$ & $(3,3)$ & $(3,2),(2,3),(2,2)$ & $10752$--$14335$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The structural property exploited here is \emph{link disjointness}: every XY
+route from a corner master to its three workers stays within the $2\times2$
+quadrant.  No packet crosses the horizontal midline (between rows~1 and~2) or
+the vertical midline (between columns~1 and~2), so the four quadrants are
+traffic-isolated by construction, without any runtime coordination.
+
+Figure~\ref{fig:mesh4x4-4m} illustrates the topology and the three routes
+from $M_0$: one East hop to $(0,1)$, one South hop to $(1,0)$, and
+East+South to $(1,1)$.
+
+\begin{figure}[t]
+  \centering
+  \begin{tikzpicture}[
+    rtr/.style={circle, draw, font=\scriptsize, inner sep=1pt, minimum size=22pt},
+    mst/.style={circle, draw, fill=black!18, font=\scriptsize\bfseries, inner sep=1pt,
+                minimum size=22pt},
+    >=stealth,
+    route/.style={->, line width=1.4pt, color=black!65}
+  ]
+  \def\S{1.6}
+  % Horizontal links
+  \foreach \row in {0,...,3}{
+    \foreach \col in {0,...,2}{
+      \draw[<->] ({\col*\S+0.16},{-\row*\S}) -- ({\col*\S+\S-0.16},{-\row*\S});
+    }
+  }
+  % Vertical links
+  \foreach \row in {0,...,2}{
+    \foreach \col in {0,...,3}{
+      \draw[<->] ({\col*\S},{-\row*\S-0.16}) -- ({\col*\S},{-\row*\S-\S+0.16});
+    }
+  }
+  % Quadrant boundary (dashed)
+  \draw[dashed, black!40, thick]
+    ({1.5*\S},{0.35}) -- ({1.5*\S},{-3.5*\S});
+  \draw[dashed, black!40, thick]
+    ({-0.35},{-1.5*\S}) -- ({3.5*\S},{-1.5*\S});
+  % All nodes
+  \foreach \row in {0,...,3}{
+    \foreach \col in {0,...,3}{
+      \node[rtr] at ({\col*\S},{-\row*\S}) {\row,\col};
+    }
+  }
+  % Corner masters
+  \node[mst] at (0,0)              {\textbf{M0}};
+  \node[mst] at ({3*\S},0)        {\textbf{M1}};
+  \node[mst] at (0,{-3*\S})       {\textbf{M2}};
+  \node[mst] at ({3*\S},{-3*\S})  {\textbf{M3}};
+  % Routes from M0 to its three workers
+  \draw[route] (0.16,0) -- ({\S-0.16},0);
+  \draw[route] (0,-0.16) -- (0,{-\S+0.16});
+  \draw[route] (0.16,0) -- ({\S},0) -- ({\S},{-\S+0.16});
+  \end{tikzpicture}
+  \caption{Four-master $4\times4$ mesh.  Corner nodes $M_0$--$M_3$ (shaded)
+           each coordinate a $2\times2$ quadrant; dashed lines mark the mesh
+           midpoints.  Arrows show $M_0$'s three routes to workers $(0,1)$,
+           $(1,0)$, and $(1,1)$.  By symmetry, routes from all four masters
+           remain within their respective quadrant.}
+  \label{fig:mesh4x4-4m}
+\end{figure}
+
+\emph{Computation model.}  Each master computes one row locally per round
+(row $mQ + t(N_W+1)$ in round~$t$, for $t = 0,\ldots,895$), for a total
+of 896 local rows per master and 3584 across all four.  Local dot products
+are modeled as instantaneous: a VLIW unit over $D_\text{in}=4096$ elements
+completes well within the $3\times3202$-cycle injection window per round,
+so arithmetic is not on the critical path.  All 14\,336 results are verified
+for exact FP32 equality against a software reference.
+
+\subsection{Throughput Scaling Results}
+
+The four-master simulation completes in \textbf{8\,620\,484~cycles}, a
+$\mathbf{5.0\times}$ speedup over the 43\,102\,246~cycles of the
+single-master run (Table~\ref{tab:throughput}).
+
+\begin{table}[h]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\caption{Single- vs.\ four-master throughput
+         ($D_\text{out}=14336$, $P_\text{fwd}=3201$ payload flits).}
+\label{tab:throughput}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Configuration & Masters & Cycles & Speedup \\
+\midrule
+Single master & 1 & 43\,102\,246 & $1\times$ \\
+Four masters  & 4 &  8\,620\,484 & $5\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The $5\times$ gain exceeds the $4\times$ expected from simple injection
+parallelism.  The additional margin comes from backpressure relief: each
+corner master serves only three workers, whereas the single master drives
+fifteen.  With fewer concurrent result packets converging on one egress
+port, injection stalls are shorter.
+
+Table~\ref{tab:links4m} reports the utilization pattern.  The quadrant
+isolation property is confirmed quantitatively: every link crossing either
+mesh midpoint registers exactly 0\%.  Within each quadrant, the first East
+or West hop from the corner master reaches 66.6\% because two of the three
+forward routes share it (the direct worker and the diagonal worker); each
+South or North second-hop segment carries one route at 33.3\%.  By symmetry
+all four quadrants show identical figures.  The overall average of 11.1\%
+contrasts with the 3.3\% of the single-master run, reflecting simultaneous
+injection from four ports and correspondingly more uniform mesh loading.
+
+\begin{table}[h]
+\centering
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\caption{Representative link utilization (\%), four-master run
+         (8\,620\,484~cycles).  By symmetry all four quadrants are
+         identical; cross-boundary links are exactly 0\%.}
+\label{tab:links4m}
+\begin{tabular}{@{}lll r@{}}
+\toprule
+Direction & Segment & Role & Util\,(\%) \\
+\midrule
+$\to$East, row\,0 & $(0,0)\to(0,1)$ & 2/3 fwd.\ routes from $M_0$ & 66.6 \\
+$\to$West, row\,0 & $(0,3)\to(0,2)$ & 2/3 fwd.\ routes from $M_1$ & 66.6 \\
+$\to$East, row\,3 & $(3,0)\to(3,1)$ & 2/3 fwd.\ routes from $M_2$ & 66.6 \\
+$\to$West, row\,3 & $(3,3)\to(3,2)$ & 2/3 fwd.\ routes from $M_3$ & 66.6 \\
+$\to$South, col\,0 & $(0,0)\to(1,0)$ & direct South worker of $M_0$ & 33.3 \\
+$\to$South, col\,1 & $(0,1)\to(1,1)$ & diagonal worker of $M_0$     & 33.3 \\
+$\to$North, col\,0 & $(3,0)\to(2,0)$ & direct North worker of $M_2$ & 33.3 \\
+$\to$North, col\,1 & $(3,1)\to(2,1)$ & diagonal worker of $M_2$     & 33.3 \\
+Cross-boundary & (any) & --- &  0.0 \\
+\midrule
+\multicolumn{3}{@{}l}{\textbf{Overall average}} & \textbf{11.1} \\
+\bottomrule
+\end{tabular}
+\end{table}
