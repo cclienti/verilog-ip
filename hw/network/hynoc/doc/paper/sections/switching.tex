@@ -28,8 +28,9 @@ destination.
 
 \subsection{End-to-End Latency Model}
 
-The end-to-end latency $L$ of a packet traversing $H$ hops with $P$ payload flits
-decomposes into two additive terms.
+Let $H$ denote the number of hops from source to destination (including the
+final local hop), and $P$ the number of payload flits in the packet.
+The end-to-end latency $L$ decomposes into two additive terms.
 
 \emph{Setup phase.} The routing flit propagates hop by hop; at each hop the
 ingress FSM reads the flit from the FIFO, asserts a request, and waits for a
