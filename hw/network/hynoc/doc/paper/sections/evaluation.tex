@@ -23,7 +23,7 @@ worker nodes, and result gather.
 
 \subsection{Experimental Setup}
 
-\subsubsection{Network Topology}
+\textbf{Network Topology.}
 
 The network consists of 16~\texttt{hynoc\_router\_5p} instances arranged as
 a $4\times4$ 2D mesh, as shown in Figure~\ref{fig:mesh4x4}.  Routers are
@@ -116,7 +116,7 @@ Throughout this section $H$ always counts all hops including that local hop.
 For the master at $(0,0)$, this simplifies to $H=r+c+1$.  Routes are encoded as source-routing flits using the relative hop
 encoding described in Section~\ref{sec:architecture}.
 
-\subsubsection{Simulation Infrastructure}
+\textbf{Simulation Infrastructure.}
 
 The Verilator C++ model instantiates 16~\texttt{Vhynoc\_router\_5p} objects
 sharing one \texttt{VerilatedContext}.  Inter-router links are modeled as
