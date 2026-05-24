@@ -2,12 +2,9 @@ PAPER    = main
 LATEX    = pdflatex
 BIBTEX   = bibtex
 
-FIGDIR   = ../datasheet/figures
+FIGDIR   = ./figures
 
-FIGURES  = $(FIGDIR)/hynoc_noc_overview.pdf        \
-           $(FIGDIR)/hynoc_router_data_arch.pdf     \
-           $(FIGDIR)/hynoc_router_control_arch.pdf  \
-           $(FIGDIR)/hynoc_hops_encoding.pdf
+FIGURES  = $(wildcard $(FIGDIR)/*.pdf)
 
 SECTIONS = sections/abstract.tex        \
            sections/introduction.tex    \
