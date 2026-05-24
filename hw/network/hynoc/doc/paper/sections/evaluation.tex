@@ -4,7 +4,8 @@
 We present three Verilator~\cite{verilator}-based simulations on a $4\times4$
 HyNoC mesh, each targeting a different evaluation goal:
 \begin{enumerate}
-  \item \textbf{Latency model validation.}  A lightweight GeMV with a
+  \item \textbf{Latency model validation.}  A lightweight GeMV
+        (General Matrix-Vector multiplication, $\mathbf{y}=A\mathbf{x}$) with a
         $16\times4$ matrix produces clean per-hop measurements that validate
         the analytical model of Section~\ref{sec:switching}.
   \item \textbf{LLaMA~3~8B FFN benchmark (single master).}  A full-scale
@@ -221,11 +222,24 @@ idle.
 \label{sec:large-matmul}
 
 To assess HyNoC under a realistic AI inference workload we scale the benchmark
-to the LLaMA~3~8B~\cite{llama3} FFN up-projection layer:
+to the LLaMA~3~8B~\cite{llama3} FFN up-projection layer.  In transformer
+models, the Feed-Forward Network (FFN) consists of two linear projections with
+a nonlinearity in between; the \emph{up-projection} is the first of these,
+expanding the representation from the model dimension $D_\text{in}=4096$ to
+the intermediate dimension $D_\text{out}=14336$.  The benchmark computes
 $\mathbf{y}=W\mathbf{x}$ with $W\in\mathbb{R}^{14336\times4096}$ and
-$\mathbf{x}\in\mathbb{R}^{4096}$.  Weights are stored in the Q8\_0 format
-used by llama.cpp~\cite{llama_cpp}: 8-bit integers with one FP16 scale per
-block of 32 weights.  Activations are BF16, packed two per 32-bit flit.
+$\mathbf{x}\in\mathbb{R}^{4096}$.
+
+Weights are stored in the Q8\_0 quantization format used by
+llama.cpp~\cite{llama_cpp}: each weight is an 8-bit signed integer, and one
+FP16 (16-bit floating-point) scale factor is shared per block of 32 weights to
+recover approximate FP32 values at decode time.  Mapping to flits: the FP16
+scale occupies the lower 16~bits of one 32-bit flit (upper 16~bits zero), and
+the 32 int8 weights are packed four per flit, requiring 8~flits --- hence
+9~flits per Q8\_0 block.  Activations use the BF16 format (Brain
+Float~16: 1~sign bit, 8~exponent bits, 7~mantissa bits), packed two values per
+32-bit flit.  Results are accumulated and returned in FP32 (IEEE~754 single
+precision).
 
 \textbf{Forward packet} (master to worker, for one output row): one routing
 flit, one tag flit, 128~Q8\_0 blocks~$\times$~(1~scale flit + 8~weight flits),
@@ -294,9 +308,11 @@ assigning each a $2\times2$ quadrant.
 
 Table~\ref{tab:quadrants} lists the assignment.  Master~$m$ handles
 $Q = D_\text{out}/4 = 3584$ output rows.  With $N_W=3$ workers per quadrant
-and one row computed locally per round, each master executes
-$\mathrm{ROUNDS}=Q/(N_W+1)=896$ rounds---the same count as the single-master
-case---but all four proceed simultaneously.
+and one row computed locally, each master executes
+$\mathrm{ROUNDS}=Q/(N_W+1)=896$ \emph{rounds}---where one round consists of
+sending one forward packet to each of the $N_W$ workers and computing one row
+locally, then collecting $N_W$ result packets---the same count as the
+single-master case, but all four masters proceed simultaneously.
 
 \begin{table}[h]
 \centering
