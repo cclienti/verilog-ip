@@ -113,19 +113,6 @@ consistent with the per-port register cost of the ingress FSM and FIFO control.
 All four port counts meet their respective frequency targets on both devices,
 with the 5-port configuration consistently achieving the best timing margin.
 
-Figure~\ref{fig:floorplan} shows the post-place-and-route floorplan of the
-5-port router on the Zynq-7020.  The compact, regular placement reflects the
-uniform per-port structure: each ingress column maps to a distinct LUT-RAM
-cluster, with the PRRA logic concentrated at the centre of the bounding box.
-
-\begin{figure}[t]
-  \centering
-  \includegraphics[width=\columnwidth]{floorplan_zynq20_router_5p_32bits}
-  \caption{Post-place-and-route floorplan of the 5-port, 32-bit router on the
-           Zynq-7020 (xc7z020clg484, speed grade~$-1$, 200\,MHz target).}
-  \label{fig:floorplan}
-\end{figure}
-
 The design has been validated on both Intel (Altera) and AMD (Xilinx) FPGA
 families; reference board support is included for the DE0-Nano (Cyclone~IV)
 and the ZedBoard (Zynq-7000).  Both \texttt{dclkfifolut} (dual-clock) and
