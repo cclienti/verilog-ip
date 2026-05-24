@@ -94,17 +94,21 @@ Workers compute the inner product instantaneously, so the total simulation time
 is dominated by communication latency and the sequential injection schedule at
 the master.
 
-\textbf{XY routing.}  Packets follow dimension-order routing: East/West moves
-bring the packet to the target column, North/South moves bring it to the target
-row, and a final local hop delivers it.  This eliminates cyclic channel
-dependencies and guarantees deadlock freedom~\cite{dally1987}.  A route from
-$(r_0,c_0)$ to $(r_1,c_1)$ requires
+\textbf{Route construction.}  Hop lists are built following dimension-order
+(XY) order: East/West moves bring the packet to the target column, North/South
+moves bring it to the target row, and a final local hop delivers it.  This
+eliminates cyclic channel dependencies and guarantees deadlock
+freedom~\cite{dally1987}.  All packets use standard unicast source routing
+(proto \texttt{4'b0000}); the dedicated XY proto field (\texttt{4'b1000})
+reserved in Table~\ref{tab:proto} is not exercised in these experiments.
+A route from $(r_0,c_0)$ to $(r_1,c_1)$ requires
 \begin{equation}
   H = |c_1-c_0| + |r_1-r_0| + 1
   \label{eq:hops-xy}
 \end{equation}
-hops, including the final local hop.  For the master at $(0,0)$, this simplifies
-to $H=r+c+1$.  Routes are encoded as source-routing flits using the relative hop
+hops, where the $+1$ accounts for the final local hop at the destination.
+Throughout this section $H$ always counts all hops including that local hop.
+For the master at $(0,0)$, this simplifies to $H=r+c+1$.  Routes are encoded as source-routing flits using the relative hop
 encoding described in Section~\ref{sec:architecture}.
 
 \subsection{Simulation Infrastructure}
@@ -445,3 +449,7 @@ Cross-boundary & (any) & --- &  0.0 \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+All results in this section are obtained from Verilator co-simulation; on-device
+measurement on physical FPGA hardware remains open and is identified as future
+work in Section~\ref{sec:conclusion}.

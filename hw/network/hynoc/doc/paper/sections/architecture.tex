@@ -224,8 +224,8 @@ $H$ hop fields of $\lceil\log_2(N-1)\rceil$ bits each, encoding the relative
 egress port ID at the next router, together with an \emph{index} field initialized
 to $H-1$. The index directly feeds the multiplexer selecting the active hop in the
 ingress port. It is decremented after each hop is consumed; if the index is already
-zero before path opening, the routing flit is not forwarded downstream. The
-relative hop encoding is illustrated in Figure~\ref{fig:hops}.
+zero before path opening, the routing flit is not forwarded downstream. The relative hop encoding on a $3\times3$ mesh of 5-port routers is
+illustrated in Figure~\ref{fig:hops}.
 
 \begin{figure}[t]
   \centering
@@ -284,7 +284,9 @@ and the maximum hop count is:
 Table~\ref{tab:hops} gives the resulting values for the three valid router sizes
 in the default configuration ($K=32$, $\mathtt{INDEX\_WIDTH}=4$), for both
 unicast and multicast routing (which uses $N-1$ bits per hop instead of
-$\lceil\log_2(N-1)\rceil$).
+$\lceil\log_2(N-1)\rceil$). The wider multicast hop field halves the maximum
+hop count relative to unicast, reflecting the inherent trade-off between
+fanout expressiveness and path length.
 
 \begin{table}[h]
   \centering
