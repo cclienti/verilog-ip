@@ -171,7 +171,7 @@ valid packet: one routing flit (stop bit must be zero) followed by one payload f
   \bitheader{32,31,28,0} \\
   \bitbox{1}{\tiny 0} & \bitbox{4}{\tiny Proto} & \bitbox{28}{\small Routing flit (hops + index)} \\
   \bitbox{1}{\tiny 0} & \bitbox{32}{\small Payload flit} \\
-  \bitbox{1}{\tiny $\cdots$} & \bitbox{32}{\small $\cdots$} \\
+  \bitbox{1}{\tiny $\vdots$} & \bitbox{32}{\small $\cdots$} \\
   \bitbox{1}{\tiny 1} & \bitbox{32}{\small Last payload flit} \\
 \end{bytefield}
 \caption{Packet structure: routing flit(s) followed by payload flits.

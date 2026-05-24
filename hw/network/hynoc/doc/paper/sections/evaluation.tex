@@ -122,20 +122,21 @@ computation completes), yielding clean linear fits.
 \centering
 \footnotesize
 \setlength{\tabcolsep}{4pt}
-\caption{Return-path latency ($P=2$) vs.\ hop count}
+\caption{Return-path latency ($P=2$) vs.\ hop count.
+         $\Delta$ = Dual$-$Single.}
 \label{tab:latency}
-\begin{tabular}{@{}rrrrrr@{}}
+\begin{tabular}{@{}rrrrrrrr@{}}
 \toprule
- & \multicolumn{2}{c}{Simulated (cy.)} & & \multicolumn{2}{c}{Theory~(\ref{eq:latency})} \\
-\cmidrule(lr){2-3}\cmidrule(lr){5-6}
-$H$ & Dual & Single & $\Delta$ & Dual & Single \\
+ & \multicolumn{3}{c}{Simulated (cy.)} & \multicolumn{3}{c}{Theory~(\ref{eq:latency})} \\
+\cmidrule(lr){2-4}\cmidrule(lr){5-7}
+$H$ & Dual & Single & $\Delta$ & Dual & Single & $\Delta$ \\
 \midrule
-2 & 25 & 19 &  6 & 13 &  9 \\
-3 & 37 & 28 &  9 & 19 & 13 \\
-4 & 49 & 37 & 12 & 25 & 17 \\
-5 & 61 & 46 & 15 & 31 & 21 \\
-6 & 73 & 55 & 18 & 37 & 25 \\
-7 & 85 & 64 & 21 & 43 & 29 \\
+2 & 25 & 19 &  6 & 13 &  9 &  4 \\
+3 & 37 & 28 &  9 & 19 & 13 &  6 \\
+4 & 49 & 37 & 12 & 25 & 17 &  8 \\
+5 & 61 & 46 & 15 & 31 & 21 & 10 \\
+6 & 73 & 55 & 18 & 37 & 25 & 12 \\
+7 & 85 & 64 & 21 & 43 & 29 & 14 \\
 \bottomrule
 \end{tabular}
 \end{table}
