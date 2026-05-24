@@ -1,4 +1,4 @@
-\section{Evaluation: Distributed Matrix-Vector Multiplication}
+\section{Evaluation}
 \label{sec:evaluation}
 
 We present three Verilator~\cite{verilator}-based simulations on a $4\times4$
@@ -21,7 +21,9 @@ All three benchmarks share the same 16-router $4\times4$ mesh and cover the
 full communication cycle: data scatter from the master(s), computation at
 worker nodes, and result gather.
 
-\subsection{Network Topology}
+\subsection{Experimental Setup}
+
+\subsubsection{Network Topology}
 
 The network consists of 16~\texttt{hynoc\_router\_5p} instances arranged as
 a $4\times4$ 2D mesh, as shown in Figure~\ref{fig:mesh4x4}.  Routers are
@@ -77,7 +79,9 @@ router $(r,c{+}1)$ port~3).
 The master node resides at $(0,0)$.  It sequentially distributes data to all 15
 worker nodes and collects their results.
 
-\subsection{Computation and Communication Model}
+\subsection{Experiment 1: Latency Model Validation}
+
+\subsubsection{Computation and Communication Model}
 
 The benchmark computes $\mathbf{y} = A\mathbf{x}$ with $A\in\mathbb{R}^{16\times4}$
 and $\mathbf{x}=[1,2,3,4]^T$.  Worker $(r,c)$ is responsible for one scalar inner
@@ -112,7 +116,7 @@ Throughout this section $H$ always counts all hops including that local hop.
 For the master at $(0,0)$, this simplifies to $H=r+c+1$.  Routes are encoded as source-routing flits using the relative hop
 encoding described in Section~\ref{sec:architecture}.
 
-\subsection{Simulation Infrastructure}
+\subsubsection{Simulation Infrastructure}
 
 The Verilator C++ model instantiates 16~\texttt{Vhynoc\_router\_5p} objects
 sharing one \texttt{VerilatedContext}.  Inter-router links are modeled as
@@ -128,7 +132,7 @@ use gray-code CDC synchronization even when source and destination clocks are
 the same signal; in single-clock mode (\texttt{SINGLE\_CLOCK\_ROUTER=1}), the
 gray-code pipeline is bypassed.
 
-\subsection{Latency Results}
+\subsubsection{Latency Results}
 
 Table~\ref{tab:latency} reports the \emph{return-path} latency for each hop
 count $H$ in both configurations.  Return-path measurements are free of
@@ -187,7 +191,7 @@ The total simulation time is \textbf{391~cycles} in dual-clock mode and
 \textbf{349~cycles} in single-clock mode ($-$10.7\%).  All 16 computed
 results are correct in both runs.
 
-\subsection{Link Utilization}
+\subsubsection{Link Utilization}
 
 Table~\ref{tab:links} summarizes link utilization over the 391-cycle dual-clock run.
 Traffic is inherently asymmetric: the master sends all forward packets via its East
@@ -220,7 +224,9 @@ rest eastward.  The overall average of 3.3\% reflects the sequential master
 bottleneck: with a single sender issuing one packet at a time, most links are
 idle.
 
-\subsection{LLaMA~3~8B FFN Benchmark — Single Master}
+\subsection{Experiment 2: LLaMA~3~8B FFN Benchmark}
+
+\subsubsection{Single-Master Configuration}
 \label{sec:large-matmul}
 
 To assess HyNoC under a realistic AI inference workload we scale the benchmark
@@ -306,7 +312,7 @@ workers), with no hot-spots beyond the first East segment.  Nonetheless, the
 bottleneck remains the single injection port, motivating the multi-master
 extension.
 
-\subsection{Four-Master Quadrant Configuration}
+\subsubsection{Four-Master Quadrant Configuration}
 \label{sec:4master}
 
 The single master at $(0,0)$ creates an injection bottleneck: all 15 forward
@@ -408,7 +414,7 @@ completes well within the $3\times3202$ clock-cycle injection window per round,
 so arithmetic is not on the critical path.  All 14\,336 results are verified
 for exact FP32 equality against a software reference.
 
-\subsection{Throughput Scaling Results}
+\subsubsection{Throughput Scaling Results}
 
 The four-master simulation completes in \textbf{8\,620\,484~cycles}, a
 $\mathbf{5.0\times}$ speedup over the 43\,102\,246~cycles of the
