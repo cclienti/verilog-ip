@@ -39,10 +39,7 @@ static uint32_t hop_value(int src, int dst)
 
 // 33-bit routing flit (stop=0, proto=0, single hop, index=0)
 // Layout MSB→LSB: [32]=0, [31:28]=proto=0, [27:6]=0, [5:4]=hop, [3:0]=index=0
-static uint64_t route_flit(int src, int dst)
-{
-    return (uint64_t)hop_value(src, dst) << 4;
-}
+static uint64_t route_flit(int src, int dst) { return (uint64_t)hop_value(src, dst) << 4; }
 
 static uint64_t data_flit(uint32_t val, bool last)
 {
@@ -50,27 +47,28 @@ static uint64_t data_flit(uint32_t val, bool last)
 }
 
 // Compact access to all per-port DUT signals.
-struct DutPins {
+struct DutPins
+{
     uint64_t *i_data[NB_PORTS];
-    uint8_t  *i_write[NB_PORTS];
-    uint8_t  *i_full[NB_PORTS];
-    uint8_t  *i_srst[NB_PORTS];
-    uint8_t  *i_clk[NB_PORTS];
+    uint8_t *i_write[NB_PORTS];
+    uint8_t *i_full[NB_PORTS];
+    uint8_t *i_srst[NB_PORTS];
+    uint8_t *i_clk[NB_PORTS];
     uint64_t *e_data[NB_PORTS];
-    uint8_t  *e_write[NB_PORTS];
-    uint8_t  *e_level[NB_PORTS];
+    uint8_t *e_write[NB_PORTS];
+    uint8_t *e_level[NB_PORTS];
 };
 
 static void bind(Vhynoc_router_5p &d, DutPins &p)
 {
-#define BIND(k)                                               \
-    p.i_data[k]  = &d.port##k##_ingress_data;               \
-    p.i_write[k] = &d.port##k##_ingress_write;              \
-    p.i_full[k]  = &d.port##k##_ingress_full;               \
-    p.i_srst[k]  = &d.port##k##_ingress_srst;               \
-    p.i_clk[k]   = &d.port##k##_ingress_clk;                \
-    p.e_data[k]  = &d.port##k##_egress_data;                \
-    p.e_write[k] = &d.port##k##_egress_write;               \
+#define BIND(k)                                                                                    \
+    p.i_data[k] = &d.port##k##_ingress_data;                                                       \
+    p.i_write[k] = &d.port##k##_ingress_write;                                                     \
+    p.i_full[k] = &d.port##k##_ingress_full;                                                       \
+    p.i_srst[k] = &d.port##k##_ingress_srst;                                                       \
+    p.i_clk[k] = &d.port##k##_ingress_clk;                                                         \
+    p.e_data[k] = &d.port##k##_egress_data;                                                        \
+    p.e_write[k] = &d.port##k##_egress_write;                                                      \
     p.e_level[k] = &d.port##k##_egress_fifo_level;
     BIND(0) BIND(1) BIND(2) BIND(3) BIND(4)
 #undef BIND
@@ -80,10 +78,12 @@ static void bind(Vhynoc_router_5p &d, DutPins &p)
 static void tick(Vhynoc_router_5p &d, DutPins &p)
 {
     d.router_clk = 1;
-    for (int k = 0; k < NB_PORTS; ++k) *p.i_clk[k] = 1;
+    for(int k = 0; k < NB_PORTS; ++k)
+        *p.i_clk[k] = 1;
     d.eval();
     d.router_clk = 0;
-    for (int k = 0; k < NB_PORTS; ++k) *p.i_clk[k] = 0;
+    for(int k = 0; k < NB_PORTS; ++k)
+        *p.i_clk[k] = 0;
     d.eval();
 }
 
@@ -105,11 +105,11 @@ int main(int argc, char **argv)
     // 4 packets sent sequentially, one per worker port (1-4).
     // Each packet: route + tag + a0 + a1 + b0 + b1_last  (6 flits; route consumed by router)
     std::queue<uint64_t> tx[NB_PORTS];
-    for (int w = 0; w < 4; ++w) {
+    for(int w = 0; w < 4; ++w) {
         int dst = w + 1;
         int row = w / 2, col = w % 2;
         tx[0].push(route_flit(0, dst));
-        tx[0].push(data_flit((uint32_t)(w + 1), false));  // tag = worker port number
+        tx[0].push(data_flit((uint32_t)(w + 1), false)); // tag = worker port number
         tx[0].push(data_flit(A[row][0], false));
         tx[0].push(data_flit(A[row][1], false));
         tx[0].push(data_flit(B[0][col], false));
@@ -118,39 +118,42 @@ int main(int argc, char **argv)
 
     // Reset
     dut.router_srst = 1;
-    for (int k = 0; k < NB_PORTS; ++k) {
-        *p.i_srst[k]  = 1;
+    for(int k = 0; k < NB_PORTS; ++k) {
+        *p.i_srst[k] = 1;
         *p.i_write[k] = 0;
-        *p.i_data[k]  = 0;
-        *p.e_level[k] = 0;  // downstream always has space
+        *p.i_data[k] = 0;
+        *p.e_level[k] = 0; // downstream always has space
     }
-    for (int i = 0; i < 20; ++i) tick(dut, p);
+    for(int i = 0; i < 20; ++i)
+        tick(dut, p);
 
     dut.router_srst = 0;
-    for (int k = 0; k < NB_PORTS; ++k) *p.i_srst[k] = 0;
-    for (int i = 0; i < 5; ++i) tick(dut, p);  // stabilize after reset
+    for(int k = 0; k < NB_PORTS; ++k)
+        *p.i_srst[k] = 0;
+    for(int i = 0; i < 5; ++i)
+        tick(dut, p); // stabilize after reset
 
     // Worker state
-    std::vector<uint32_t> wpkt[4];  // flits received by each worker (port k+1)
+    std::vector<uint32_t> wpkt[4]; // flits received by each worker (port k+1)
     bool worker_done[4] = {};
 
     // Master receive state
-    bool     in_result = false;
+    bool in_result = false;
     uint32_t pending_tag = 0;
     uint32_t C_result[4] = {};
-    bool     C_received[4] = {};
-    int      master_complete = 0;
+    bool C_received[4] = {};
+    int master_complete = 0;
 
     uint64_t cycle_count = 0;
     const int MAX_CYCLES = 2000;
 
-    for (int cycle = 0; cycle < MAX_CYCLES && master_complete < 4; ++cycle) {
+    for(int cycle = 0; cycle < MAX_CYCLES && master_complete < 4; ++cycle) {
         ++cycle_count;
 
         // --- Drive TX inputs ---
-        for (int k = 0; k < NB_PORTS; ++k) {
-            if (!tx[k].empty() && !*p.i_full[k]) {
-                *p.i_data[k]  = tx[k].front();
+        for(int k = 0; k < NB_PORTS; ++k) {
+            if(!tx[k].empty() && !*p.i_full[k]) {
+                *p.i_data[k] = tx[k].front();
                 *p.i_write[k] = 1;
                 tx[k].pop();
             } else {
@@ -160,25 +163,27 @@ int main(int argc, char **argv)
 
         // --- Rising edge ---
         dut.router_clk = 1;
-        for (int k = 0; k < NB_PORTS; ++k) *p.i_clk[k] = 1;
+        for(int k = 0; k < NB_PORTS; ++k)
+            *p.i_clk[k] = 1;
         dut.eval();
 
         // --- Sample RX outputs (stable after rising edge) ---
 
         // Workers (ports 1-4): collect flits; on complete packet, compute and reply
-        for (int k = 1; k <= 4; ++k) {
-            if (!*p.e_write[k]) continue;
+        for(int k = 1; k <= 4; ++k) {
+            if(!*p.e_write[k])
+                continue;
             uint64_t flit = *p.e_data[k];
             bool stop = (flit >> 32) & 1u;
             wpkt[k - 1].push_back((uint32_t)(flit & 0xFFFFFFFFu));
-            if (stop && !worker_done[k - 1]) {
+            if(stop && !worker_done[k - 1]) {
                 worker_done[k - 1] = true;
                 // Packet received: [tag, a0, a1, b0, b1]
-                uint32_t tag    = wpkt[k - 1][0];
-                uint32_t a0     = wpkt[k - 1][1];
-                uint32_t a1     = wpkt[k - 1][2];
-                uint32_t b0     = wpkt[k - 1][3];
-                uint32_t b1     = wpkt[k - 1][4];
+                uint32_t tag = wpkt[k - 1][0];
+                uint32_t a0 = wpkt[k - 1][1];
+                uint32_t a1 = wpkt[k - 1][2];
+                uint32_t b0 = wpkt[k - 1][3];
+                uint32_t b1 = wpkt[k - 1][4];
                 uint32_t result = a0 * b0 + a1 * b1;
                 tx[k].push(route_flit(k, 0));
                 tx[k].push(data_flit(tag, false));
@@ -187,18 +192,18 @@ int main(int argc, char **argv)
         }
 
         // Master (port 0): parse 2-flit result packets [tag, result_last]
-        if (*p.e_write[0]) {
+        if(*p.e_write[0]) {
             uint64_t flit = *p.e_data[0];
             bool stop = (flit >> 32) & 1u;
             uint32_t val = (uint32_t)(flit & 0xFFFFFFFFu);
-            if (!in_result) {
+            if(!in_result) {
                 pending_tag = val;
-                in_result   = true;
+                in_result = true;
             } else {
                 assert(stop);
                 int w = (int)pending_tag - 1;
-                if (w >= 0 && w < 4 && !C_received[w]) {
-                    C_result[w]   = val;
+                if(w >= 0 && w < 4 && !C_received[w]) {
+                    C_result[w] = val;
                     C_received[w] = true;
                     ++master_complete;
                 }
@@ -208,7 +213,8 @@ int main(int argc, char **argv)
 
         // --- Falling edge ---
         dut.router_clk = 0;
-        for (int k = 0; k < NB_PORTS; ++k) *p.i_clk[k] = 0;
+        for(int k = 0; k < NB_PORTS; ++k)
+            *p.i_clk[k] = 0;
         dut.eval();
     }
 
@@ -222,13 +228,12 @@ int main(int argc, char **argv)
 
     const char *labels[4] = {"C[0][0]", "C[0][1]", "C[1][0]", "C[1][1]"};
     bool pass = true;
-    for (int w = 0; w < 4; ++w) {
+    for(int w = 0; w < 4; ++w) {
         bool ok = C_received[w] && (C_result[w] == C_ref[w]);
-        printf("%-10s  %8u  %8u  %s\n",
-               labels[w], C_ref[w],
-               C_received[w] ? C_result[w] : 0u,
+        printf("%-10s  %8u  %8u  %s\n", labels[w], C_ref[w], C_received[w] ? C_result[w] : 0u,
                ok ? "PASS" : "FAIL");
-        if (!ok) pass = false;
+        if(!ok)
+            pass = false;
     }
 
     printf("\nSimulation cycles: %llu\n", (unsigned long long)cycle_count);
