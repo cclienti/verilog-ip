@@ -78,12 +78,14 @@ static void bind(Vhynoc_router_5p &d, DutPins &p)
 static void tick(Vhynoc_router_5p &d, DutPins &p)
 {
     d.router_clk = 1;
-    for(int k = 0; k < NB_PORTS; ++k)
+    for(int k = 0; k < NB_PORTS; ++k) {
         *p.i_clk[k] = 1;
+    }
     d.eval();
     d.router_clk = 0;
-    for(int k = 0; k < NB_PORTS; ++k)
+    for(int k = 0; k < NB_PORTS; ++k) {
         *p.i_clk[k] = 0;
+    }
     d.eval();
 }
 
@@ -124,14 +126,17 @@ int main(int argc, char **argv)
         *p.i_data[k] = 0;
         *p.e_level[k] = 0; // downstream always has space
     }
-    for(int i = 0; i < 20; ++i)
+    for(int i = 0; i < 20; ++i) {
         tick(dut, p);
+    }
 
     dut.router_srst = 0;
-    for(int k = 0; k < NB_PORTS; ++k)
+    for(int k = 0; k < NB_PORTS; ++k) {
         *p.i_srst[k] = 0;
-    for(int i = 0; i < 5; ++i)
+    }
+    for(int i = 0; i < 5; ++i) {
         tick(dut, p); // stabilize after reset
+    }
 
     // Worker state
     std::vector<uint32_t> wpkt[4]; // flits received by each worker (port k+1)
@@ -163,16 +168,18 @@ int main(int argc, char **argv)
 
         // --- Rising edge ---
         dut.router_clk = 1;
-        for(int k = 0; k < NB_PORTS; ++k)
+        for(int k = 0; k < NB_PORTS; ++k) {
             *p.i_clk[k] = 1;
+        }
         dut.eval();
 
         // --- Sample RX outputs (stable after rising edge) ---
 
         // Workers (ports 1-4): collect flits; on complete packet, compute and reply
         for(int k = 1; k <= 4; ++k) {
-            if(!*p.e_write[k])
+            if(!*p.e_write[k]) {
                 continue;
+            }
             uint64_t flit = *p.e_data[k];
             bool stop = (flit >> 32) & 1u;
             wpkt[k - 1].push_back((uint32_t)(flit & 0xFFFFFFFFu));
@@ -213,8 +220,9 @@ int main(int argc, char **argv)
 
         // --- Falling edge ---
         dut.router_clk = 0;
-        for(int k = 0; k < NB_PORTS; ++k)
+        for(int k = 0; k < NB_PORTS; ++k) {
             *p.i_clk[k] = 0;
+        }
         dut.eval();
     }
 
@@ -232,8 +240,9 @@ int main(int argc, char **argv)
         bool ok = C_received[w] && (C_result[w] == C_ref[w]);
         printf("%-10s  %8u  %8u  %s\n", labels[w], C_ref[w], C_received[w] ? C_result[w] : 0u,
                ok ? "PASS" : "FAIL");
-        if(!ok)
+        if(!ok) {
             pass = false;
+        }
     }
 
     printf("\nSimulation cycles: %llu\n", (unsigned long long)cycle_count);
