@@ -1,0 +1,29 @@
+#!/bin/bash
+# Runs clang-format on staged C++ files and rejects commit if style violations found.
+
+set -e
+
+FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(cpp|hpp)$' || true)
+
+if [ -z "$FILES" ]; then
+    exit 0
+fi
+
+FAILED=()
+for f in $FILES; do
+    if ! clang-format --dry-run --Werror "$f" 2>/dev/null; then
+        FAILED+=("$f")
+    fi
+done
+
+if [ ${#FAILED[@]} -ne 0 ]; then
+    echo ""
+    echo "clang-format style violations found in:"
+    for f in "${FAILED[@]}"; do
+        echo "  $f"
+    done
+    echo ""
+    echo "Run: clang-format -i <file>  to fix."
+    echo ""
+    exit 1
+fi
