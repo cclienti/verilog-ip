@@ -53,10 +53,12 @@ static uint16_t float_to_fp16(float f)
     uint16_t sign = (uint16_t)((b >> 31) & 0x1u);
     int32_t exp = (int32_t)((b >> 23) & 0xFFu) - 127 + 15;
     uint16_t mant = (uint16_t)((b >> 13) & 0x3FFu);
-    if(exp <= 0)
+    if(exp <= 0) {
         return (uint16_t)(sign << 15);
-    if(exp >= 31)
+    }
+    if(exp >= 31) {
         return (uint16_t)((sign << 15) | 0x7C00u);
+    }
     return (uint16_t)((sign << 15) | ((uint16_t)exp << 10) | mant);
 }
 
@@ -66,12 +68,13 @@ static float fp16_to_float(uint16_t h)
     uint16_t exp = (h >> 10) & 0x1Fu;
     uint16_t mant = h & 0x3FFu;
     uint32_t b;
-    if(exp == 0)
+    if(exp == 0) {
         b = ((uint32_t)sign << 31) | ((uint32_t)mant << 13);
-    else if(exp == 31)
+    } else if(exp == 31) {
         b = ((uint32_t)sign << 31) | 0x7F800000u | ((uint32_t)mant << 13);
-    else
+    } else {
         b = ((uint32_t)sign << 31) | ((uint32_t)(exp - 15u + 127u) << 23) | ((uint32_t)mant << 13);
+    }
     float f;
     memcpy(&f, &b, 4);
     return f;
@@ -110,8 +113,9 @@ static std::vector<uint8_t> xy_hops(int r0, int c0, int r1, int c1)
     std::vector<uint8_t> hops;
     int j = 0;
     auto push = [&](int axis, int delta) {
-        if(!delta)
+        if(!delta) {
             return;
+        }
         int phys = dir2port(axis, delta);
         int steps = delta > 0 ? delta : -delta;
         for(int s = 0; s < steps; ++s) {
@@ -130,8 +134,9 @@ static uint64_t make_route(int r0, int c0, int r1, int c1)
     auto h = xy_hops(r0, c0, r1, c1);
     assert(!h.empty());
     uint64_t f = (uint64_t)(h.size() - 1);
-    for(int k = 0; k < (int)h.size(); ++k)
+    for(int k = 0; k < (int)h.size(); ++k) {
         f |= (uint64_t)(h[k] & 3u) << (4 + 2 * ((int)h.size() - 1 - k));
+    }
     return f;
 }
 
@@ -152,25 +157,27 @@ static Vhynoc_router_5p *routers[R][C];
 
 static void capture_links()
 {
-    for(int r = 0; r < R; ++r)
+    for(int r = 0; r < R; ++r) {
         for(int c = 0; c < C - 1; ++c) {
             auto &a = *routers[r][c];
             auto &b = *routers[r][c + 1];
             EW[r][c] = {a.port1_egress_data, a.port1_egress_write, b.port3_ingress_fifo_level};
             WE[r][c] = {b.port3_egress_data, b.port3_egress_write, a.port1_ingress_fifo_level};
         }
-    for(int r = 0; r < R - 1; ++r)
+    }
+    for(int r = 0; r < R - 1; ++r) {
         for(int c = 0; c < C; ++c) {
             auto &a = *routers[r][c];
             auto &b = *routers[r + 1][c];
             SN[r][c] = {a.port2_egress_data, a.port2_egress_write, b.port4_ingress_fifo_level};
             NS[r][c] = {b.port4_egress_data, b.port4_egress_write, a.port2_ingress_fifo_level};
         }
+    }
 }
 
 static void apply_links()
 {
-    for(int r = 0; r < R; ++r)
+    for(int r = 0; r < R; ++r) {
         for(int c = 0; c < C; ++c) {
             auto &d = *routers[r][c];
             d.port1_ingress_write = 0;
@@ -187,7 +194,8 @@ static void apply_links()
             d.port4_egress_fifo_level = 0;
             d.port0_egress_fifo_level = 0;
         }
-    for(int r = 0; r < R; ++r)
+    }
+    for(int r = 0; r < R; ++r) {
         for(int c = 0; c < C - 1; ++c) {
             routers[r][c + 1]->port3_ingress_data = EW[r][c].data;
             routers[r][c + 1]->port3_ingress_write = EW[r][c].write;
@@ -196,7 +204,8 @@ static void apply_links()
             routers[r][c]->port1_ingress_write = WE[r][c].write;
             routers[r][c + 1]->port3_egress_fifo_level = WE[r][c].level;
         }
-    for(int r = 0; r < R - 1; ++r)
+    }
+    for(int r = 0; r < R - 1; ++r) {
         for(int c = 0; c < C; ++c) {
             routers[r + 1][c]->port4_ingress_data = SN[r][c].data;
             routers[r + 1][c]->port4_ingress_write = SN[r][c].write;
@@ -205,11 +214,12 @@ static void apply_links()
             routers[r][c]->port2_ingress_write = NS[r][c].write;
             routers[r + 1][c]->port4_egress_fifo_level = NS[r][c].level;
         }
+    }
 }
 
 static void clk_edge(uint8_t val)
 {
-    for(int r = 0; r < R; ++r)
+    for(int r = 0; r < R; ++r) {
         for(int c = 0; c < C; ++c) {
             auto &d = *routers[r][c];
             d.router_clk = val;
@@ -217,6 +227,7 @@ static void clk_edge(uint8_t val)
                 d.port4_ingress_clk = val;
             d.eval();
         }
+    }
 }
 
 // ── Problem data (static — too large for stack at LLaMA scale) ───────────────
@@ -234,27 +245,33 @@ int main(int argc, char **argv)
     ctx->commandArgs(argc, argv);
 
     char name[16];
-    for(int r = 0; r < R; ++r)
+    for(int r = 0; r < R; ++r) {
         for(int c = 0; c < C; ++c) {
             snprintf(name, sizeof(name), "r%d%d", r, c);
             routers[r][c] = new Vhynoc_router_5p(ctx, name);
         }
+    }
 
     // Weights and activations
     // W[i][k] = (i%8+1)*(k%4+1) ∈ [1,32]: fits in int8, Q8_0 scale = 1.0 (lossless)
     // x[k]    = (float)(k%4+1) ∈ {1,2,3,4}: exact in BF16
     float x[D_IN];
-    for(int i = 0; i < D_OUT; ++i)
-        for(int k = 0; k < D_IN; ++k)
+    for(int i = 0; i < D_OUT; ++i) {
+        for(int k = 0; k < D_IN; ++k) {
             W[i][k] = (int8_t)((i % 8 + 1) * (k % 4 + 1));
-    for(int k = 0; k < D_IN; ++k)
+        }
+    }
+    for(int k = 0; k < D_IN; ++k) {
         x[k] = (float)(k % 4 + 1);
+    }
 
     // Reference: FP32 dot using int8 W and float x (exact for our values)
     memset(y_ref, 0, sizeof(y_ref));
-    for(int i = 0; i < D_OUT; ++i)
-        for(int k = 0; k < D_IN; ++k)
+    for(int i = 0; i < D_OUT; ++i) {
+        for(int k = 0; k < D_IN; ++k) {
             y_ref[i] += (float)W[i][k] * x[k];
+        }
+    }
 
     // Q8_0 scale = 1.0 for all blocks (values in [1,32] < 127)
     const uint16_t SCALE_FP16 = float_to_fp16(1.0f);
@@ -273,8 +290,9 @@ int main(int argc, char **argv)
                 tx[0][0].push(dflit((uint32_t)SCALE_FP16, false));
                 for(int j = 0; j < 8; ++j) {
                     uint32_t wf = 0;
-                    for(int m = 0; m < 4; ++m)
+                    for(int m = 0; m < 4; ++m) {
                         wf |= ((uint32_t)(uint8_t)W[row][b * 32 + j * 4 + m]) << (m * 8);
+                    }
                     tx[0][0].push(dflit(wf, false));
                 }
             }
@@ -288,7 +306,7 @@ int main(int argc, char **argv)
     }
 
     // Reset
-    for(int r = 0; r < R; ++r)
+    for(int r = 0; r < R; ++r) {
         for(int c = 0; c < C; ++c) {
             auto &d = *routers[r][c];
             d.router_srst = 1;
@@ -298,17 +316,19 @@ int main(int argc, char **argv)
             d.port0_ingress_data = 0;
             d.port0_egress_fifo_level = 0;
         }
+    }
     for(int i = 0; i < 20; ++i) {
         clk_edge(1);
         clk_edge(0);
     }
-    for(int r = 0; r < R; ++r)
+    for(int r = 0; r < R; ++r) {
         for(int c = 0; c < C; ++c) {
             auto &d = *routers[r][c];
             d.router_srst = 0;
             d.port0_ingress_srst = d.port1_ingress_srst = d.port2_ingress_srst =
                 d.port3_ingress_srst = d.port4_ingress_srst = 0;
         }
+    }
     for(int i = 0; i < 5; ++i) {
         apply_links();
         clk_edge(1);
@@ -321,8 +341,9 @@ int main(int argc, char **argv)
     memset(y_rx, 0, sizeof(y_rx));
     for(int t = 0; t < ROUNDS; ++t) {
         int row = t * N;
-        for(int k = 0; k < D_IN; ++k)
+        for(int k = 0; k < D_IN; ++k) {
             y[row] += (float)W[row][k] * x[k];
+        }
         y_rx[row] = true;
     }
     int results = ROUNDS;
@@ -345,7 +366,7 @@ int main(int argc, char **argv)
         apply_links();
 
         // Drive TX
-        for(int r = 0; r < R; ++r)
+        for(int r = 0; r < R; ++r) {
             for(int c = 0; c < C; ++c) {
                 auto &d = *routers[r][c];
                 if(!tx[r][c].empty() && !d.port0_ingress_full) {
@@ -356,15 +377,17 @@ int main(int argc, char **argv)
                     d.port0_ingress_write = 0;
                 }
             }
+        }
 
         clk_edge(1);
 
         // Sample RX
-        for(int r = 0; r < R; ++r)
+        for(int r = 0; r < R; ++r) {
             for(int c = 0; c < C; ++c) {
                 auto &d = *routers[r][c];
-                if(!d.port0_egress_write)
+                if(!d.port0_egress_write) {
                     continue;
+                }
                 uint64_t flit = d.port0_egress_data;
                 bool stop = (flit >> 32) & 1u;
                 uint32_t val = (uint32_t)(flit & 0xFFFFFFFFu);
@@ -427,26 +450,30 @@ int main(int argc, char **argv)
                     }
                 }
             }
+        }
 
         capture_links();
-        for(int r = 0; r < R; ++r)
+        for(int r = 0; r < R; ++r) {
             for(int c = 0; c < C - 1; ++c) {
                 link_ew[r][c] += EW[r][c].write;
                 link_we[r][c] += WE[r][c].write;
             }
-        for(int r = 0; r < R - 1; ++r)
+        }
+        for(int r = 0; r < R - 1; ++r) {
             for(int c = 0; c < C; ++c) {
                 link_sn[r][c] += SN[r][c].write;
                 link_ns[r][c] += NS[r][c].write;
             }
+        }
         clk_edge(0);
     }
 
-    for(int r = 0; r < R; ++r)
+    for(int r = 0; r < R; ++r) {
         for(int c = 0; c < C; ++c) {
             routers[r][c]->final();
             delete routers[r][c];
         }
+    }
     delete ctx;
 
     // ── Results ───────────────────────────────────────────────────────────────
@@ -459,9 +486,9 @@ int main(int argc, char **argv)
     int pass_count = 0, fail_count = 0;
     for(int i = 0; i < D_OUT; ++i) {
         bool ok = y_rx[i] && (y[i] == y_ref[i]);
-        if(ok)
+        if(ok) {
             ++pass_count;
-        else {
+        } else {
             ++fail_count;
             printf("FAIL row %d: expected %.1f got %.1f\n", i, y_ref[i], y_rx[i] ? y[i] : 0.0f);
         }
@@ -473,7 +500,7 @@ int main(int argc, char **argv)
     printf("── Link utilization (%llu cycles) ──\n", (unsigned long long)cycles);
     printf("Direction  Grid      Busy-cyc  Util%%\n");
     uint64_t total_busy = 0, total_cap = 0;
-    for(int r = 0; r < R; ++r)
+    for(int r = 0; r < R; ++r) {
         for(int c = 0; c < C - 1; ++c) {
             printf("E→W        [%d][%d→%d]  %8llu  %5.1f%%\n", r, c, c + 1,
                    (unsigned long long)link_ew[r][c], 100.0 * link_ew[r][c] / cycles);
@@ -482,7 +509,8 @@ int main(int argc, char **argv)
             total_busy += link_ew[r][c] + link_we[r][c];
             total_cap += 2 * cycles;
         }
-    for(int r = 0; r < R - 1; ++r)
+    }
+    for(int r = 0; r < R - 1; ++r) {
         for(int c = 0; c < C; ++c) {
             printf("S→N        [%d→%d][%d]  %8llu  %5.1f%%\n", r, r + 1, c,
                    (unsigned long long)link_sn[r][c], 100.0 * link_sn[r][c] / cycles);
@@ -491,6 +519,7 @@ int main(int argc, char **argv)
             total_busy += link_sn[r][c] + link_ns[r][c];
             total_cap += 2 * cycles;
         }
+    }
     printf("Overall network link utilization: %.1f%%\n", 100.0 * total_busy / total_cap);
 
     return fail_count ? 1 : 0;
