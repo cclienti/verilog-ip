@@ -115,7 +115,7 @@ when traffic patterns are unpredictable at design time.
 
 Hoplite~\cite{kapre2015} introduced deflection routing on FPGA overlays, achieving
 very small area by eliminating input buffers entirely and routing contending flits
-onto an alternative output rather than buffering them. HopliteRT~\cite{nair2019}
+onto an alternative output rather than buffering them. HopliteRT~\cite{wasly2017}
 extended Hoplite with a real-time traffic class, but deflection fundamentally
 introduces non-deterministic, potentially unbounded delivery latency for best-effort
 traffic — a property incompatible with the timing constraints of VLIW inter-core
@@ -174,7 +174,7 @@ Design       & Switching  & Routing    & VCs & Target \\
 Hermes~\cite{moraes2004}      & Wormhole        & XY (dest.)    & No  & ASIC/FPGA \\
 Æthereal~\cite{goossens2005}  & TDM + Wormhole  & Table         & Yes & ASIC \\
 CONNECT~\cite{papamichael2012}& Wormhole        & Configurable  & Yes & FPGA \\
-HopliteRT~\cite{nair2019}     & Deflection      & XY (dest.)    & No  & FPGA \\
+HopliteRT~\cite{wasly2017}     & Deflection      & XY (dest.)    & No  & FPGA \\
 HyNoC                         & Circuit+Wormhole& Source (rel.) & No  & FPGA \\
 \bottomrule
 \end{tabular}%
