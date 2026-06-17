@@ -23,7 +23,7 @@
   doi       = {10.1145/1081081.1081128}
 }
 
-@inproceedings{liwei2007,
+@article{liwei2007,
   author    = {Ma Liwei and Sun Yihe},
   title     = {On-chip network design automation with source routing switches},
   journal   = {Tsinghua Science and Technology},
@@ -55,7 +55,7 @@
   doi       = {10.1007/978-3-642-17752-1_15}
 }
 
-@inproceedings{dally1987,
+@article{dally1987,
   author    = {William J. Dally and Charles L. Seitz},
   title     = {Deadlock-Free Message Routing in Multiprocessor
                Interconnection Networks},
@@ -88,13 +88,15 @@
 }
 
 @inproceedings{kumar2002,
-  author       = {Sanjeev Kumar and others},
+  author       = {Shashi Kumar and Axel Jantsch and Juha-Pekka Soininen and
+                  Martti Forsell and Mikael Millberg and Johnny {\"O}berg and
+                  Kari Tiensyrj{\"a} and Ahmed Hemani},
   title        = {A Network on Chip Architecture and Design Methodology},
   booktitle    = {Proc. IEEE Computer Society Annual Symposium on VLSI (ISVLSI)},
-  pages        = {105--112},
+  pages        = {117--124},
   year         = {2002},
   organization = {IEEE},
-  doi          = {10.1109/ISVLSI.2002.1016866}
+  doi          = {10.1109/ISVLSI.2002.1016885}
 }
 
 @article{goossens2005,
@@ -140,16 +142,18 @@
   doi       = {10.1145/2145694.2145703}
 }
 
-@inproceedings{nair2019,
-  author    = {Shyam Murthy Nair and others},
-  title     = {{HopliteRT}: A Real-Time Aware {NoC} for {FPGAs}},
-  booktitle = {Proc. International Conference on Field Programmable Logic
-               and Applications (FPL)},
-  year      = {2019}
+@inproceedings{wasly2017,
+  author    = {Saud Wasly and Rodolfo Pellizzoni and Nachiket Kapre},
+  title     = {{HopliteRT}: An Efficient {FPGA} {NoC} for Real-Time Applications},
+  booktitle = {Proc. International Conference on Field-Programmable Technology
+               (ICFPT)},
+  pages     = {64--71},
+  year      = {2017},
+  doi       = {10.1109/FPT.2017.8280122}
 }
 
 @inproceedings{dinechin2013,
-  author    = {Beno{\^i}t de Dinechin and others},
+  author    = {Beno{\^i}t Dupont de Dinechin and others},
   title     = {A Clustered Manycore Processor Architecture for Embedded
                and Accelerated Applications},
   booktitle = {Proc. IEEE High Performance Extreme Computing (HPEC)},
@@ -167,7 +171,7 @@
 
 @misc{cernohl,
   title        = {{CERN} Open Hardware Licence Version 2 -- Permissive},
-  howpublished = {\url{https://ohwr.org/cern_ohl_p_v2.txt}},
+  howpublished = {\url{https://ohwr.org/cern_ohl_p_v2.pdf}},
   year         = {2020}
 }
 
@@ -208,9 +212,9 @@
 }
 
 @inproceedings{dinechin2017,
-  author    = {Beno{\^i}t Dupont de Dinechin and Alexis Graillat},
+  author    = {Beno{\^i}t Dupont de Dinechin and Amaury Graillat},
   title     = {Feed-Forward Routing for the Wormhole Switching {Network-on-Chip}
-               of the {Kalray MPPA2-256} Processor},
+               of the {Kalray MPPA2} Processor},
   booktitle = {Proc. 10th International Workshop on Network on Chip Architectures
                (NoCArc)},
   year      = {2017},
@@ -218,8 +222,8 @@
 }
 
 @inproceedings{swarbrick2019,
-  author    = {Ian Swarbrick and Dhananjay Gaitonde and Shoaib Ahmad and
-               Bertrand Gaide and Yoav Arbel},
+  author    = {Ian Swarbrick and Dinesh Gaitonde and Sagheer Ahmad and
+               Brian Gaide and Ygal Arbel},
   title     = {Network-on-Chip Programmable Platform in {Versal ACAP} Architecture},
   booktitle = {Proc. ACM/SIGDA International Symposium on Field-Programmable
                Gate Arrays (FPGA)},
@@ -241,7 +245,7 @@
   title        = {Wavedisp: A Python-Based Waveform Display Configuration Tool},
   year         = {2019},
   howpublished = {\url{https://github.com/cclienti/wavedisp}},
-  note         = {MIT license}
+  note         = {GPLv3 license}
 }
 
 @misc{verilator,
@@ -249,11 +253,11 @@
   title        = {Verilator: The Fastest {Verilog/SystemVerilog} Simulator},
   howpublished = {\url{https://www.veripool.org/verilator/}},
   year         = {2024},
-  note         = {Open-source under LGPLv3}
+  note         = {Open-source under LGPLv3 or Artistic-2.0}
 }
 
 @article{llama3,
-  author       = {Dubey, Abhimanyu and others},
+  author       = {Grattafiori, Aaron and others},
   title        = {The {Llama~3} Herd of Models},
   journal      = {arXiv preprint arXiv:2407.21783},
   year         = {2024},
@@ -263,7 +267,7 @@
 @misc{llama_cpp,
   author       = {Gerganov, Georgi and others},
   title        = {llama.cpp: {LLM} Inference in Plain {C/C++}},
-  howpublished = {\url{https://github.com/ggerganov/llama.cpp}},
+  howpublished = {\url{https://github.com/ggml-org/llama.cpp}},
   year         = {2023},
   note         = {Open-source under MIT license}
 }
