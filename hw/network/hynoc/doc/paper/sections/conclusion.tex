@@ -29,7 +29,7 @@ LLaMA~3~8B FFN up-projection benchmark (Q8\_0 weights, BF16 activations,
 $14336\times4096$) with a single master completes in 43\,M cycles; a
 four-master quadrant configuration, where each corner master owns a $2\times2$
 traffic-isolated quadrant, reduces this to 8.6\,M cycles---a $5\times$ speedup
-with zero cross-quadrant link utilization, confirming the deterministic
+with zero cross-quadrant link traffic, confirming the deterministic
 throughput scaling predicted by the link-disjoint topology design.
 
 HyNoC is released as open-source hardware under the CERN-OHL-P~v2 license,
