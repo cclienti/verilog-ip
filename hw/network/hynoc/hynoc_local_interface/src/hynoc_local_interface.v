@@ -57,7 +57,8 @@ module hynoc_local_interface
          sclkfifolut
          #(
             .LOG2_FIFO_DEPTH (LOG2_FIFO_DEPTH),
-            .FIFO_WIDTH      (FLIT_WIDTH)
+            .FIFO_WIDTH      (FLIT_WIDTH),
+            .OUTPUT_REG      (1)
          )
          sclkfifolut_inst
          (

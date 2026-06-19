@@ -15,7 +15,14 @@
 
 module sclkfifolut
   #(parameter LOG2_FIFO_DEPTH = 5,
-    parameter FIFO_WIDTH      = 32)
+    parameter FIFO_WIDTH      = 32,
+    // Read-data output mode:
+    //   0 (default) - first-word fall-through: rdata combinationally
+    //                 reflects the FIFO head (valid before ren).
+    //   1           - registered output: rdata is updated on ren and
+    //                 valid one cycle later, matching dclkfifolut's
+    //                 read protocol.
+    parameter OUTPUT_REG      = 0)
 
    (input wire                     clk,
     input wire                     srst,
@@ -62,7 +69,24 @@ module sclkfifolut
          ram[wptr] <= wdata;
       end
    end
-   assign rdata = ram[rptr];
+
+   generate
+      if(OUTPUT_REG == 0) begin: comb_output
+         // First-word fall-through: head visible combinationally.
+         assign rdata = ram[rptr];
+      end
+      else begin: reg_output
+         // Registered read: rdata captured on ren, valid one cycle later
+         // (same protocol as dclkfifolut).
+         reg [FIFO_WIDTH-1:0] rdata_reg;
+         always @(posedge clk) begin
+            if(ren_protect == 1'b1) begin
+               rdata_reg <= ram[rptr];
+            end
+         end
+         assign rdata = rdata_reg;
+      end
+   endgenerate
 
    //----------------------------------------------------------------
    // Manage pointers
