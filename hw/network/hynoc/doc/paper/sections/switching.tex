@@ -41,7 +41,7 @@ grant. Per-hop setup latency is:
 \end{equation}
 where $T_\text{FIFO}$ is the FIFO read latency (1~cycle in single-clock mode;
 $\approx$3~cycles in dual-clock mode due to the gray-code CDC synchronisation
-pipeline~\cite{dally1987}), the $+1$ accounts for the FSM decode cycle, and
+pipeline~\cite{cummings2002}), the $+1$ accounts for the FSM decode cycle, and
 $T_\text{PRRA} \in \{1, 2\}$ is the arbiter grant latency controlled by the
 \texttt{PIPELINE} parameter.
 
