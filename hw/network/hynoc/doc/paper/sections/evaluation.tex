@@ -289,11 +289,18 @@ each successive link.  South-bound links absorb $\tfrac{1}{4}$ of the total
 traffic each.  Return-path links (West and North) are negligible at $<$0.1\%.
 The overall average of \textbf{6.7\%} reflects the single-port injection
 bottleneck: 47~of 48~directed links are underutilised while one port
-saturates.  Single-clock mode (\texttt{SINGLE\_CLOCK\_ROUTER=1}) would reduce
-the cycle count by factor $9/12=0.75$ to approximately 32\,M cycles, as
-predicted by the validated latency model~(\ref{eq:lfit-single}); the $5\times$
-speedup of the four-master configuration is mode-independent since both
-configurations use the same clock setting.
+saturates.  Repeating the run in single-clock mode
+(\texttt{SINGLE\_CLOCK\_ROUTER=1}) yields \textbf{43\,102\,204~cycles}, only
+42~cycles below the dual-clock result.  This confirms that the workload is
+\emph{injection-bound} rather than latency-bound: runtime is dominated by the
+one-flit-per-cycle injection of the 3201-flit forward packets, so the per-hop
+latency saved by single-clock operation---the $9H$ versus $12H$ slope
+of~(\ref{eq:lfit-single}) and~(\ref{eq:lfit-dual})---is negligible against the
+tens of millions of injection cycles.  The four-master run is likewise
+unchanged (8\,620\,466~cycles single-clock versus 8\,620\,484 dual-clock), so
+the $5\times$ speedup is mode-independent.  Single-clock operation benefits
+only latency-dominated traffic, such as the Experiment~1 validation, where it
+reduced the total from 391 to 349~cycles.
 
 \begin{table}[h]
 \centering
