@@ -4,10 +4,11 @@
 We present three Verilator~\cite{verilator}-based simulations on a $4\times4$
 HyNoC mesh, each targeting a different evaluation goal:
 \begin{enumerate}
-  \item \textbf{Latency model validation.}  A lightweight GeMV
+  \item \textbf{Latency characterization.}  A lightweight GeMV
         (General Matrix-Vector multiplication, $\mathbf{y}=A\mathbf{x}$) with a
-        $16\times4$ matrix produces clean per-hop measurements that validate
-        the analytical model of Section~\ref{sec:switching}.
+        $16\times4$ matrix produces clean per-hop measurements that establish
+        the deterministic per-hop latency discussed in
+        Section~\ref{sec:switching}.
   \item \textbf{LLaMA~3~8B FFN benchmark (single master).}  A full-scale
         GeMV at LLaMA~3~8B FFN up-projection dimensions
         ($14336\times4096$) with Q8\_0 weights and BF16 activations
@@ -79,7 +80,7 @@ router $(r,c{+}1)$ port~3).
 The master node resides at $(0,0)$.  It sequentially distributes data to all 15
 worker nodes and collects their results.
 
-\subsection{Experiment 1: Latency Model Validation}
+\subsection{Experiment 1: Latency Characterization}
 
 \subsubsection{Computation and Communication Model}
 
@@ -143,49 +144,41 @@ computation completes), yielding clean linear fits.
 \centering
 \footnotesize
 \setlength{\tabcolsep}{4pt}
-\caption{Return-path latency ($P=2$) vs.\ hop count.
+\caption{Measured return-path latency ($P=2$, cycles) vs.\ hop count.
          Dual = dual-clock FIFO (\texttt{SINGLE\_CLOCK\_ROUTER=0});
          Single = single-clock FIFO (\texttt{SINGLE\_CLOCK\_ROUTER=1});
-         $\Delta$ = Dual$-$Single (cycles).}
+         $\Delta$ = Dual$-$Single.}
 \label{tab:latency}
-\begin{tabular}{@{}rrrrrrrr@{}}
+\begin{tabular}{@{}rrrr@{}}
 \toprule
- & \multicolumn{3}{c}{Simulated (cy.)} & \multicolumn{3}{c}{Theory~(\ref{eq:latency})} \\
-\cmidrule(lr){2-4}\cmidrule(lr){5-7}
-$H$ & Dual & Single & $\Delta$ & Dual & Single & $\Delta$ \\
+$H$ & Dual & Single & $\Delta$ \\
 \midrule
-2 & 25 & 19 &  6 & 13 &  9 &  4 \\
-3 & 37 & 28 &  9 & 19 & 13 &  6 \\
-4 & 49 & 37 & 12 & 25 & 17 &  8 \\
-5 & 61 & 46 & 15 & 31 & 21 & 10 \\
-6 & 73 & 55 & 18 & 37 & 25 & 12 \\
-7 & 85 & 64 & 21 & 43 & 29 & 14 \\
+2 & 25 & 19 &  6 \\
+3 & 37 & 28 &  9 \\
+4 & 49 & 37 & 12 \\
+5 & 61 & 46 & 15 \\
+6 & 73 & 55 & 18 \\
+7 & 85 & 64 & 21 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The measured latencies satisfy exact linear fits:
+The measured return-path latencies satisfy exact linear fits:
 \begin{align}
   L_\text{dual}   &= 12H + P - 1 \label{eq:lfit-dual}   \\
   L_\text{single} &= 9H + P - 1  \label{eq:lfit-single}
 \end{align}
-Both fits are consistent with the model of~(\ref{eq:latency}): latency scales
-linearly with hop count, with a per-hop coefficient determined by
-$T_\text{FIFO}$, the FSM decode cycle, and $T_\text{PRRA}$.
-The theoretical minimum slopes (PIPELINE=0) are $6H$ for dual-clock
-($T_\text{FIFO}\approx3$) and $4H$ for single-clock ($T_\text{FIFO}=1$).
-The simulation slopes are higher for two reasons: (i) the gray-code
-synchronization pipeline incurs additional latency when source and destination
-clocks are the same signal, as is the case in this single-clock Verilator
-environment; and (ii) the one-cycle inter-router link latch adds one cycle per
-hop.  Both effects vanish in a real FPGA deployment where clock domains differ
-and wiring is combinatorial within the same clock cycle.
-
-The critical result is the \textbf{improvement margin}: theory predicts a
-difference of $2H$ cycles between the two modes; simulation measures $3H$,
-the extra cycle per hop being exactly the CDC overhead eliminated by
-single-clock operation.  The reduction is constant and perfectly linear,
-confirming the deterministic nature of the HyNoC latency model.
+matching the linear, deterministic form of~(\ref{eq:latency}) with a fixed
+per-hop cost of $\alpha=12$ cycles in dual-clock mode and $\alpha=9$ in
+single-clock mode, and no load-dependent term.  This per-hop cost is the
+pipeline traversed at each router---ingress FIFO read, routing-FSM request
+register, PRRA grant, and egress data register---together with the one-cycle
+registered inter-router link of the co-simulation harness.  The
+$3$-cycle-per-hop difference between the two modes ($\alpha=12$ versus $9$) is
+exactly the depth of the dual-clock FIFO's gray-code
+synchroniser~\cite{cummings2002}, which the single-clock FIFO does not
+instantiate.  This difference is constant across all hop counts, so the latency
+stays perfectly linear and predictable in both modes.
 
 The total simulation time is \textbf{391~cycles} in dual-clock mode and
 \textbf{349~cycles} in single-clock mode ($-$10.7\%).  All 16 computed
@@ -299,7 +292,7 @@ of~(\ref{eq:lfit-single}) and~(\ref{eq:lfit-dual})---is negligible against the
 tens of millions of injection cycles.  The four-master run is likewise
 unchanged (8\,620\,466~cycles single-clock versus 8\,620\,484 dual-clock), so
 the $5\times$ speedup is mode-independent.  Single-clock operation benefits
-only latency-dominated traffic, such as the Experiment~1 validation, where it
+only latency-dominated traffic, such as the Experiment~1 latency test, where it
 reduced the total from 391 to 349~cycles.
 
 \begin{table}[h]
