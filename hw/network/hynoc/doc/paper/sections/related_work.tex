@@ -140,21 +140,15 @@ BRAM consumption, suited to predictable VLIW workloads.
 
 \subsection{VLIW Many-Core Systems}
 
-VLIW processors expose multiple functional units to the compiler, which schedules
-operations explicitly in long instruction words~\cite{ellis1986}. This design
-philosophy transfers control complexity from hardware to software, producing
-simple, area-efficient cores well suited for replication. Signal processing,
-neural network inference, and scientific computing are representative workloads.
-
 Distributed VLIW many-core systems---exemplified by the Kalray
-MPPA~\cite{dinechin2013}---replicate VLIW cores connected through a dedicated
-NoC, with subsequent generations~\cite{dinechin2017} adopting source routing
-to preserve deterministic latency guarantees across the fabric. In such systems, the communication graph is known at compile time: the
-compiler can assign source routes, schedule packet injections to avoid egress port
-collisions, and guarantee bounded communication latency on the critical path. This
-compile-time visibility makes HyNoC's hybrid model particularly effective, as the
-bounded circuit-establishment latency (one PRRA grant per hop) feeds directly into
-the timing model used by the compiler to schedule inter-core transfers.
+MPPA~\cite{dinechin2013}---replicate simple, compiler-scheduled
+cores~\cite{ellis1986} connected through a dedicated NoC. Later
+generations~\cite{dinechin2017} adopt source routing to preserve deterministic
+latency guarantees across the fabric, the same design point HyNoC occupies.
+Because the communication graph of such systems is known at compile time, the
+bounded circuit-establishment latency of HyNoC's hybrid model (one PRRA grant
+per hop) feeds directly into the compiler's timing model. We develop this
+target application in detail in Section~\ref{sec:target}.
 
 \subsection{Positioning}
 
