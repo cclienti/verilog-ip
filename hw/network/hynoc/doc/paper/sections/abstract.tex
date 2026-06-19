@@ -16,8 +16,8 @@ domains, and support for both unicast and multicast routing.
 We discuss the design rationale, the hybrid switching model, and positioning
 relative to prior NoC art, and argue that a richer topology combined with
 compiler-assisted static routing is a competitive alternative to virtual channels
-for FPGA-based distributed VLIW systems.  Verilator co-simulation validates the
-analytical latency model and benchmarks the design at LLaMA~3~8B FFN
+for FPGA-based distributed VLIW systems.  Verilator co-simulation measures the
+deterministic per-hop latency and benchmarks the design at LLaMA~3~8B FFN
 up-projection scale: a four-master quadrant configuration partitions the mesh
 into traffic-isolated quadrants with zero cross-quadrant link traffic, yielding
 a $5\times$ throughput improvement over a single master.  The complete RTL implementation is available as open-source hardware

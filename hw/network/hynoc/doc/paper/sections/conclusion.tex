@@ -21,10 +21,11 @@ different frequencies. The multiple local interface mechanism offers a practical
 alternative to virtual channels when a node requires simultaneous non-blocking
 communication with multiple peers.
 
-Verilator co-simulation on a $4\times4$ mesh validates the analytical latency
-model: measured return-path latency satisfies $L=12H+P-1$ (dual-clock) and
-$L=9H+P-1$ (single-clock), with the $3H$ gap between modes explained exactly
-by the CDC pipeline overhead eliminated in single-clock operation.  A
+Verilator co-simulation on a $4\times4$ mesh measures a deterministic per-hop
+latency: return-path latency satisfies $L=12H+P-1$ (dual-clock) and
+$L=9H+P-1$ (single-clock), the $3$-cycle-per-hop difference being exactly the
+depth of the dual-clock FIFO's gray-code synchroniser, which single-clock
+operation omits.  A
 LLaMA~3~8B FFN up-projection benchmark (Q8\_0 weights, BF16 activations,
 $14336\times4096$) with a single master completes in 43\,M cycles; a
 four-master quadrant configuration, where each corner master owns a $2\times2$

@@ -26,42 +26,33 @@ contention during payload transfer). The trade-off is a path-establishment laten
 proportional to the route length before the first payload flit is delivered at the
 destination.
 
-\subsection{End-to-End Latency Model}
+\subsection{End-to-End Latency}
 
 Let $H$ denote the number of hops from source to destination (including the
 final local hop), and $P$ the number of payload flits in the packet.
-The end-to-end latency $L$ decomposes into two additive terms.
+End-to-end latency decomposes into two additive terms.
 
-\emph{Setup phase.} The routing flit propagates hop by hop; at each hop the
-ingress FSM reads the flit from the FIFO, asserts a request, and waits for a
-grant. Per-hop setup latency is:
+\emph{Setup phase.} The routing flit propagates hop by hop. At each hop it
+traverses a fixed pipeline of register stages---the ingress FIFO read, the
+routing-FSM request register, the PRRA grant, and the egress data
+register---and, in dual-clock mode, the gray-code synchroniser of the ingress
+FIFO~\cite{cummings2002}. This pipeline is identical for every hop and contains
+no contention-dependent path once a request is granted, so the per-hop cost is
+a fixed constant~$\alpha$.
+
+\emph{Transfer phase.} Once the path is established, the $P$ payload flits are
+pipelined at one flit per hop: the first flit reaches the destination after
+$H$ cycles and the last after $H + P - 1$ cycles.
+
+End-to-end latency is therefore strictly linear and deterministic:
 \begin{equation}
-  T_\text{hop} = T_\text{FIFO} + 1 + T_\text{PRRA}
-  \label{eq:thop}
-\end{equation}
-where $T_\text{FIFO}$ is the FIFO read latency (1~cycle in single-clock mode;
-$\approx$3~cycles in dual-clock mode due to the gray-code CDC synchronisation
-pipeline~\cite{cummings2002}), the $+1$ accounts for the FSM decode cycle, and
-$T_\text{PRRA} \in \{1, 2\}$ is the arbiter grant latency controlled by the
-\texttt{PIPELINE} parameter.
-
-\emph{Transfer phase.} Once the path is established, $P$ payload flits are
-pipelined at one flit per hop: the first flit arrives at the destination after
-$H$ cycles, and the last after $H + P - 1$ cycles.
-
-The total latency is therefore:
-\begin{equation}
-  L = H \cdot (T_\text{FIFO} + 2 + T_\text{PRRA}) + P - 1
+  L = \alpha\,H + P - 1
   \label{eq:latency}
 \end{equation}
-
-In the minimum configuration (single-clock, \texttt{PIPELINE=0}):
-$L = 4H + P - 1$.
-In the maximum configuration (dual-clock, \texttt{PIPELINE=1}):
-$L = 7H + P - 1$.
-Both bounds are tight and deterministic: $L$ depends only on the
-statically-known route length $H$ and packet size $P$, with no
-congestion-dependent term once the path is open.
+with no congestion-dependent term once the path is open. The per-hop constant
+$\alpha$ depends only on the FIFO clocking mode---it is larger in dual-clock
+mode by the depth of the gray-code synchroniser---and is measured directly by
+co-simulation in Section~\ref{sec:evaluation}.
 
 \subsection{Static Route Management as an Alternative to Virtual Channels}
 
