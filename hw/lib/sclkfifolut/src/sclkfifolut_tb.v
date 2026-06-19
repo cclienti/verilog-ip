@@ -67,6 +67,33 @@ module sclkfifolut_tb;
    );
 
    //----------------------------------------------------------------
+   // OUTPUT_REG=1 DUT (registered read output), same stimulus
+   //----------------------------------------------------------------
+   wire [FIFO_WIDTH-1:0]    rdata_reg;
+   wire [LOG2_FIFO_DEPTH:0] level_reg;
+   wire                     rempty_reg;
+   wire                     wfull_reg;
+
+   sclkfifolut
+   #(
+      .LOG2_FIFO_DEPTH (LOG2_FIFO_DEPTH),
+      .FIFO_WIDTH      (FIFO_WIDTH),
+      .OUTPUT_REG      (1)
+   )
+   sclkfifolut_reg
+   (
+      .clk    (clk),
+      .srst   (srst),
+      .level  (level_reg),
+      .ren    (ren),
+      .rdata  (rdata_reg),
+      .rempty (rempty_reg),
+      .wen    (wen),
+      .wdata  (wdata),
+      .wfull  (wfull_reg)
+   );
+
+   //----------------------------------------------------------------
    // Clock and Reset Generation
    //----------------------------------------------------------------
    initial begin
@@ -165,10 +192,13 @@ module sclkfifolut_tb;
    end
 
    always @(posedge clk) begin
-      if (cpt > 2)
-        if (rdata !== rdata_check) begin
+      // The golden rdata_ref sequence models registered-read semantics, so
+      // it is checked against the OUTPUT_REG=1 instance. rdata_check is only
+      // meaningful once the first read has issued.
+      if ((cpt > 2) && (rdata_ref_ptr > 0))
+        if (rdata_reg !== rdata_check) begin
            $display("%m: Error: bad 'rdata' at cpt=%3d", cpt-1);
-           $display("  --> obtained 0x%08X instead of 0x%08X", rdata, rdata_check);
+           $display("  --> obtained 0x%08X instead of 0x%08X", rdata_reg, rdata_check);
            $finish;
         end
         else begin
@@ -236,6 +266,56 @@ module sclkfifolut_tb;
       end
    end
 
+
+
+   //----------------------------------------------------------------
+   // OUTPUT_REG=1 coverage checks
+   //----------------------------------------------------------------
+   // The OUTPUT_REG=1 instance (declared above) shares the same stimulus.
+   // Because OUTPUT_REG only registers rdata: (a) level, rempty and wfull
+   // must match the FWFT instance, and (b) its registered rdata must equal
+   // the FWFT rdata captured on each protected read (ren & ~rempty). The
+   // golden rdata_ref sequence (registered-read semantics) is checked
+   // against this instance above.
+
+   // Reference: FWFT rdata captured on each protected read.
+   reg [FIFO_WIDTH-1:0] rdata_reg_check;
+   reg                  rdata_reg_valid;
+
+   always @(posedge clk) begin
+      if(srst == 1'b1) begin
+         rdata_reg_valid <= 1'b0;
+      end
+      else if((ren == 1'b1) && (rempty == 1'b0)) begin
+         rdata_reg_check <= rdata;
+         rdata_reg_valid <= 1'b1;
+      end
+   end
+
+   // The registered instance must not perturb the flow-control flags.
+   always @(posedge clk) begin
+      if (cpt > 2)
+        if ((level_reg !== level) || (rempty_reg !== rempty) || (wfull_reg !== wfull)) begin
+           $display("%m: Error: OUTPUT_REG=1 flags differ at cpt=%3d", cpt-1);
+           $display("  --> level %0d/%0d rempty %b/%b wfull %b/%b (reg/fwft)",
+                    level_reg, level, rempty_reg, rempty, wfull_reg, wfull);
+           $finish;
+        end
+
+   end
+
+   // The registered read data must equal the FWFT data captured at read.
+   always @(posedge clk) begin
+      if ((cpt > 2) && (rdata_reg_valid == 1'b1))
+        if (rdata_reg !== rdata_reg_check) begin
+           $display("%m: Error: bad registered 'rdata' at cpt=%3d", cpt-1);
+           $display("  --> obtained 0x%08X instead of 0x%08X", rdata_reg, rdata_reg_check);
+           $finish;
+        end
+        else begin
+           $display("%m: cpt=%3d, rdata_reg Ok", cpt-1);
+        end
+   end
 
 
 endmodule
