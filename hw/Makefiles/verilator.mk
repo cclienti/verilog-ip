@@ -3,10 +3,13 @@
 
 VERILATOR          ?= verilator
 VERILATOR_FLAGS    += -Mdir $(VERILATOR_LIB_DIR) $(foreach DIR,$(ALL_TOP_FILES),+incdir+$(dir $(DIR)))
+# Forward parameter overrides (NAME=VALUE) to the top module as -GNAME=VALUE,
+# mirroring iverilog.mk (-P) and modelsim.mk (-G).
+VERILATOR_FLAGS    += $(foreach PARAM,$(TESTBENCH_PARAMS),-G$(PARAM))
 VERILATOR_LIB_DIR  ?= verilator/lib
 
-VERILATOR_LIB       = $(join $(join obj_dir/V,$(TOP_MODULE)),__ALL.a)
-VERILATOR_MAKE      = $(join $(join V,$(TOP_MODULE)),.mk)
+VERILATOR_LIB       = $(VERILATOR_LIB_DIR)/V$(TOP_MODULE)__ALL.a
+VERILATOR_MAKE      = V$(TOP_MODULE).mk
 
 
 help::
