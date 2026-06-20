@@ -26,7 +26,7 @@ module hynoc_router_5p_tb;
    localparam integer PAYLOAD_WIDTH        = 32;
    localparam integer FLIT_WIDTH           = (PAYLOAD_WIDTH+1);
    localparam integer PRRA_PIPELINE        = 0;
-   localparam integer SINGLE_CLOCK_ROUTER  = 0;
+   parameter  integer SINGLE_CLOCK_ROUTER  = 0;
    localparam integer ENABLE_MCAST_ROUTING = 1;
    localparam integer ENABLE_XY_ROUTING    = 1;
 
