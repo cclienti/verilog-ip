@@ -25,7 +25,7 @@ module hynoc_router_3p_tb;
    localparam integer PAYLOAD_WIDTH        = 32;
    localparam integer FLIT_WIDTH           = (PAYLOAD_WIDTH+1);
    localparam integer PRRA_PIPELINE        = 0;
-   localparam integer SINGLE_CLOCK_ROUTER  = 0;
+   parameter  integer SINGLE_CLOCK_ROUTER  = 0;
    localparam integer ENABLE_MCAST_ROUTING = 1;
 
    localparam integer NUM_ROUTERS     = 2;
@@ -249,16 +249,21 @@ module hynoc_router_3p_tb;
                                      .local_egress_empty       (local_egress_empty[lindex]),
                                      .local_egress_fifo_level  (local_egress_fifo_level[lindex]));
 
-         initial begin
-            local_clk[lindex] = 0;
+         // Single-clock mode requires every clock to be the same signal
+         // (sclkfifolut has no CDC); otherwise drive an asynchronous local
+         // clock to exercise the dual-clock FIFO crossing.
+         if (SINGLE_CLOCK_ROUTER != 0) begin: single_clk_local
+            always @(*) local_clk[lindex] = router_clk;
+         end
+         else begin: multi_clk_local
+            initial local_clk[lindex] = 0;
+            always begin
+              #(lindex+3) local_clk[lindex] = !local_clk[lindex];
+            end
          end
 
          always @(posedge local_clk[lindex]) begin
             local_srst[lindex] <= arst;
-         end
-
-         always begin
-           #(lindex+3) local_clk[lindex] = !local_clk[lindex];
          end
 
          local_reader #(.LOCAL_ID      (lindex),
