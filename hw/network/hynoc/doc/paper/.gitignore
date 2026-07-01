@@ -1,0 +1,9 @@
+# Generated LaTeX output and build byproducts
+main.pdf
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.toc
+sections/*.aux
