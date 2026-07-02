@@ -28,12 +28,14 @@ $(PAPER).pdf: $(PAPER).tex $(SECTIONS) references.bib $(FIGURES)
 	$(LATEX)  $(PAPER)
 	$(LATEX)  $(PAPER)
 
-# arXiv source tarball: main .tex, section inputs, the .bib and generated
-# .bbl (arXiv does not reliably re-run BibTeX), and only the PDF figures that
-# are actually used -- no .odg/.eps sources, no build artifacts, no main.pdf.
+# arXiv source tarball: main .tex, section inputs, references.bib, and only
+# the PDF figures actually used -- no .odg/.eps sources, no build artifacts,
+# no main.pdf. The generated main.bbl is intentionally NOT bundled: arXiv
+# prefers to run BibTeX on references.bib itself (IEEEtran.bst is standard on
+# its TeX Live).
 arxiv: $(PAPER).pdf
 	@rm -f $(ARXIV)
-	tar czf $(ARXIV) $(PAPER).tex $(PAPER).bbl references.bib \
+	tar czf $(ARXIV) $(PAPER).tex references.bib \
 	    $(SECTIONS) $(FIGURES)
 	@echo "--- $(ARXIV) contents ---"
 	@tar tzf $(ARXIV)
