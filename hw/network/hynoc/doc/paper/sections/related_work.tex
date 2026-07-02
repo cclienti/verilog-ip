@@ -18,12 +18,12 @@ and contention.
 transmission, eliminating mid-network contention at the cost of a setup overhead
 proportional to route length before the first data flit is delivered.
 
-Hybrid approaches have been explored. Æthereal~\cite{goossens2005} combines
+Hybrid approaches have been explored. {\AE}thereal~\cite{goossens2005} combines
 guaranteed-throughput circuit-switched slots with best-effort wormhole traffic on
 the same physical links using time-division multiplexing. HyNoC takes a different
 hybrid point: it establishes a dedicated path through a hop-by-hop request/grant
 handshake (the circuit phase), then streams payload flits in wormhole fashion
-along that reserved path (the data phase). Unlike Æthereal, HyNoC does not
+along that reserved path (the data phase). Unlike {\AE}thereal, HyNoC does not
 multiplex traffic in time: once a path is open, it is held exclusively for the
 duration of the packet, and no other packet can pre-empt it on the same egress
 port. The setup latency — one request/grant round per hop — is paid once per
@@ -166,7 +166,7 @@ axes discussed above.
 Design       & Switching  & Routing    & VCs & Target \\
 \midrule
 Hermes~\cite{moraes2004}      & Wormhole        & XY (dest.)    & No  & ASIC/FPGA \\
-Æthereal~\cite{goossens2005}  & TDM + Wormhole  & Table         & Yes & ASIC \\
+{\AE}thereal~\cite{goossens2005}  & TDM + Wormhole  & Table         & Yes & ASIC \\
 CONNECT~\cite{papamichael2012}& Wormhole        & Configurable  & Yes & FPGA \\
 HopliteRT~\cite{wasly2017}     & Deflection      & XY (dest.)    & No  & FPGA \\
 HyNoC                         & Circuit+Wormhole& Source (rel.) & No  & FPGA \\
