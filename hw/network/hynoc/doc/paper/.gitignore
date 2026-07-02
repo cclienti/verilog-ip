@@ -7,3 +7,6 @@ main.pdf
 *.out
 *.toc
 sections/*.aux
+
+# arXiv submission tarball
+*-arxiv.tar.gz
