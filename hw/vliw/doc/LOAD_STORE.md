@@ -213,6 +213,11 @@ by ARCHITECTURE.md §Interrupts and Exceptions.
 | -2              | `IRQ_CAUSE`    | `NB_IRQ`          | RO     | Cause code written by hardware                 |
 | -1              | `IRQ_STATUS`   | `NB_IRQ`          | RO     | Pending IRQ bits, cleared on `ERET`            |
 
+- The `LOOP_*` registers access the **committed** loop state
+  (CONTROL_UNIT.md §4.4), so a handler always reads values consistent with
+  `IRQ_SAVED_PC`. All control registers reset to `0`; `IRQ_MASK = 0` keeps
+  every line masked until software has programmed `IRQ_VECTOR`
+  (ARCHITECTURE.md §Reset and Clock).
 - MMIO registers are accessed with **word** operations (`LW`/`SW`) and must be
   word-aligned; a sub-word or misaligned MMIO access raises an alignment trap.
 - Writes to **RO** registers have no effect; reads of narrow registers

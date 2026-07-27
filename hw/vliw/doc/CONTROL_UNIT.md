@@ -162,6 +162,8 @@ in `ABI.md`) — the assembler must never emit one.
 - Register and immediate forms are **distinct opcodes** (no format bit):
   `LOOP`/`LOOPI`, `MOV`/`MOVI`, `CMOV`/`CMOVI`.
 - Branches have **no link register** — use `JAL` for branch-and-link.
+- All PC arithmetic (`PC + 1`, branch/jump targets, `rs1 + imm12`) is performed
+  **modulo `2^IMEM_DEPTH_LOG2`** — targets are truncated to the PC width.
 - The control-slot **integer ALU** (`ADD`…`SLTIU`) writes `rd` into the control
   bank and reuses the 2-read/1-write ports; it is a simple fast unit (no
   multiply, no shift) — see §3.9.
@@ -372,6 +374,10 @@ if (count == 0) {
 }
 ```
 
+These writes happen at EX1 and initialise **both** the committed and
+speculative copies of `loop_active` / `loop_count` (§4.4); the catch-up below
+may then adjust the speculative copies only.
+
 - `end_off` is a signed 12-bit VLIW-word offset from the `LOOP` instruction
   to the **last** word of the loop body → bodies up to 2047 VLIW words.
 - `LOOP` (register form) reads `rs1` through control-slot read port 0.
@@ -385,21 +391,62 @@ if (count == 0) {
    - Inner loops can be re-armed every outer iteration without any explicit
      clear in between.
 
+**Short-body arming catch-up.** The loop context is written when
+`LOOP`/`LOOPI` reaches EX1, but the back-edge comparator (§4.4) watches
+`next_pc` at the **front end** — and by arm time the front end has already
+fetched the next `BRANCH_SHADOW` sequential words. If the body is not longer
+than the front end (`end_off ≤ BRANCH_SHADOW`), the first
+`next_pc == loop_end + 1` transition passes **before** `loop_active` is set,
+and the first back-edge would be silently missed. The hardware therefore
+performs a **catch-up** at arm time (`count > 0`, after arming):
+
+```
+if (fetch_pc > loop_end) {            // front end already fetched past the body
+    if (count == 1) {
+        loop_active_spec <- 0         // in-flight fall-through is the correct path
+                                      // (committed copies retire normally, §4.4)
+    } else {
+        flush in-flight words with pc > loop_end   // reuses the branch flush (§5.1)
+        loop_count_spec <- count - 1  // credit: iteration 1 is already in flight
+                                      // (committed count stays N, §4.4)
+        PC              <- loop_start // refetch from iteration 2
+    }
+}
+```
+
+If a trap/IRQ is accepted in the **same cycle**, the arm still commits but the
+trap's flush reloads the speculative copies from the committed ones (§4.4),
+undoing the in-flight credit — the credited iteration is itself squashed. See
+the third illustration in §4.4 and ARCHITECTURE.md §Interrupts and Exceptions.
+
+- Exactly **one** copy of the body is in flight at arm time (fetch was purely
+  sequential), so the decrement is always by one.
+- Cost: a ≤ `BRANCH_SHADOW`-cycle bubble **once per loop entry**, and only for
+  short bodies; a body longer than the front end arms with zero cost, and the
+  **steady state is unaffected in all cases** — even a 1-word body back-edges
+  every cycle with zero overhead (illustrated in §9).
+- Rationale: the alternative — a minimum body length with assembler `NOP`
+  padding — would make correctness depend on inserted NOPs and freeze the
+  front-end depth (`BRAM_OUT_REG`, ARCHITECTURE.md §Memory Model) into
+  binaries, exactly what the hardware-squash model exists to avoid (§5.1).
+  Correctness stays in hardware; NOPs remain performance-only.
+
 ### 4.4 Implicit back-edge — end-of-loop
 
 There is **no explicit end-of-loop instruction in the body**. Each cycle the
-hardware tests, on the next-PC datapath:
+hardware tests, on the next-PC datapath (using the **speculative** copies of
+the loop state — see below):
 
 ```
-back_edge = loop_active && (next_pc == loop_end + 1)
+back_edge = loop_active_spec && (next_pc == loop_end + 1)
 
 if (back_edge) {
-    if (loop_count > 1) {
-        loop_count <- loop_count - 1
-        PC         <- loop_start         // zero-overhead back-jump
+    if (loop_count_spec > 1) {
+        loop_count_spec <- loop_count_spec - 1
+        PC              <- loop_start        // zero-overhead back-jump
     } else {
-        loop_active <- 0                 // loop done
-        PC          <- loop_end + 1      // fall through
+        loop_active_spec <- 0                // loop done
+        PC               <- loop_end + 1     // fall through
     }
 }
 ```
@@ -407,11 +454,112 @@ if (back_edge) {
 Because the test is performed on `next_pc` (one cycle ahead of fetch), the
 back-edge does **not** incur a branch shadow.
 
+#### Committed vs. speculative loop state
+
+The back-edge mutates the count and active flag at **fetch time** — before the
+fetched iteration has executed. Fetch is speculative with respect to squash (a
+taken branch in the body, an IRQ): decrements made for iterations that are
+later squashed and refetched must not stick, or the loop silently runs short.
+The loop state is therefore split:
+
+| Copy                                          | Lives at  | Mutated by                                   | Read by                          |
+|-----------------------------------------------|-----------|----------------------------------------------|----------------------------------|
+| `loop_count` / `loop_active` (**committed**)  | EX1       | arm / `LCLR` (EX1), commit rule below        | MMIO `LOOP_*` (§4.8), flush reload |
+| `loop_count_spec` / `loop_active_spec` (**speculative**) | front end | back-edge/exit (above), arm, catch-up credit (§4.3) | back-edge comparator |
+
+(`loop_start` / `loop_end` are written only at arm — commit time — and need no
+second copy.)
+
+**Commit rule (EX1).** The committed copies advance when a loop-body end word
+actually retires:
+
+```
+// EX1 retirement
+if (retires && bundle.pc == loop_end && loop_active && !redirect_taken) {
+    if (loop_count > 1)  loop_count <- loop_count - 1
+    else                 { loop_active <- 0; loop_count <- 0 }   // loop done
+}
+// '!redirect_taken': a taken branch at loop_end wins over the back-edge and
+// must not decrement (§4.10) — mirroring the front-end rule, which only
+// fires when the next PC is the sequential loop_end + 1.
+```
+
+**Reload rule (any flush).** Every `flush` — taken branch / jump, `TRAP` /
+IRQ, loop-skip, catch-up-under-trap (§4.3), `LCLR` with an active loop (§4.5)
+— reloads the speculative copies from the committed ones:
+
+```
+loop_count_spec  <- loop_count
+loop_active_spec <- loop_active
+```
+
+This is exact: at flush time nothing younger than EX1 survives, so the
+committed values are precisely the state at the resume point; refetched
+iterations then re-decrement the speculative copy legitimately. MMIO reads
+(`LOOP_COUNT`, `LOOP_ACTIVE`) return the **committed** copies, so an ISR
+always saves and restores values consistent with `IRQ_SAVED_PC`.
+
+#### Pipeline-state illustrations
+
+**IRQ in the middle of a 1-word-body loop** (`loop_start = loop_end = S`,
+`N = 10`; `S(k)` denotes iteration `k`):
+
+```
+             EX1     RR      ID      IF    | count_spec | count (committed)
+cycle T:     S(5)    S(6)    S(7)    S(8)  |     3      |   6     IRQ accepted
+  1. S(5) retires and commits:   count 6 -> 5
+  2. S(6), S(7), S(8) squashed   (same flush as a taken branch)
+  3. reload:  count_spec <- count = 5
+  4. IRQ_SAVED_PC <- loop_start  (back-edge next-PC of S(5))
+
+ISR reads LOOP_COUNT = 5         ; "iterations 6..10 remain" — consistent
+ERET -> refetch S ; iterations 6..10 run.
+
+Without the committed copy, count_spec = 3 would survive the flush: the
+refetched loop would back-edge only 3 more times and iterations 9 and 10
+would be silently lost.
+```
+
+**Taken early-exit branch at `loop_end`** (body `S..E`, `BNEZ` in the last
+body word, taken during iteration `k`):
+
+```
+             EX1     RR        ID          IF        | count_spec | count
+cycle T:     E(k)    S(k+1)    S+1(k+1)    S+2(k+1)  |   c - 1    |   c
+  1. BNEZ in E(k) resolves TAKEN — redirect wins over the back-edge (§4.10)
+  2. committed count NOT decremented (E retired with a taken redirect)
+  3. wrapped words of iteration k+1 squashed; reload: count_spec <- c
+  4. PC <- branch target (where the compiler placed LCLR, §4.7)
+```
+
+**IRQ in the same cycle `LOOPI` reaches EX1** (1-word body `S = W+1`,
+short-body catch-up, §4.3):
+
+```
+             EX1      RR      ID      IF   | count_spec | count
+cycle T:     LOOPI    S(1)    W+2     W+3  |     —      |   —
+  1. arm commits:      loop_active <- 1, start = end = S, count <- N
+  2. catch-up credit:  count_spec <- N - 1   (iteration 1 is in flight ...)
+  3. IRQ flush (priority 1) squashes S(1), W+2, W+3   (... and now it is dead)
+  4. reload:  count_spec <- count = N        — the credit is undone
+  5. IRQ_SAVED_PC <- loop_start = S
+
+ISR reads LOOP_COUNT = N ; ERET -> S ; all N iterations run.
+(An implementation MAY instead defer IRQ acceptance by one cycle when EX1
+holds a LOOP/LOOPI — the two behaviours are architecturally
+indistinguishable. See ARCHITECTURE.md §Interrupts and Exceptions.)
+```
+
 ### 4.5 LCLR — abort the active loop
 
 ```
-LCLR     ->  loop_active <- 0
-             PC          <- PC + 1
+LCLR (EX1) ->  loop_active <- 0 ; loop_active_spec <- 0
+               if (a loop was active) {
+                   flush younger in-flight words    // they may have wrapped
+                   refetch from PC + 1              // <= BRANCH_SHADOW bubble
+               } else {
+                   PC <- PC + 1                     // no flush, no bubble
+               }
 ```
 
 `LCLR` is used **before any control-flow transfer that takes the program
@@ -420,9 +568,15 @@ multi-target branch). Without it, the dormant comparator could fire
 spuriously if the program later happens to execute address `loop_end + 1`
 while `loop_active` is still set.
 
-`LCLR` does not change the PC by itself, so it has **no shadow**. In typical
-use it is paired with a following `J`/`JAL`/branch which carries its own
-own `BRANCH_SHADOW`-word shadow.
+**Why the flush?** `LCLR` clears the context at EX1, but the front end runs
+`BRANCH_SHADOW` words ahead on the *speculative* context (§4.4): if `LCLR`
+sits within `BRANCH_SHADOW` words of `loop_end`, fetch may already have taken
+the back-edge and be streaming the next — now cancelled — iteration. Flushing
+the younger words and refetching from `LCLR + 1` discards them and reloads the
+speculative copies. With **no active loop** there is nothing to protect: no
+flush, no bubble. `LCLR` sits on cold early-exit paths, so the one-time bubble
+is negligible; it is typically followed by a `J`/`JAL`/branch carrying its own
+`BRANCH_SHADOW` shadow.
 
 ### 4.6 Early exit and `continue`
 
@@ -508,7 +662,14 @@ negligible in practice.
   last word of the loop body, the branch redirect wins over the back-edge:
   the branch is taken, `loop_count` is **not** decremented, and `loop_active`
   is unchanged. A not-taken branch lets the back-edge fire normally. This is
-  a consequence of the next-PC priority list in §5.
+  a consequence of the next-PC priority list in §5. The committed count is
+  protected by the `!redirect_taken` term of the commit rule, and any
+  speculative wrap fetched behind the taken branch is undone by the flush
+  reload (§4.4, second illustration).
+- **`LCLR` within `BRANCH_SHADOW` words of `loop_end`**: fetch may already
+  have wrapped on the speculative context; `LCLR`'s flush (§4.5) squashes the
+  wrapped words — correct by construction, at the cost of its one-time
+  bubble.
 - **`LCLR` then immediate use of `loop_active`**: software inspecting
   `LOOP_ACTIVE` via MMIO right after `LCLR` sees the cleared value on the
   next load (no special forwarding needed; the MMIO read is itself a regular
@@ -516,8 +677,11 @@ negligible in practice.
 - **`LOOP` with `end_off ≤ 0`**: reserved (illegal). Behavior is
   implementation-defined; the assembler must reject it.
 - **`LOOP` arming a body of length 1** (`end_off = 1`): legal; the single
-  body word is both `loop_start` and `loop_end`, and the back-edge fires every
-  cycle.
+  body word is both `loop_start` and `loop_end`. Entry goes through the
+  arm-time catch-up (§4.3): iteration 1 is already in flight, the over-fetched
+  fall-through words are flushed, and fetch restarts at `loop_start` with
+  `loop_count - 1`; thereafter the back-edge fires every cycle with zero
+  overhead.
 
 ---
 
@@ -544,7 +708,8 @@ Priority of next-PC selection (highest first):
 2. `ERET`
 3. Taken branch / `JAL` / `JALR`
 4. **Loop back-edge** (`loop_active && next_pc == loop_end + 1`)
-5. **Loop skip** (`LOOP`/`LOOPI` issued with `count == 0`)
+5. **Loop skip / short-body catch-up** (`LOOP`/`LOOPI` with `count == 0`, or
+   armed with the front end already past `loop_end` — §4.3)
 6. Sequential `PC + 1`
 
 On an **asynchronous IRQ**, the PC saved in `IRQ_SAVED_PC` is this same next-PC
@@ -554,10 +719,10 @@ not the sequential PC. See ARCHITECTURE.md §Interrupts and Exceptions (Entry
 point and saved PC).
 
 The back-edge is computed on `next_pc` one cycle ahead of fetch and therefore
-incurs **no shadow**. Branches, `JAL`, `JALR`, `TRAP`, `ERET`, and the loop
-skip all resolve in EX1; their `BRANCH_SHADOW` younger slots are
-**hardware-squashed** (§5.1), so the compiler fills the shadow only for
-performance.
+incurs **no shadow**. Branches, `JAL`, `JALR`, `TRAP`, `ERET`, the loop skip
+and the short-body catch-up (§4.3) all resolve in EX1; their `BRANCH_SHADOW`
+younger slots are **hardware-squashed** (§5.1), so the compiler fills the
+shadow only for performance.
 
 ### 5.1 Branch shadow and hardware squash
 
@@ -566,10 +731,16 @@ front end has already fetched the next `BRANCH_SHADOW` VLIW words (in IF/ID/RR);
 on a taken redirect those words are on the wrong path.
 
 The hardware **squashes** them. On a taken branch / `JAL` / `JALR` / `TRAP` /
-`ERET` / loop-skip, EX1 asserts a `flush` that
+`ERET` / loop-skip / `LCLR` with an active loop (§4.5) — and, selectively, on
+the short-body loop catch-up (§4.3, which flushes only the words beyond
+`loop_end`) — EX1 asserts a `flush` that
 
-- forces the `BRANCH_SHADOW` younger in-flight slots to `NOP`, and
-- masks their register-file write-enables so they retire with no side effects.
+- forces the `BRANCH_SHADOW` younger in-flight slots to `NOP`,
+- masks their register-file write-enables,
+- thereby suppresses their data-memory / MMIO accesses and any loop-context or
+  trap side effect — squashed slots reach EX1 as `NOP`s, so **no architectural
+  side effect of any kind survives**, not only register writes — and
+- reloads the speculative loop state from the committed copies (§4.4).
 
 Consequently the shadow needs **no compiler action for correctness** — and,
 unlike a delay-slot ISA, **no `NOP` padding either**. The hardware inserts the
@@ -591,43 +762,23 @@ the data-hazard scoreboard (see ARCHITECTURE.md §Scoreboard): NOPs are a
 performance concern only, for both data and control hazards.
 
 **Scoreboard interaction.** Squashed slots must leave no stale scoreboard
-reservations. There are two admissible implementations; both avoid any
-rollback / unreserve machinery:
-
-- **Registered flush (default, `fmax`-friendly).** The `flush` does **not**
-  reach back into the issue-stage reservation write-enables in the same cycle.
-  Wrong-path slots reserve their `busy` / `wbres` entries normally, and a
-  **registered flush clears those entries one cycle later** (cancelling the
-  pending `wbres` write-back-delay-line slot and the `busy` bit). This is safe
-  because the earliest *correct-path* consumer cannot reach RR until several
-  cycles after the redirect — refetch has to walk IF→ID→RR — so the stale
-  reservations are gone (cleared at T+1) well before any real consumer could
-  observe them (~T+3). A wrong-path slot that stalls on another wrong-path
-  reservation in the meantime is harmless: it is being flushed anyway. This
-  keeps the whole branch path **forward / registered** — nothing feeds
-  combinationally back into the scoreboard.
-
-- **Same-cycle inhibit (optional, tighter invariant).** If the reservation
-  logic is small enough to close timing with the backward arc, the same `flush`
-  MAY instead **inhibit the issue-stage reservations of the squashed slots in
-  the same cycle**, so wrong-path instructions never touch the scoreboard at
-  all. This gives a cleaner "no stale entry ever exists" invariant and needs no
-  one-cycle-late clear, at the cost of an EX1→RR combinational path into the
-  wide scoreboard — the one arc most likely to limit `fmax` on FPGA. Prefer
-  this only when timing analysis shows the arc has slack.
-
-Both variants are functionally equivalent; the choice is a pure timing/area
-trade-off, decided at implementation time.
+reservations observable by the correct path. The reservation-cancellation
+contract, the full redirect timeline, and its two admissible implementations —
+the **registered flush** (default, `fmax`-friendly: wrong-path entries cleared
+one cycle later, provably before the refetched path can reach RR) and the
+**same-cycle inhibit** (optional, at the cost of an EX1→RR combinational
+arc) — are specified in **`SCOREBOARD.md`** §6, the authoritative reference.
+Neither variant needs rollback / unreserve machinery.
 
 **No squash needed for:** the **loop back-edge** (resolved one cycle ahead on
-`next_pc`, §4.4 — no shadow) and `LCLR` (does not redirect the PC).
+`next_pc`, §4.4 — no shadow). `LCLR` *does* flush, but only when a loop is
+active (§4.5).
 
 **Cost.** A `flush` control signal plus per-slot NOP-force muxes and
 write-enable masks — a handful of gates, reusing the same front-end control as
 the lock-step stall (stall = *freeze* the front-end registers; flush = *force
-them to NOP*). The registered variant adds only a one-cycle-late scoreboard
-clear and keeps the branch path fully forward/registered; the same-cycle variant
-trades that for the EX1→RR reservation-inhibit arc.
+them to NOP*). Scoreboard-side cost of the two flush variants: `SCOREBOARD.md`
+§8.
 
 **Implementation shortcut (optional).** A first FPGA bring-up MAY skip the
 squash hardware entirely and instead require the assembler to pad
@@ -647,10 +798,10 @@ hardware squash.
 | `BEQ`…`BGEU`     | —                                         | `BRANCH_SHADOW` |
 | `JAL`            | `rd` at W + 1                             | `BRANCH_SHADOW` |
 | `JALR`           | `rd` at W + 1                             | `BRANCH_SHADOW` |
-| `LOOP`/`LOOPI`, count > 0 | —                                | 0           |
+| `LOOP`/`LOOPI`, count > 0 | —                                | 0 (short body: one-time catch-up, §4.3) |
 | `LOOP`/`LOOPI`, count = 0 (skip) | —                         | `BRANCH_SHADOW` |
 | Loop back-edge   | —                                         | 0           |
-| `LCLR`           | —                                         | 0           |
+| `LCLR`           | —                                         | 0 (no loop) / ≤ `BRANCH_SHADOW` (active loop, §4.5) |
 | `MOV`/`MOVI`     | `rd` at W + 2                             | 0           |
 | `CMOV`/`CMOVI`   | `rd` at W + 2 (if written)               | 0           |
 | Integer ALU (`ADD`…`SLTIU`) | `rd` at W + 1 (design intent, §3.9) | 0     |
@@ -707,11 +858,11 @@ outer:
 mid:
     REPEATR r3, end_i - start_i    ; <- arms the HW loop with N_INN iter
 start_i:
-    ; ---- inner body : 4 ALU + 1 LS + 1 ctl per VLIW word ----
-    LW    r10, (r20)
-    MUL   r11, r10, r12
-    ADD   r13, r13, r11
-    ADDI  r20, r20, 4
+    ; ---- inner body: ONE VLIW word = 1 LS + 2 ALU + 1 ctl slot ----
+    LW    r10, (r20)               ; LS slot
+    MUL   r11, r10, r12            ; ALU slot 0
+    ADD   r13, r13, r11            ; ALU slot 1
+    ADDI  r20, r20, 4              ; control slot (integer ALU, §3.9)
 end_i:
     ; ---- end of inner body (back-edge fires here, zero overhead) ----
 
@@ -732,3 +883,49 @@ execute usefully.
 Zero overhead in the **innermost** body (no compare, no decrement, no branch
 shadow). The outer loops pay only the taken-branch bubble per iteration —
 negligible compared to the hot inner work.
+
+### What the hardware does at `REPEATR` (1-word body, arm-time catch-up)
+
+The inner body above is a **single VLIW word** (`LS: LW`, `ALU0: MUL`,
+`ALU1: ADD`, `CTRL: ADDI` — the pointer bump rides the control slot's integer
+ALU, §3.9), so `end_off = 1 ≤ BRANCH_SHADOW` and loop entry goes through the
+arm-time catch-up (§4.3):
+
+```asm
+    REPEATR r3, 1              ; arm: loop_start = loop_end = start_i
+start_i:
+    { LW r10,(r20) | MUL r11,r10,r12 | ADD r13,r13,r11 | ADDI r20,r20,4 }
+after:
+    SW    r13, (r21)           ; first word after the loop
+```
+
+```
+fetch stream:   REPEATR, start_i, after, after+1      ; sequential over-fetch
+                                                      ; (trigger next_pc ==
+                                                      ;  loop_end+1 passes here,
+                                                      ;  comparator not yet armed)
+REPEATR @ EX1:  arm; fetch_pc already > loop_end  ->  catch-up:
+                  flush 'after', 'after+1'            ; wrong path for iter >= 2
+                  loop_count <- r3 - 1                ; iteration 1 is in flight
+                  PC <- start_i                       ; refetch iteration 2
+steady state:   start_i, start_i, start_i, ...        ; back-edge fires every
+                                                      ; cycle - zero overhead
+last iteration: falls through; 'after' is refetched and executes
+```
+
+The catch-up bubble (≤ `BRANCH_SHADOW` cycles) is paid **once per loop
+entry** and amortized over the `r3` iterations. A body longer than
+`BRANCH_SHADOW` words pays nothing at all — the first natural
+`next_pc == loop_end + 1` transition then arrives after the arm, and no flush
+occurs. Note the loop-carried recurrence `ADDI r20 -> LW (r20)` sustains 1
+cycle/iteration because the control-slot integer ALU produces `r20` at W + 1
+(§3.9).
+
+**Scope of this example.** The body issues **one memory operation per cycle**
+— the LS slot's limit (one port, LOAD_STORE.md §6). It therefore models
+kernels with *one streamed operand*, a *register-resident* second operand
+(`r12` is invariant here) and *register accumulation* (`r13`), with the result
+stored once after the loop. Kernels that need two memory operations per
+element (two streamed inputs, or a load **and** a store per iteration) are
+limited to one element every two cycles by memory bandwidth, regardless of
+slot count — see LOAD_STORE.md §6 for the bandwidth options.

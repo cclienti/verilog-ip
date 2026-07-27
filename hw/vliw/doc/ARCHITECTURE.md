@@ -308,84 +308,22 @@ compiler scheduling mistake produces a stall, never silent corruption. This
 also decouples the ISA from the pipeline — instruction latencies or pipeline
 depth can change without breaking existing binaries.
 
-### Why it is cheap here
+It is cheap because the register file is **write-local / read-global**
+(§Register File): WAW hazards and write-port conflicts stay inside a single
+bank (one writer slot per bank), and only RAW hazards cross banks. The state
+is a few hundred flip-flops — per-bank `busy` bits plus `wbres` write-back
+delay lines — with an all-or-nothing combinational issue check and a single
+**global lock-step stall** (*freeze the front, drain the back*). No renaming,
+no ROB, no CAM.
 
-The register file is **write-local / read-global** (see §Register File): each
-slot writes only its own bank, any slot reads any bank. This asymmetry maps
-directly onto the scoreboard:
-
-- **WAW hazards and write-port conflicts are local to a bank** — only that
-  bank's owning slot ever writes it.
-- **Only RAW hazards cross banks** — because any slot can read any bank.
-
-Issue is in-order and lock-step, so there is no CAM, no Tomasulo tags, no
-renaming, and no reorder buffer.
-
-### Per-bank state
-
-For each bank `b`:
-
-- **`busy_b[r]`** — one bit per register: a write to `r` is in flight. An
-  optional refinement `ready_at_b[r]` records the cycle the value becomes
-  readable, enabling early (bypassed) issue.
-- **`wbres_b[0..LMAX]`** — a shift-register delay line reserving future
-  write-back cycles. Results retire at different stages (ADD/LOAD @ EX2,
-  shift @ EX3, MUL/MULH @ EX4, INV_SQRT @ EX5), so two ops issued by the
-  **same** slot at different cycles can land on that bank's single write port on
-  the **same** cycle. `wbres_b` counts reservations per future cycle and
-  compares them against the bank's write-port count (1) to catch this
-  structural collision.
-
-`LMAX` is the deepest write-back latency (5, for `INV_SQRT`).
-
-### Issue check (combinational, all-or-nothing)
-
-The whole bundle (up to 4 ops) issues only if **no** op raises a hazard — a
-single verdict for the entire packet.
-
-- For each **source** `(bank, reg)` global read: **RAW stall** if
-  `busy_bank[reg]` and the value is not yet readable/forwardable this cycle.
-  This is the only wide network — up to ~8 read operands (2 per ALU, up to 2 for
-  LS, 2 for CTRL) muxed across the banks into comparators. It mirrors the RF
-  read crossbar (same fan-in).
-- For each **destination** `(own bank b, reg)`: **WAW stall** if `busy_b[reg]`;
-  **structural stall** if the reserved target cycle in `wbres_b` would exceed
-  the write-port count. Both checks touch only the issuing slot's own bank.
-
-### Stall and update
-
-- **No hazard:** the packet issues; `busy` is set on destinations and entries
-  are inserted into the `wbres` delay lines.
-- **Hazard:** a single **global lock-step stall** freezes the front end (PC,
-  fetch, issue registers) while the delay lines keep shifting — *freeze the
-  front, drain the back*. In-flight writes retire, `busy` bits clear, and the
-  packet re-tests on the next cycle.
-
-**WAR is free:** in-order issue with operand read at a fixed stage (RR)
-guarantees an earlier reader samples before a later writer commits.
-
-### Scope: data hazards only
-
-The scoreboard covers **data** hazards (RAW / WAW / write-port structural).
-**Control** hazards — the branch shadow — are handled separately by the
-front-end **squash**: on a taken branch / jump / trap the EX1 `flush` forces the
-in-flight shadow slots to NOP and masks their write-enables (see
-`CONTROL_UNIT.md` §5.1). Branch NOPs are therefore performance-only too, so the
-"NOPs never affect correctness" property holds for both data and control
-hazards. (A first FPGA bring-up MAY instead require the compiler to pad the
-shadow with NOPs — an implementation shortcut, not an ISA change; see
-`CONTROL_UNIT.md` §5.1.)
-
-The global-stall mechanism also generalizes cleanly to **variable-latency**
-accesses (the NoC port B, or a future cache): a miss asserts the same global
-stall so that relative timings are preserved. The current on-chip DMEM is
-fixed-latency (2 cycles), so loads are deterministic.
-
-### Cost
-
-A few hundred flip-flops (`busy` bits plus the per-bank delay lines) and a
-muxed ~8-operand RAW check. No renaming, no ROB, no reservation stations — one
-to two orders of magnitude cheaper than an out-of-order core of the same width.
+The scoreboard covers **data** hazards only; **control** hazards (the branch
+shadow) are handled by the front-end squash (`CONTROL_UNIT.md` §5.1), so the
+"NOPs never affect correctness" property holds for both. The complete
+specification — state, issue checks, stall rules, the interaction with
+branches (taken and not-taken), jumps, traps and interrupts, the
+squashed-reservation contract, and the variable-latency extension — is in
+**`SCOREBOARD.md`**, which is the authoritative reference; it is not
+duplicated here to avoid drift.
 
 ---
 
@@ -494,7 +432,11 @@ hardware:
 - jumps to `IRQ_VECTOR`,
 - **squashes** the younger in-flight slots via the same EX1 `flush` used for
   branches (details in §Entry point and saved PC), so entry incurs no software
-  NOP shadow.
+  NOP shadow,
+- **blocks acceptance of further external IRQs until `ERET`** (an internal
+  *in-handler* flag): new events are still latched in `IRQ_STATUS` but are not
+  taken — `IRQ_SAVED_PC` is single-depth, so hardware nesting is not
+  supported. A synchronous `TRAP` inside a handler is a software/ABI concern.
 
 All of these live in the memory-mapped control-register region at the top of
 DMEM (map in `LOAD_STORE.md` §4.2); the
@@ -541,6 +483,22 @@ EX1 with nothing else resolving, so the saved value is `TRAP_PC + 1`
 (CONTROL_UNIT.md §3.6). If a synchronous `TRAP` and an async IRQ land on the
 same cycle, one is taken and the other stays pending in `IRQ_STATUS`.
 
+Two more corners are defined:
+
+- **EX1 holds a bubble** (global scoreboard stall, or the pipe draining after
+  a redirect): the IRQ is still accepted; `IRQ_SAVED_PC` is the PC of the
+  **oldest unexecuted bundle** — e.g. the bundle stalled at RR, which has made
+  no scoreboard reservations (SCOREBOARD.md §6.6) and is simply squashed and
+  refetched after `ERET`.
+- **EX1 holds a `LOOP`/`LOOPI`**: the arm **commits** (committed context
+  `{active, start, end, count = N}`) and the saved PC is `loop_start` — the
+  arm's sequential next-PC. The short-body catch-up's in-flight credit is
+  undone by the flush's speculative-state reload, since the credited iteration
+  is itself squashed, so all `N` iterations run after `ERET`
+  (CONTROL_UNIT.md §4.3/§4.4, third illustration). An implementation MAY
+  instead defer IRQ acceptance by one cycle in this case; the two behaviours
+  are architecturally indistinguishable.
+
 ### Context save / restore (software)
 
 The handler spills whatever registers it clobbers to a stack in the **data
@@ -552,8 +510,9 @@ memory-mapped save/restore path (see CONTROL_UNIT.md §4.8).
 
 ### Exit
 
-`ERET` restores the PC from `IRQ_SAVED_PC` and clears the pending bit in
-`IRQ_STATUS`; like `TRAP` it is hardware-squashed, so return incurs no shadow.
+`ERET` restores the PC from `IRQ_SAVED_PC`, clears the pending bit in
+`IRQ_STATUS`, and **re-enables IRQ acceptance** (clears the *in-handler*
+flag); like `TRAP` it is hardware-squashed, so return incurs no shadow.
 (`trap_code` allocation and exact bit layouts are defined in `ABI.md`.)
 
 ---
@@ -565,6 +524,19 @@ memory-mapped save/restore path (see CONTROL_UNIT.md §4.8).
 | Reset    | Synchronous, active high (`srst`) |
 | Clock    | Single clock domain (`clk`)       |
 | Target   | Xilinx/AMD FPGA, >200 MHz         |
+
+**Architectural state at reset (`srst`):**
+
+| State                                       | Reset value                                              |
+|---------------------------------------------|----------------------------------------------------------|
+| `PC`                                        | `0` — execution starts at IMEM word 0                    |
+| Pipeline                                    | empty (all slots `NOP`)                                  |
+| `IRQ_MASK`                                  | `0` — **all lines masked**; software programs `IRQ_VECTOR` before unmasking |
+| `IRQ_STATUS`, `IRQ_CAUSE`, `IRQ_VECTOR`, `IRQ_SAVED_PC` | `0`                                          |
+| *in-handler* flag                           | `0` (IRQ acceptance enabled, subject to `IRQ_MASK`)      |
+| `loop_active` (committed **and** speculative) | `0` (no armed loop)                                    |
+| Scoreboard (`busy`, `wbres`)                | `0` (no reservations)                                    |
+| General-purpose registers                   | **not reset by `srst`** (BRAM contents persist); `0` after FPGA configuration (`initial`), `r0` permanently 0 (§Implementation of `r0`) |
 
 ---
 
