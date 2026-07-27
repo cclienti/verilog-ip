@@ -12,6 +12,12 @@ VIVADO_PART            ?= "xc7z020clg484-1"
 VIVADO_SYNTH_OPTIONS   ?= -flatten_hierarchy full -no_iobuf
 VIVADO_BOARDFILE       ?= ../../../boards/zedboard/zedboard.xdc
 
+# Set to 1 for module-level (out-of-context) projects: synth_1 runs with
+# -mode out_of_context, so no IOBUFs are inserted and implementation does
+# not require pin placement (the project-mode equivalent of -no_iobuf,
+# which only applies to the non-project vivado-gen-* targets).
+VIVADO_PROJECT_OOC     ?= 0
+
 .PHONY: vivado-gen-post-syn.tcl vivado-gen-post-impl.tcl
 .PHONY: project.vivado synth.vivado impl.vivado floorplan.vivado
 .PHONY: clean.vivado distclean.vivado
@@ -31,8 +37,11 @@ vivado-project.tcl: $(ALL_TOP_FILES)
 	@echo "add_files {" >> $@
 	@for f in $(ALL_TOP_FILES); do echo "  $$f" >> $@; done
 	@echo "}" >> $@
-	@echo "set_property top $(TOP_MODULE) [current_fileset]"
+	@echo "set_property top $(TOP_MODULE) [current_fileset]" >> $@
 	@echo "add_files -fileset constrs_1 $(abspath $(VIVADO_BOARDFILE))" >> $@
+	@if [ "$(VIVADO_PROJECT_OOC)" = "1" ]; then \
+		echo "set_property -name {STEPS.SYNTH_DESIGN.ARGS.MORE OPTIONS} -value {-mode out_of_context} -objects [get_runs synth_1]" >> $@; \
+	fi
 	@echo "close_project -quiet" >> $@
 
 synth.vivado: vivado-gen-post-syn.tcl
@@ -85,7 +94,7 @@ clean:: clean.vivado
 distclean:: distclean.vivado
 
 # Only what comes back in seconds: the scratch directory, the journals
-# and logs, and the tcl scripts this file generates.
+# and logs, the jvm crash dumps, and the tcl scripts this file generates.
 #
 # The journals and logs are named rather than globbed: vivado.* also
 # matched vivado.xdc, a constraint file kept in the repository, and
@@ -94,6 +103,7 @@ distclean:: distclean.vivado
 clean.vivado:
 	rm -rf .Xil
 	rm -f vivado.jou vivado.log vivado_*.backup.jou vivado_*.backup.log
+	rm -f hs_err_pid*
 	rm -f vivado-project.tcl vivado-gen-post-syn.tcl vivado-gen-post-impl.tcl
 
 # The tool outputs: a netlist, a placed-and-routed checkpoint, a project.
