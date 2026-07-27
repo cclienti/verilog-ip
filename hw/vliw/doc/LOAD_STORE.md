@@ -295,8 +295,8 @@ accesses execute in **program order**. Consequences:
 
 `PUSH`/`POP` are multi-slot idioms, not single instructions; the `sp`/`ra`
 register conventions are defined in `ABI.md`. Absolute addressing of a symbol
-uses the two-word `LUI`+`ADDI` constant-generation idiom (ARCHITECTURE.md §ALU
-Slot) to form the base, then a `0` offset.
+uses the two-word `LUI`+`ADDI` constant-generation idiom (`ALU.md` §6) to form
+the base, then a `0` offset.
 
 ---
 

@@ -166,68 +166,18 @@ addresses (`bank[2:0]` + `reg[4:0]`, any bank); the destination is **5-bit**
 
 ### ALU Slot (×2)
 
-**R-type**: register–register operation
+Two identical ALU slots (writing banks 0 and 1). Each is a full **32-bit**
+instruction using the common header (flat `opcode[31:26]`, `NOP = 000000`),
+with **R-type** (reg–reg, plus a `funct(7)` extension field), **I-type**
+(reg–`imm14`, signed **±8191**; register and immediate forms are distinct
+opcodes) and **U-type** (`LUI`, `imm20`) formats. Operations:
+`ADD SUB AND OR XOR SLT SLTU SLL SRL SRA MUL MULH INV_SQRT LUI`, with advisory
+latencies of 2–5 cycles (see §Compiler latency model).
 
-| [31:26]   | [25:21] | [20:14] | [13:7] | [6:0]    |
-|-----------|---------|---------|--------|----------|
-| opcode(6) | rd(5)   | rs1(7)  | rs2(7) | funct(7) |
-
-- `funct(7)` refines the operation / reserves room for future 3-operand forms;
-  the base ops are fully selected by `opcode`, so the assembler emits `0`.
-
-**I-type**: register–immediate operation (distinct opcode from its R-type form)
-
-| [31:26]   | [25:21] | [20:14] | [13:0]    |
-|-----------|---------|---------|-----------|
-| opcode(6) | rd(5)   | rs1(7)  | imm14(14) |
-
-- `imm14` is signed, sign-extended to 32 bits → range **±8191**.
-
-**U-type** (`LUI`):
-
-| [31:26] | [25:21] | [20:1]    | [0]       |
-|---------|---------|-----------|-----------|
-| `LUI`   | rd(5)   | imm20(20) | unused(1) |
-
-#### ALU Opcodes
-
-| Opcode     | Format | Description                   | Latency |
-|------------|--------|-------------------------------|---------|
-| `ADD`      | R/I    | rd = rs1 + rs2/imm            | 2       |
-| `SUB`      | R      | rd = rs1 - rs2                | 2       |
-| `AND`      | R/I    | rd = rs1 & rs2/imm            | 2       |
-| `OR`       | R/I    | rd = rs1 \| rs2/imm           | 2       |
-| `XOR`      | R/I    | rd = rs1 ^ rs2/imm            | 2       |
-| `SLT`      | R/I    | rd = (rs1 < rs2/imm) signed   | 2       |
-| `SLTU`     | R/I    | rd = (rs1 < rs2/imm) unsigned | 2       |
-| `SLL`      | R/I    | rd = rs1 << rs2/imm (barrel)  | 3       |
-| `SRL`      | R/I    | rd = rs1 >> rs2/imm logical   | 3       |
-| `SRA`      | R/I    | rd = rs1 >> rs2/imm arith     | 3       |
-| `MUL`      | R      | rd = rs1 * rs2 (low 32-bit)   | 4       |
-| `MULH`     | R      | rd = rs1 * rs2 (high 32-bit)  | 4       |
-| `INV_SQRT` | R      | rd ≈ 1/sqrt(rs1)              | 5       |
-| `LUI`      | U      | rd = imm20 << 12              | 2       |
-
-- **Format `R/I`** means the operation has **two distinct opcodes** — a
-  register form and an immediate form (e.g. `ADD` and `ADDI`) — since there is no
-  `fmt` bit to select between them.
-
-#### ALU Pseudo-instructions (compiler expands)
-
-| Pseudo        | Real instruction      | Meaning              |
-|---------------|-----------------------|----------------------|
-| `NOP`         | opcode `000000`       | empty slot (dedicated NOP) |
-| `MOV rd, rs`  | `ADD rd, r0, rs`      | register copy        |
-| `NEG rd, rs`  | `SUB rd, r0, rs`      | negate               |
-| `NOT rd, rs`  | `XOR rd, rs, -1`      | bitwise not          |
-| `LI rd, imm`  | `ADDI rd, r0, imm14`  | load small immediate |
-
-#### 32-bit constant generation (2 VLIW words)
-
-```
-LUI  rd, imm20        # rd = imm20 << 12
-ADDI rd, rd, imm12    # rd = rd + sign_ext(imm12)
-```
+The complete encoding — opcode map, bit layouts, pseudo-instructions
+(`MOV NEG NOT LI`) and the `LUI`+`ADDI` 32-bit constant idiom — is specified in
+**`ALU.md`**, which is the authoritative reference; it is not duplicated here
+to avoid drift.
 
 ---
 
