@@ -13,70 +13,70 @@
 
 `timescale 1 ns / 100 ps
 
-// Parallel memory for a dual load/store (LD2/ST2) unit:
-// 3 prime-interleaved banks on true-dual-port dual-clock BRAM (dpmemrf,
-// READ_FIRST), accessed as a strided pair from ONE instruction:
+// Parallel memory: 3 prime-interleaved banks, dual (2-lane) strided
+// access pair for a dual load/store (LD2/ST2) unit. Same interface
+// family as parmem5_2 / parmem5_4 / parmemn (per-lane enables, packed
+// lane data) so the memories are interchangeable under a common L/S
+// unit. Measured combinational figures: ~300 LUTs / 3 RAMB36, clka
+// slack at artifact level @ 5 ns OOC on xc7z020-1 -- see
+// hw/lib/parmemn/RESULTS.md (B3L2).
 //
-//   dual = 0 :  single access  at EA0 = addr
-//   dual = 1 :  pair access    at EA0 = addr and EA1 = addr + stride
-//               (both accesses share `wen`: two loads or two stores)
+//   lane i (i = 0..1): EA_i = addr + i*stride, enabled by lane_en[i];
+//   both enabled lanes share `wen` (dual load or dual store).
 //
 // CRT addressing, no divider: bank = EA mod 3, index = EA[DEPTH-1:0]
-// (bijective since gcd(3, 2^DEPTH) = 1). The pair conflicts exactly when
-// stride is a multiple of 3; power-of-2 strides never conflict. On
-// conflict, access 0 is served and access 1 is dropped -- `conflict` is
-// the caller's request to serialize. It is a pure function of the stride
-// residue (deliberately not gated by oob*, keeping the EA1 adder out of
-// its cone); it may assert together with oob1, in which case the oob
-// trap takes precedence in the caller.
+// (bijective since gcd(3, 2^DEPTH) = 1). The pair conflicts iff
+// stride == 0 (mod 3) -- `conflict` is a pure function of the stride
+// residue and the lane mask (deliberately not gated by oob*, keeping
+// the EA1 adder out of its cone); it may assert together with oob*,
+// the trap taking precedence. On conflict lane 0 is served (steering
+// priority; if lane 0 is out of range the bank idles). Power-of-2
+// strides never conflict.
 //
-// bank1 computation (PARRES parameter):
-//   PARRES = 0: bank1 = mod3(EA1) -- the adder and the mod-3 tree are in
-//               series on the address path.
-//   PARRES = 1: bank1 = (bank0 + stride) mod 3, computed IN PARALLEL with
-//               the EA1 adder (mod is a homomorphism); a sign-correction
-//               constant accounts for the two's-complement representation
-//               (the raw-pattern residue is off by 2^STRIDE_W mod 3 when
-//               stride is negative).
-// Both are functionally identical; PARRES exists to measure the timing
-// difference of the two implementations.
+// Lane 1's bank id is the parallel residue (bank0 + stride) mod 3,
+// computed IN PARALLEL with the EA1 adder (mod is a homomorphism); a
+// sign-correction constant accounts for the two's-complement
+// representation (the raw-pattern residue is off by 2^STRIDE_W mod 3
+// when stride is negative).
 //
 // EA1 is range-checked at FULL width before truncation: a negative or
 // overflowing EA1 can alias an in-range address after truncation (e.g.
-// DEPTH=4: 0 + (-20) truncates to 44 < 48). Out-of-range accesses are
-// reported on oob0/oob1 and suppressed.
+// DEPTH=4: 0 + (-20) truncates to 44 < 48). Out-of-range lanes are
+// reported on oob[i] and suppressed individually.
 //
 // Side B is a single linear-addressed port with its own clock and CRT
-// decode (network interface): single requester, no conflicts, no muxes
-// (address/data broadcast, enable gating only).
+// decode (network interface). Side A reads: 1 + ADRREG + OUTREGA
+// cycles; side B reads: 1 + OUTREGB cycles (the dpmemrf output
+// register is enable-gated -- hold the enable one extra cycle to
+// flush). READ_FIRST: a write returns the pre-write content.
 //
-// Reads are synchronous: 1 cycle (2 with OUTREG* = 1; the dpmemrf output
-// register is enable-gated -- keep the port enabled one extra cycle to
-// flush). READ_FIRST: a write returns the pre-write cell content.
+// ADRREG = 1 inserts a pipeline register at the end of the address
+// phase (bank enables/WE/address/data muxes and bank ids), breaking
+// the stride/addr worst-case paths before the bank access. conflict
+// and oob stay COMBINATIONAL (computed before the register, from the
+// ports only): the issue-cycle contract is unchanged -- only the data
+// latency grows.
 
 module parmem3
   #(parameter DEPTH    = 10,  //log2 of words per bank; 3*2^DEPTH words total
     parameter WIDTH    = 32,
     parameter STRIDE_W = 12,  //signed stride width, in words; <= DEPTH+2
+    parameter ADRREG   = 0,   //register the address phase (+1 cycle, fmax option)
     parameter OUTREGA  = 0,   //extra side-A output register (fmax option)
-    parameter OUTREGB  = 0,   //extra side-B output register (fmax option)
-    parameter PARRES   = 1)   //bank1: 1 = parallel residue, 0 = mod3(EA1)
+    parameter OUTREGB  = 0)   //extra side-B output register (fmax option)
 
-   (//Side A: one dual load/store access pair
+   (//Side A: one dual strided load/store access pair
     input  logic                clka,
     input  logic                en,
-    input  logic                wen,     //shared: 2 loads or 2 stores
-    input  logic                dual,    //0: single access at addr
-    input  logic [DEPTH+1:0]    addr,
-    input  logic [STRIDE_W-1:0] stride,  //signed, in words
-    input  logic [WIDTH-1:0]    dia0,
-    input  logic [WIDTH-1:0]    dia1,
-    output logic [WIDTH-1:0]    doa0,
-    output logic [WIDTH-1:0]    doa1,
+    input  logic                wen,      //shared by the pair
+    input  logic [1:0]          lane_en,  //per-lane enable
+    input  logic [DEPTH+1:0]    addr,     //lane 0 linear address
+    input  logic [STRIDE_W-1:0] stride,   //signed, in words
+    input  logic [2*WIDTH-1:0]  dia,      //lane write data
+    output logic [2*WIDTH-1:0]  doa,      //lane read data
 
     output logic                conflict, //stride % 3 == 0: serialize
-    output logic                oob0,     //EA0 out of range, suppressed
-    output logic                oob1,     //EA1 out of range, suppressed
+    output logic [1:0]          oob,      //EA_i out of range
 
     //Side B: single linear-addressed port (network interface)
     input  logic                clkb,
@@ -89,6 +89,11 @@ module parmem3
 
    localparam AW = DEPTH + 2;        //linear address width, 3*2^DEPTH < 2^AW
    localparam CM = (STRIDE_W % 2 == 0) ? 1 : 2;  // 2^STRIDE_W mod 3
+
+   initial begin
+      assert (STRIDE_W <= AW)
+        else $fatal(1, "STRIDE_W must be <= DEPTH + 2");
+   end
 
 
    //----------------------------------------------------------------
@@ -121,30 +126,16 @@ module parmem3
    endfunction
 
 
-   //----------------------------------------------------------------
-   // Effective addresses: EA0 = addr, EA1 = addr + stride
-   // (full-width computation, range check before truncation)
-   //----------------------------------------------------------------
-   logic signed [AW:0] ea1_full;
-   logic [DEPTH-1:0]   idx0, idx1;
-
-   assign ea1_full = $signed({1'b0, addr})
-                     + (AW + 1)'($signed(stride));
-   assign idx0 = addr[DEPTH-1:0];
-   assign idx1 = ea1_full[DEPTH-1:0];
-
-   assign oob0 = en & (addr[AW-1:AW-2] == 2'b11);
-   // full-width range test as a pure 3-bit check on the sum -- no second
-   // carry chain after the adder: negative <=> sign bit; >= 3*2^DEPTH
-   // <=> both top bits of the in-range field set (3*2^DEPTH = "11" << DEPTH)
-   assign oob1 = en & dual
-                 & (ea1_full[AW] | (ea1_full[AW-1] & ea1_full[AW-2]));
-
+   //================================================================
+   // ADDRESS PHASE -- closed by the optional ADRREG pipeline register
+   // (addra_bank / dia_bank / ena_bank / wea_bank / bank ids), before
+   // the bank access. conflict and oob are computed in this section
+   // and stay combinational regardless of ADRREG.
+   //================================================================
 
    //----------------------------------------------------------------
-   // Stride residue (always computed): stride mod 3 from the raw
-   // two's-complement pattern, corrected by -(2^STRIDE_W mod 3) when
-   // negative. Runs in parallel with the EA1 adder.
+   // Stride residue, sign-corrected (drives conflict and lane 1 bank),
+   // in parallel with the EA1 adder
    //----------------------------------------------------------------
    logic [1:0] smod, scorr;
 
@@ -152,67 +143,117 @@ module parmem3
    assign scorr = stride[STRIDE_W-1] ? mod3_add(smod, 2'(3 - CM))
                                      : smod;
 
+   //----------------------------------------------------------------
+   // Lane effective addresses and bank ids
+   //----------------------------------------------------------------
+   logic signed [AW:0] ea1_full;
+   logic [DEPTH-1:0]   idx0, idx1;
+   logic [1:0]         bank0, bank1;
+   logic [1:0]         ce;
 
-   //----------------------------------------------------------------
-   // Bank computation: bank0 from addr; bank1 serial or parallel
-   //----------------------------------------------------------------
-   logic [1:0] bank0, bank1;
+   assign ea1_full = $signed({1'b0, addr})
+                     + (AW + 1)'($signed(stride));
+   assign idx0 = addr[DEPTH-1:0];
+   assign idx1 = ea1_full[DEPTH-1:0];
 
    assign bank0 = mod3({{(32 - AW){1'b0}}, addr});
-
-   generate
-      if (PARRES != 0) begin: gen_bank1_par
-         assign bank1 = mod3_add(bank0, scorr);
-      end
-      else begin: gen_bank1_ser
-         // adder then tree, in series
-         assign bank1 = mod3({{(32 - AW){1'b0}}, ea1_full[AW-1:0]});
-      end
-   endgenerate
-
+   assign bank1 = mod3_add(bank0, scorr);
 
    //----------------------------------------------------------------
-   // Access qualification and conflict.
-   //
-   // conflict is a PURE function of the stride residue: same bank
-   // <=> stride % 3 == 0 (bank0 cancels out of the comparison), and
-   // it is deliberately NOT gated by oob* -- keeping the EA1 adder
-   // and range compare out of the conflict cone, since conflict is
-   // the caller's stall request and its most timing-critical output.
-   // conflict may therefore assert together with oob1; the oob trap
-   // takes precedence in the caller.
+   // Out-of-range: full-width test as a pure check on the sum -- no
+   // second carry chain after the adder: negative <=> sign bit;
+   // >= 3*2^DEPTH <=> both top bits of the in-range field set
+   // (3*2^DEPTH = "11" << DEPTH)
    //----------------------------------------------------------------
-   logic ce0, ce1;
+   assign oob[0] = en & lane_en[0] & (addr[AW-1:AW-2] == 2'b11);
+   assign oob[1] = en & lane_en[1]
+                   & (ea1_full[AW] | (ea1_full[AW-1] & ea1_full[AW-2]));
 
-   assign ce0 = en & ~oob0;
-   assign ce1 = en & dual & ~oob1;
-
-   assign conflict = en & dual & (scorr == 2'd0);
-
+   assign ce = {2{en}} & lane_en & ~oob;
 
    //----------------------------------------------------------------
-   // Side A per-bank steering (access 0 priority; access 1 dropped
-   // on conflict); one shared wen gate per bank
+   // Conflict: pure function of the stride residue and the lane mask
    //----------------------------------------------------------------
-   logic [2:0]       sel0, sel1, ena_bank, wea_bank;
+   assign conflict = en & (scorr == 2'd0) & (lane_en == 2'b11);
+
+   //----------------------------------------------------------------
+   // Per-bank steering: raw-match ownership (EARLY cone: residues and
+   // lane mask only); mux select = lane 0 match, lane 1 as default --
+   // the EA1 adder and oob logic never enter the address/data select
+   // cone
+   //----------------------------------------------------------------
+   logic [2:0]       ena_bank, wea_bank;
    logic [DEPTH-1:0] addra_bank [0:2];
    logic [WIDTH-1:0] dia_bank [0:2];
 
-   genvar b;
    generate
-      for (b = 0; b < 3; b = b + 1) begin: gen_asteer
-         assign sel0[b]      = ce0 & (bank0 == b[1:0]);
-         assign sel1[b]      = ce1 & (bank1 == b[1:0]) & ~sel0[b];
-         assign ena_bank[b]  = sel0[b] | sel1[b];
-         assign wea_bank[b]  = ena_bank[b] & wen;
-         assign addra_bank[b] = sel0[b] ? idx0 : idx1;
-         assign dia_bank[b]   = sel0[b] ? dia0 : dia1;
+      for (genvar b = 0; b < 3; b = b + 1) begin: gen_asteer
+         logic [1:0] rawm, sel;
+
+         assign rawm[0] = lane_en[0] & (bank0 == b[1:0]);
+         assign rawm[1] = lane_en[1] & (bank1 == b[1:0]);
+
+         assign sel[0] = rawm[0];
+         assign sel[1] = rawm[1] & ~rawm[0];
+
+         assign ena_bank[b] = |(sel & ce);
+         assign wea_bank[b] = ena_bank[b] & wen;
+
+         assign addra_bank[b] = rawm[0] ? idx0 : idx1;
+         assign dia_bank[b]   = rawm[0] ? dia[0 +: WIDTH]
+                                        : dia[WIDTH +: WIDTH];
       end
    endgenerate
 
+   //----------------------------------------------------------------
+   // Optional address-phase pipeline register (ADRREG = 1): breaks
+   // the stride/addr worst-case paths before the bank access; +1
+   // cycle on data. Bank ids are load-enabled by ce (select-hold
+   // semantics, matching the return-path registers).
+   //----------------------------------------------------------------
+   logic [2:0]       ena_bank_q, wea_bank_q;
+   logic [DEPTH-1:0] addra_bank_q [0:2];
+   logic [WIDTH-1:0] dia_bank_q [0:2];
+   logic [1:0]       ce_q;
+   logic [1:0]       bank0_q, bank1_q;
+
+   generate
+      if (ADRREG != 0) begin: gen_adrreg
+         always_ff @(posedge clka) begin
+            ena_bank_q <= ena_bank;
+            wea_bank_q <= wea_bank;
+            ce_q       <= ce;
+            for (int b = 0; b < 3; b++) begin
+               addra_bank_q[b] <= addra_bank[b];
+               dia_bank_q[b]   <= dia_bank[b];
+            end
+            if (ce[0] == 1'b1) begin
+               bank0_q <= bank0;
+            end
+            if (ce[1] == 1'b1) begin
+               bank1_q <= bank1;
+            end
+         end
+      end
+      else begin: gen_adrreg
+         assign ena_bank_q = ena_bank;
+         assign wea_bank_q = wea_bank;
+         assign ce_q       = ce;
+         assign bank0_q    = bank0;
+         assign bank1_q    = bank1;
+         for (genvar b = 0; b < 3; b = b + 1) begin: gen_pass
+            assign addra_bank_q[b] = addra_bank[b];
+            assign dia_bank_q[b]   = dia_bank[b];
+         end
+      end
+   endgenerate
+
+   //================================================================
+   // END OF ADDRESS PHASE
+   //================================================================
 
    //----------------------------------------------------------------
-   // Side B: CRT decode, single requester
+   // Side B: CRT decode, single requester (no muxes)
    //----------------------------------------------------------------
    logic [1:0]       bankb;
    logic [DEPTH-1:0] idxb;
@@ -225,12 +266,11 @@ module parmem3
    assign ceb   = enb & ~oobb;
 
    generate
-      for (b = 0; b < 3; b = b + 1) begin: gen_bsteer
+      for (genvar b = 0; b < 3; b = b + 1) begin: gen_bsteer
          assign enb_bank[b] = ceb & (bankb == b[1:0]);
          assign web_bank[b] = enb_bank[b] & web;
       end
    endgenerate
-
 
    //----------------------------------------------------------------
    // Banks: true dual port, dual clock, READ_FIRST both sides
@@ -239,11 +279,11 @@ module parmem3
    logic [WIDTH-1:0] bankdob [0:2];
 
    generate
-      for (b = 0; b < 3; b = b + 1) begin: gen_bank
+      for (genvar b = 0; b < 3; b = b + 1) begin: gen_bank
          dpmemrf #(.DEPTH(DEPTH), .WIDTH(WIDTH),
                    .OUTREGA(OUTREGA), .OUTREGB(OUTREGB))
-         bank_inst (.clka(clka), .ena(ena_bank[b]), .wea(wea_bank[b]),
-                    .addra(addra_bank[b]), .dia(dia_bank[b]),
+         bank_inst (.clka(clka), .ena(ena_bank_q[b]), .wea(wea_bank_q[b]),
+                    .addra(addra_bank_q[b]), .dia(dia_bank_q[b]),
                     .doa(bankdoa[b]),
                     .clkb(clkb), .enb(enb_bank[b]), .web(web_bank[b]),
                     .addrb(idxb), .dib(dib),
@@ -251,19 +291,19 @@ module parmem3
       end
    endgenerate
 
-
    //----------------------------------------------------------------
-   // Return path: 3:1 bank mux per access, select = registered bank
-   // id aligned with the bank read latency (1 + OUTREG cycles)
+   // Return path: per-lane 3:1 bank mux, select = registered bank id
+   // aligned with the bank read latency (1 + OUTREG cycles)
    //----------------------------------------------------------------
-   logic [1:0] bank0_r, bank1_r, bankb_r;
+   logic [1:0][1:0] bank_r;
+   logic [1:0]      bankb_r;
 
    always_ff @(posedge clka) begin
-      if (ce0 == 1'b1) begin
-         bank0_r <= bank0;
+      if (ce_q[0] == 1'b1) begin
+         bank_r[0] <= bank0_q;
       end
-      if (ce1 == 1'b1) begin
-         bank1_r <= bank1;
+      if (ce_q[1] == 1'b1) begin
+         bank_r[1] <= bank1_q;
       end
    end
 
@@ -275,24 +315,23 @@ module parmem3
 
    generate
       if (OUTREGA != 0) begin: gen_selra
-         logic [1:0] bank0_rr, bank1_rr;
-         logic       ce0_d, ce1_d;
+         logic [1:0][1:0] bank_rr;
+         logic [1:0]      ce_d;
          always_ff @(posedge clka) begin
-            ce0_d <= ce0;
-            ce1_d <= ce1;
-            if (ce0_d == 1'b1) begin
-               bank0_rr <= bank0_r;
+            ce_d <= ce_q;
+            if (ce_d[0] == 1'b1) begin
+               bank_rr[0] <= bank_r[0];
             end
-            if (ce1_d == 1'b1) begin
-               bank1_rr <= bank1_r;
+            if (ce_d[1] == 1'b1) begin
+               bank_rr[1] <= bank_r[1];
             end
          end
-         assign doa0 = bankdoa[bank0_rr];
-         assign doa1 = bankdoa[bank1_rr];
+         assign doa[0 +: WIDTH]     = bankdoa[bank_rr[0]];
+         assign doa[WIDTH +: WIDTH] = bankdoa[bank_rr[1]];
       end
       else begin: gen_selra
-         assign doa0 = bankdoa[bank0_r];
-         assign doa1 = bankdoa[bank1_r];
+         assign doa[0 +: WIDTH]     = bankdoa[bank_r[0]];
+         assign doa[WIDTH +: WIDTH] = bankdoa[bank_r[1]];
       end
    endgenerate
 

@@ -13,25 +13,29 @@
 
 `timescale 1 ns / 100 ps
 
-// Self-checking testbench for parmem3. Two DUTs (PARRES = 1 and
-// PARRES = 0) are driven identically; checks are applied to the
-// parallel-residue instance and cross-checked against the serial one.
-// A third instance covers OUTREG = 1. Mirrors the reference model in
+// Self-checking testbench for parmem3 (3 banks, 2 lanes). A second
+// instance covers OUTREG = 1. Mirrors the reference model in
 // hw/vliw/study/crt_addressing.py:
 //   1. bijection: fill with single writes, read back with single reads
-//   2. dual read, strides -11..11 with stride % 3 != 0 (signed strides
+//   2. pair read, strides -11..11 with stride % 3 != 0 (signed strides
 //      exercise the two's-complement residue correction): no conflict,
 //      both data correct
-//   3. dual read, stride % 3 == 0 (including 0): conflict, access 0 wins
-//   4. dual write (ST2-style pairs), verified by read-back
-//   5. out-of-range: EA0 top-bits check; EA1 negative and overflowing,
+//   3. pair read, stride % 3 == 0 (including 0): conflict, lane 0 wins
+//   4. pair write (ST2-style pairs), verified by read-back
+//   5. partial lane masks: disabled lanes have no side effects; lane 1
+//      alone is served at addr + stride; single active lane never
+//      conflicts
+//   6. out-of-range: EA0 top-bits check; EA1 negative and overflowing,
 //      including the truncation-alias trap (EA1 < 0 truncating into a
 //      VALID address): flagged, suppressed, no memory corruption
-//   6. READ_FIRST: a write returns the pre-write cell content
-//   7. side B (NI, own clock): linear fill + read back, cross-checked
+//   7. READ_FIRST: a write returns the pre-write cell content
+//   8. side B (NI, own clock): linear fill + read back, cross-checked
 //      against side A
-//   8. OUTREG = 1 variant: 2-cycle reads with the enable-extension
+//   9. OUTREG = 1 variant: 2-cycle reads with the enable-extension
 //      protocol, sides A and B
+//  10. ADRREG = 1 variant: address-phase pipeline register, 2-cycle
+//      reads (no enable extension needed), conflict/oob still
+//      combinational in the issue cycle
 
 module parmem3_tb();
 
@@ -43,63 +47,68 @@ module parmem3_tb();
    localparam WORDS = 3 * (1 << DEPTH);
 
    logic                clka, clkb;
-   logic                en, wen, dual;
+   logic                en, wen;
+   logic [1:0]          lane_en;
    logic [AW-1:0]       addr;
    logic [STRIDE_W-1:0] stride;
-   logic [WIDTH-1:0]    dia0, dia1;
-
-   logic [WIDTH-1:0]    doa0, doa1, doa0_s, doa1_s;
-   logic                conflict, oob0, oob1;
-   logic                conflict_s, oob0_s, oob1_s;
+   logic [2*WIDTH-1:0]  dia;
+   logic [2*WIDTH-1:0]  doa;
+   logic                conflict;
+   logic [1:0]          oob;
 
    logic                enb, web;
    logic [AW-1:0]       addrb;
    logic [WIDTH-1:0]    dib;
-   logic [WIDTH-1:0]    dob, dob_s;
-   logic                oobb, oobb_s;
+   logic [WIDTH-1:0]    dob;
+   logic                oobb;
 
    // OUTREG = 1 variant (independent instance and signals)
    logic                en_r, wen_r;
    logic [AW-1:0]       addr_r;
-   logic [WIDTH-1:0]    dia0_r, doa0_r;
+   logic [2*WIDTH-1:0]  dia_r, doa_r;
    logic                enb_r, web_r;
    logic [AW-1:0]       addrb_r;
    logic [WIDTH-1:0]    dib_r, dob_r;
+
+   // ADRREG = 1 variant (independent instance and signals)
+   logic                en_p, wen_p;
+   logic [1:0]          lane_en_p;
+   logic [AW-1:0]       addr_p;
+   logic [STRIDE_W-1:0] stride_p;
+   logic [2*WIDTH-1:0]  dia_p, doa_p;
+   logic                conflict_p;
+   logic [1:0]          oob_p;
 
    int                  errors = 0;
 
    logic [WIDTH-1:0]    refmem [0:WORDS-1];
 
 
-   // reference instance: parallel residue
    parmem3 #(.DEPTH(DEPTH), .WIDTH(WIDTH), .STRIDE_W(STRIDE_W),
-             .OUTREGA(0), .OUTREGB(0), .PARRES(1))
-   dut_par (.clka(clka), .en(en), .wen(wen), .dual(dual),
-            .addr(addr), .stride(stride), .dia0(dia0), .dia1(dia1),
-            .doa0(doa0), .doa1(doa1),
-            .conflict(conflict), .oob0(oob0), .oob1(oob1),
-            .clkb(clkb), .enb(enb), .web(web), .addrb(addrb),
-            .dib(dib), .dob(dob), .oobb(oobb));
-
-   // cross-check instance: serial residue (mod3 of the EA1 sum)
-   parmem3 #(.DEPTH(DEPTH), .WIDTH(WIDTH), .STRIDE_W(STRIDE_W),
-             .OUTREGA(0), .OUTREGB(0), .PARRES(0))
-   dut_ser (.clka(clka), .en(en), .wen(wen), .dual(dual),
-            .addr(addr), .stride(stride), .dia0(dia0), .dia1(dia1),
-            .doa0(doa0_s), .doa1(doa1_s),
-            .conflict(conflict_s), .oob0(oob0_s), .oob1(oob1_s),
-            .clkb(clkb), .enb(enb), .web(web), .addrb(addrb),
-            .dib(dib), .dob(dob_s), .oobb(oobb_s));
+             .OUTREGA(0), .OUTREGB(0))
+   parmem3_inst (.clka(clka), .en(en), .wen(wen), .lane_en(lane_en),
+                 .addr(addr), .stride(stride), .dia(dia), .doa(doa),
+                 .conflict(conflict), .oob(oob),
+                 .clkb(clkb), .enb(enb), .web(web), .addrb(addrb),
+                 .dib(dib), .dob(dob), .oobb(oobb));
 
    // OUTREG = 1 variant: 2-cycle reads, enable-gated output register
    parmem3 #(.DEPTH(DEPTH), .WIDTH(WIDTH), .STRIDE_W(STRIDE_W),
-             .OUTREGA(1), .OUTREGB(1), .PARRES(1))
-   dut_reg (.clka(clka), .en(en_r), .wen(wen_r), .dual(1'b0),
-            .addr(addr_r), .stride('0), .dia0(dia0_r), .dia1('0),
-            .doa0(doa0_r), .doa1(),
-            .conflict(), .oob0(), .oob1(),
-            .clkb(clkb), .enb(enb_r), .web(web_r), .addrb(addrb_r),
-            .dib(dib_r), .dob(dob_r), .oobb());
+             .OUTREGA(1), .OUTREGB(1))
+   parmem3_reg_inst (.clka(clka), .en(en_r), .wen(wen_r), .lane_en(2'b01),
+                     .addr(addr_r), .stride('0), .dia(dia_r), .doa(doa_r),
+                     .conflict(), .oob(),
+                     .clkb(clkb), .enb(enb_r), .web(web_r), .addrb(addrb_r),
+                     .dib(dib_r), .dob(dob_r), .oobb());
+
+   // ADRREG = 1 variant: address-phase pipeline register, 2-cycle reads
+   parmem3 #(.DEPTH(DEPTH), .WIDTH(WIDTH), .STRIDE_W(STRIDE_W),
+             .ADRREG(1), .OUTREGA(0), .OUTREGB(0))
+   parmem3_adr_inst (.clka(clka), .en(en_p), .wen(wen_p), .lane_en(lane_en_p),
+                     .addr(addr_p), .stride(stride_p), .dia(dia_p),
+                     .doa(doa_p), .conflict(conflict_p), .oob(oob_p),
+                     .clkb(clkb), .enb(1'b0), .web(1'b0), .addrb('0),
+                     .dib('0), .dob(), .oobb());
 
    //----------------------------------------------------------------
    // VCD
@@ -137,14 +146,18 @@ module parmem3_tb();
    endfunction
 
    task automatic idle();
-      en = 0; wen = 0; dual = 0; addr = '0; stride = '0;
-      dia0 = '0; dia1 = '0;
+      en = 0; wen = 0; lane_en = '0; addr = '0; stride = '0; dia = '0;
       enb = 0; web = 0; addrb = '0; dib = '0;
    endtask
 
    task automatic idle_r();
-      en_r = 0; wen_r = 0; addr_r = '0; dia0_r = '0;
+      en_r = 0; wen_r = 0; addr_r = '0; dia_r = '0;
       enb_r = 0; web_r = 0; addrb_r = '0; dib_r = '0;
+   endtask
+
+   task automatic idle_p();
+      en_p = 0; wen_p = 0; lane_en_p = '0; addr_p = '0; stride_p = '0;
+      dia_p = '0;
    endtask
 
    task automatic check(input string what, input bit cond);
@@ -154,16 +167,11 @@ module parmem3_tb();
       end
    endtask
 
-   // both PARRES instances must always agree
-   task automatic xcheck(input string what);
-      check({what, " [par/ser conflict mismatch]"}, conflict === conflict_s);
-      check({what, " [par/ser oob mismatch]"},
-            (oob0 === oob0_s) && (oob1 === oob1_s));
-   endtask
-
    task automatic write_single(input int a, input logic [WIDTH-1:0] d);
       @(negedge clka);
-      en = 1; wen = 1; dual = 0; addr = a[AW-1:0]; dia0 = d;
+      en = 1; wen = 1; lane_en = 'b1; addr = a[AW-1:0];
+      dia = '0;
+      dia[0 +: WIDTH] = d;
       @(negedge clka);
       idle();
    endtask
@@ -171,13 +179,12 @@ module parmem3_tb();
    task automatic read_check_single(input int a, input logic [WIDTH-1:0] exp,
                                     input string what);
       @(negedge clka);
-      en = 1; wen = 0; dual = 0; addr = a[AW-1:0];
+      en = 1; wen = 0; lane_en = 'b1; addr = a[AW-1:0];
       @(negedge clka);
       idle();
       check($sformatf("%s: addr %0d read %08h expected %08h",
-                      what, a, doa0, exp), doa0 === exp);
-      check($sformatf("%s: addr %0d serial instance", what, a),
-            doa0_s === exp);
+                      what, a, doa[0 +: WIDTH], exp),
+            doa[0 +: WIDTH] === exp);
    endtask
 
    //----------------------------------------------------------------
@@ -187,6 +194,7 @@ module parmem3_tb();
       int s, a1;
       idle();
       idle_r();
+      idle_p();
       @(posedge clka);
 
       //--- Phase 1: fill (single writes), read back (single reads) ----
@@ -199,30 +207,28 @@ module parmem3_tb();
       end
       $display("phase 1 (bijection, %0d words) done", WORDS);
 
-      //--- Phase 2: dual read, signed strides, stride %% 3 != 0 -------
+      //--- Phase 2: pair read, signed strides, stride %% 3 != 0 -------
       for (s = -11; s <= 11; s++) begin
          if (s % 3 == 0) continue;
          for (int a = 0; a < WORDS; a++) begin
             a1 = a + s;
             if (a1 < 0 || a1 >= WORDS) continue;
             @(negedge clka);
-            en = 1; wen = 0; dual = 1;
+            en = 1; wen = 0; lane_en = '1;
             addr = a[AW-1:0]; stride = s[STRIDE_W-1:0];
             #2;
             check($sformatf("stride %0d addr %0d: conflict", s, a),
                   conflict === 1'b0);
-            xcheck($sformatf("stride %0d addr %0d", s, a));
+            check($sformatf("stride %0d addr %0d: oob", s, a), oob === '0);
             @(negedge clka);
             idle();
             check($sformatf("stride %0d addr %0d: data0", s, a),
-                  doa0 === refmem[a]);
+                  doa[0 +: WIDTH] === refmem[a]);
             check($sformatf("stride %0d addr %0d: data1", s, a),
-                  doa1 === refmem[a1]);
-            check($sformatf("stride %0d addr %0d: serial data", s, a),
-                  (doa0_s === refmem[a]) && (doa1_s === refmem[a1]));
+                  doa[WIDTH +: WIDTH] === refmem[a1]);
          end
       end
-      $display("phase 2 (dual read, signed strides, no conflict) done");
+      $display("phase 2 (pair read, signed strides, no conflict) done");
 
       //--- Phase 3: stride %% 3 == 0 -> conflict (including 0) --------
       for (s = -9; s <= 9; s += 3) begin
@@ -230,28 +236,27 @@ module parmem3_tb();
             a1 = a + s;
             if (a1 < 0 || a1 >= WORDS) continue;
             @(negedge clka);
-            en = 1; wen = 0; dual = 1;
+            en = 1; wen = 0; lane_en = '1;
             addr = a[AW-1:0]; stride = s[STRIDE_W-1:0];
             #2;
             check($sformatf("stride %0d addr %0d: conflict expected", s, a),
                   conflict === 1'b1);
-            xcheck($sformatf("stride %0d addr %0d", s, a));
             @(negedge clka);
             idle();
-            check($sformatf("stride %0d addr %0d: access 0 wins", s, a),
-                  doa0 === refmem[a]);
+            check($sformatf("stride %0d addr %0d: lane 0 wins", s, a),
+                  doa[0 +: WIDTH] === refmem[a]);
          end
       end
       $display("phase 3 (stride %% 3 == 0, conflicts) done");
 
-      //--- Phase 4: dual writes (ST2-style pairs) ---------------------
+      //--- Phase 4: pair writes (ST2-style) ---------------------------
       for (s = 1; s <= 4; s += 3) begin            // strides 1 and 4
          for (int a = 0; a + s < WORDS; a += 5) begin
             @(negedge clka);
-            en = 1; wen = 1; dual = 1;
+            en = 1; wen = 1; lane_en = '1;
             addr = a[AW-1:0]; stride = s[STRIDE_W-1:0];
-            dia0 = pattern(a) ^ 32'h00FF00FF;
-            dia1 = pattern(a + s) ^ 32'hFF00FF00;
+            dia[0 +: WIDTH]     = pattern(a) ^ 32'h00FF00FF;
+            dia[WIDTH +: WIDTH] = pattern(a + s) ^ 32'hFF00FF00;
             #2;
             check($sformatf("st2 stride %0d addr %0d: conflict", s, a),
                   conflict === 1'b0);
@@ -265,66 +270,99 @@ module parmem3_tb();
                               $sformatf("st2 stride %0d word1", s));
          end
       end
-      $display("phase 4 (dual writes) done");
+      $display("phase 4 (pair writes) done");
 
-      //--- Phase 5: out-of-range --------------------------------------
+      //--- Phase 5: partial lane masks --------------------------------
+      begin
+         // disabled lane must have no side effect on a pair write
+         @(negedge clka);
+         en = 1; wen = 1; lane_en = 'b1;   // lane 0 only
+         addr = 1; stride = STRIDE_W'(1);
+         dia = '1;                          // garbage on lane 1
+         dia[0 +: WIDTH] = 32'hDEAD0010;
+         @(negedge clka);
+         idle();
+         refmem[1] = 32'hDEAD0010;
+         read_check_single(1, refmem[1], "mask: lane 0 write landed");
+         read_check_single(2, refmem[2], "mask: lane 1 not written");
+         // lane 1 alone: served at addr + stride
+         @(negedge clka);
+         en = 1; wen = 0; lane_en = 2'b10;
+         addr = 3; stride = STRIDE_W'(2);
+         #2;
+         check("mask: lane 1 alone, no conflict", conflict === 1'b0);
+         @(negedge clka);
+         idle();
+         check("mask: lane 1 alone, data", doa[WIDTH +: WIDTH] === refmem[5]);
+         // single active lane, stride % 3 == 0: no pair -> no conflict
+         @(negedge clka);
+         en = 1; wen = 0; lane_en = 'b1;
+         addr = 0; stride = STRIDE_W'(3);
+         #2;
+         check("mask: single lane never conflicts", conflict === 1'b0);
+         @(negedge clka);
+         idle();
+      end
+      $display("phase 5 (partial lane masks) done");
+
+      //--- Phase 6: out-of-range --------------------------------------
       // EA0 top-bits check
       @(negedge clka);
-      en = 1; wen = 1; dual = 0;
-      addr = WORDS[AW-1:0]; dia0 = 32'hBAD00BAD;
+      en = 1; wen = 1; lane_en = 'b1;
+      addr = WORDS[AW-1:0];
+      dia[0 +: WIDTH] = 32'hBAD00BAD;
       #2;
-      check("ea0 oob: flagged", oob0 === 1'b1);
-      xcheck("ea0 oob");
+      check("ea0 oob: flagged", oob[0] === 1'b1);
       @(negedge clka);
       idle();
       read_check_single(0, refmem[0], "ea0 oob: aliased cell untouched");
       // truncation-alias trap: 0 + (-20) = -20, truncates to 44 < WORDS
       @(negedge clka);
-      en = 1; wen = 1; dual = 1;
+      en = 1; wen = 1; lane_en = '1;
       addr = '0; stride = STRIDE_W'(-20);
-      dia0 = 32'hDEAD0005; dia1 = 32'hBAD00BAD;
+      dia[0 +: WIDTH]     = 32'hDEAD0005;
+      dia[WIDTH +: WIDTH] = 32'hBAD00BAD;
       #2;
-      check("ea1 alias trap: oob1 flagged", oob1 === 1'b1);
-      check("ea1 alias trap: access 0 not flagged", oob0 === 1'b0);
-      xcheck("ea1 alias trap");
+      check("ea1 alias trap: oob[1] flagged", oob[1] === 1'b1);
+      check("ea1 alias trap: lane 0 not flagged", oob[0] === 1'b0);
       @(negedge clka);
       idle();
-      refmem[0] = 32'hDEAD0005;                   // access 0 proceeds
+      refmem[0] = 32'hDEAD0005;                   // lane 0 proceeds
       read_check_single(44, refmem[44], "ea1 alias trap: word 44 untouched");
       read_check_single(0, refmem[0], "ea1 alias trap: word 0 written");
       // overflow above the valid range
       @(negedge clka);
-      en = 1; wen = 0; dual = 1;
+      en = 1; wen = 0; lane_en = '1;
       addr = (WORDS - 1); stride = STRIDE_W'(4);
       #2;
-      check("ea1 overflow: oob1 flagged", oob1 === 1'b1);
-      xcheck("ea1 overflow");
+      check("ea1 overflow: oob[1] flagged", oob[1] === 1'b1);
       @(negedge clka);
       idle();
-      // conflict is a pure stride function: it co-asserts with oob1
+      // conflict is a pure stride function: it co-asserts with oob[1]
       // when stride % 3 == 0 AND EA1 is out of range (oob wins upstream)
       @(negedge clka);
-      en = 1; wen = 0; dual = 1;
+      en = 1; wen = 0; lane_en = '1;
       addr = (WORDS - 1); stride = STRIDE_W'(3);
       #2;
-      check("conflict/oob co-assert: oob1", oob1 === 1'b1);
+      check("conflict/oob co-assert: oob[1]", oob[1] === 1'b1);
       check("conflict/oob co-assert: conflict", conflict === 1'b1);
-      xcheck("conflict/oob co-assert");
       @(negedge clka);
       idle();
-      $display("phase 5 (out-of-range, alias trap) done");
+      $display("phase 6 (out-of-range, alias trap) done");
 
-      //--- Phase 6: READ_FIRST -- write returns pre-write content -----
+      //--- Phase 7: READ_FIRST -- write returns pre-write content -----
       @(negedge clka);
-      en = 1; wen = 1; dual = 0; addr = 2; dia0 = 32'hDEAD0006;
+      en = 1; wen = 1; lane_en = 'b1; addr = 2;
+      dia[0 +: WIDTH] = 32'hDEAD0006;
       @(negedge clka);
       idle();
-      check("read-first: old data during write", doa0 === refmem[2]);
+      check("read-first: old data during write",
+            doa[0 +: WIDTH] === refmem[2]);
       refmem[2] = 32'hDEAD0006;
       read_check_single(2, refmem[2], "read-first: new data afterwards");
-      $display("phase 6 (READ_FIRST) done");
+      $display("phase 7 (READ_FIRST) done");
 
-      //--- Phase 7: side B (NI) fill and read back ---------------------
+      //--- Phase 8: side B (NI) fill and read back ---------------------
       for (int a = 0; a < WORDS; a++) begin
          @(negedge clkb);
          enb = 1; web = 1; addrb = a[AW-1:0]; dib = pattern_ni(a);
@@ -336,7 +374,6 @@ module parmem3_tb();
       enb = 1; web = 1; addrb = WORDS[AW-1:0]; dib = 32'hBAD00BAD;
       #2;
       check("NI oob: oobb flagged", oobb === 1'b1);
-      check("NI oob: serial instance", oobb_s === 1'b1);
       @(negedge clkb);
       idle();
       for (int a = 0; a < WORDS; a++) begin
@@ -346,22 +383,21 @@ module parmem3_tb();
          idle();
          check($sformatf("NI readback: addr %0d read %08h expected %08h",
                          a, dob, refmem[a]), dob === refmem[a]);
-         check($sformatf("NI readback: addr %0d serial instance", a),
-               dob_s === refmem[a]);
       end
       for (int a = 0; a < WORDS; a += 7) begin
          read_check_single(a, refmem[a], "NI-to-core cross-check");
       end
-      $display("phase 7 (side B / NI, dual clock) done");
+      $display("phase 8 (side B / NI, dual clock) done");
 
-      //--- Phase 8: OUTREG = 1 variant ----------------------------------
+      //--- Phase 9: OUTREG = 1 variant ----------------------------------
       // Writes are single-cycle; reads keep the enable asserted for TWO
       // cycles (the dpmemrf output register is enable-gated), data is
       // valid after the second enabled edge.
       for (int a = 0; a < WORDS; a++) begin
          @(negedge clka);
          en_r = 1; wen_r = 1; addr_r = a[AW-1:0];
-         dia0_r = pattern(a) ^ 32'h5A5A5A5A;
+         dia_r = '0;
+         dia_r[0 +: WIDTH] = pattern(a) ^ 32'h5A5A5A5A;
          @(negedge clka);
          idle_r();
       end
@@ -372,8 +408,8 @@ module parmem3_tb();
          @(negedge clka);
          idle_r();
          check($sformatf("outreg A: addr %0d read %08h expected %08h",
-                         a, doa0_r, pattern(a) ^ 32'h5A5A5A5A),
-               doa0_r === (pattern(a) ^ 32'h5A5A5A5A));
+                         a, doa_r[0 +: WIDTH], pattern(a) ^ 32'h5A5A5A5A),
+               doa_r[0 +: WIDTH] === (pattern(a) ^ 32'h5A5A5A5A));
       end
       for (int a = 0; a < WORDS; a += 5) begin
          @(negedge clkb);
@@ -385,7 +421,55 @@ module parmem3_tb();
                          a, dob_r, pattern(a) ^ 32'h5A5A5A5A),
                dob_r === (pattern(a) ^ 32'h5A5A5A5A));
       end
-      $display("phase 8 (OUTREG=1 variant, 2-cycle reads) done");
+      $display("phase 9 (OUTREG=1 variant, 2-cycle reads) done");
+
+      //--- Phase 10: ADRREG = 1 variant ---------------------------------
+      // The address phase is registered: writes commit one cycle later,
+      // reads return 2 cycles after the access (single-cycle enable, no
+      // enable-extension protocol). conflict/oob stay combinational.
+      for (int a = 0; a < WORDS; a++) begin
+         @(negedge clka);
+         en_p = 1; wen_p = 1; lane_en_p = 'b1; addr_p = a[AW-1:0];
+         dia_p = '0;
+         dia_p[0 +: WIDTH] = pattern(a) ^ 32'h3C3C3C3C;
+         @(negedge clka);
+         idle_p();
+      end
+      for (int a = 0; a < WORDS; a++) begin
+         @(negedge clka);
+         en_p = 1; wen_p = 0; lane_en_p = 'b1; addr_p = a[AW-1:0];
+         @(negedge clka);
+         idle_p();
+         @(negedge clka);              // data valid 2 cycles after access
+         check($sformatf("adrreg: addr %0d read %08h expected %08h",
+                         a, doa_p[0 +: WIDTH], pattern(a) ^ 32'h3C3C3C3C),
+               doa_p[0 +: WIDTH] === (pattern(a) ^ 32'h3C3C3C3C));
+      end
+      // pair read through the pipeline, stride % 3 != 0
+      @(negedge clka);
+      en_p = 1; wen_p = 0; lane_en_p = '1;
+      addr_p = 6; stride_p = STRIDE_W'(2);
+      #2;
+      check("adrreg pair: no conflict", conflict_p === 1'b0);
+      check("adrreg pair: no oob", oob_p === '0);
+      @(negedge clka);
+      idle_p();
+      @(negedge clka);
+      check("adrreg pair: lane 0 data",
+            doa_p[0 +: WIDTH] === (pattern(6) ^ 32'h3C3C3C3C));
+      check("adrreg pair: lane 1 data",
+            doa_p[WIDTH +: WIDTH] === (pattern(8) ^ 32'h3C3C3C3C));
+      // conflict and oob are still reported in the ISSUE cycle
+      @(negedge clka);
+      en_p = 1; wen_p = 0; lane_en_p = '1;
+      addr_p = 0; stride_p = STRIDE_W'(3);
+      #2;
+      check("adrreg: conflict combinational in issue cycle",
+            conflict_p === 1'b1);
+      @(negedge clka);
+      idle_p();
+      @(negedge clka);
+      $display("phase 10 (ADRREG=1 variant, 2-cycle reads) done");
 
       //--- Summary ------------------------------------------------------
       if (errors == 0) begin

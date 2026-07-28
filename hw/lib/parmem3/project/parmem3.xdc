@@ -16,11 +16,16 @@ create_clock -name clkb -period 5.000 [get_ports clkb]
 set_clock_groups -asynchronous -group clka -group clkb
 
 # Side A ports (core clock domain)
-set_input_delay  -clock clka 0.000 [get_ports {en wen dual addr[*] stride[*]}]
-set_input_delay  -clock clka 0.000 [get_ports {dia0[*] dia1[*]}]
-set_output_delay -clock clka 0.000 [get_ports {doa0[*] doa1[*]}]
-set_output_delay -clock clka 0.000 [get_ports {conflict oob0 oob1}]
+set_input_delay  -clock clka 0.000 [get_ports {en wen lane_en[*]}]
+set_input_delay  -clock clka 0.000 [get_ports {addr[*] stride[*] dia[*]}]
+set_output_delay -clock clka 0.000 [get_ports {doa[*]}]
+set_output_delay -clock clka 0.000 [get_ports {conflict oob[*]}]
 
 # Side B ports (NI clock domain)
 set_input_delay  -clock clkb 0.000 [get_ports {enb web addrb[*] dib[*]}]
 set_output_delay -clock clkb 0.000 [get_ports {dob[*] oobb}]
+
+# OOC hold artifact: input ports have no clock tree, so zero-value input
+# delays produce spurious hold violations on every port-launched path.
+# Hold is re-timed for real when the block is integrated in context.
+set_false_path -hold -from [all_inputs]
