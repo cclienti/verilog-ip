@@ -3,7 +3,7 @@
 
 TOP_MODULE        ?= parmem5_4
 TOP_FILE          ?= ../src/parmem5_4.sv
-TOP_DEPS          ?= ../../dpmemrf
+TOP_DEPS          ?= ../../../dpmemrf
 
 TESTBENCH_MODULE  ?= parmem5_4_tb
 TESTBENCH_FILE    ?= ../src/parmem5_4_tb.sv
@@ -16,15 +16,15 @@ VIVADO_BOARDFILE   ?= parmem5_4.xdc
 # Module-level fmax study: synthesize out of context (no IOBUFs).
 VIVADO_PROJECT_OOC ?= 1
 
-# Reference figures (parmemn B5L4 sweep, hw/lib/parmemn/RESULTS.md):
+# Reference figures (parmemn B5L4 sweep, hw/lib/parmem/doc/RESULTS.md):
 #   make vivado-gen-post-impl VIVADO_SYNTH_OPTIONS="-flatten_hierarchy full \
 #     -no_iobuf -generic OUTREGA=1 -generic OUTREGB=1"
 
 
-include ../../../Makefiles/common.mk
-include ../../../Makefiles/iverilog.mk
-include ../../../Makefiles/verilator.mk
-include ../../../Makefiles/modelsim.mk
-include ../../../Makefiles/quartus.mk
-include ../../../Makefiles/wavedisp.mk
-include ../../../Makefiles/vivado.mk
+include ../../../../Makefiles/common.mk
+include ../../../../Makefiles/iverilog.mk
+include ../../../../Makefiles/verilator.mk
+include ../../../../Makefiles/modelsim.mk
+include ../../../../Makefiles/quartus.mk
+include ../../../../Makefiles/wavedisp.mk
+include ../../../../Makefiles/vivado.mk

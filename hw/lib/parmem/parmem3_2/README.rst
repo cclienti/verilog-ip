@@ -4,7 +4,7 @@ Parallel Memory, 3 Prime-Interleaved Banks, Dual Load/Store Front End
 Description
 -----------
 
-The ``parmem3`` module implements the data memory of a VLIW dual load/store
+The ``parmem3_2`` module implements the data memory of a VLIW dual load/store
 unit: three true-dual-port, dual-clock memory banks (``dpmemrf``, READ_FIRST
 on both ports — i.e. BRAM semantics) accessed as a **strided pair from one
 instruction**:
@@ -15,7 +15,7 @@ instruction**:
 - both enabled lanes share ``wen``: an LD2 (two loads) or an ST2 (two
   stores) — a read/write mix cannot be expressed.
 
-The interface is shared with ``parmem5_2`` / ``parmem5_4`` / ``parmemn``
+The interface is shared with the whole ``parmem`` family
 (per-lane enables, packed lane data), so the memories are interchangeable
 under a common load/store unit — only the linear address width differs
 (``DEPTH+2`` bits here vs ``DEPTH+3`` for the 5-bank variants).
@@ -52,7 +52,7 @@ two's-complement representation: the raw-pattern residue is off by
 and lane 1's bank id is the **parallel residue**
 ``bank1 = (bank0 + residue) mod 3`` — computed in parallel with the EA1
 adder (mod is a homomorphism). This was measured as the better of the
-two implementations in the ``parmemn`` study (the former ``PARRES``
+two implementations in the family study (the former ``PARRES``
 parameter is gone).
 
 ``EA1`` is range-checked at **full width before truncation**: a negative

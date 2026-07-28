@@ -15,11 +15,11 @@
 
 // Parallel memory: 3 prime-interleaved banks, dual (2-lane) strided
 // access pair for a dual load/store (LD2/ST2) unit. Same interface
-// family as parmem5_2 / parmem5_4 / parmemn (per-lane enables, packed
+// family as parmem5_2 / parmem5_4 (per-lane enables, packed
 // lane data) so the memories are interchangeable under a common L/S
 // unit. Measured combinational figures: ~300 LUTs / 3 RAMB36, clka
 // slack at artifact level @ 5 ns OOC on xc7z020-1 -- see
-// hw/lib/parmemn/RESULTS.md (B3L2).
+// hw/lib/parmem/doc/RESULTS.md (B3L2).
 //
 //   lane i (i = 0..1): EA_i = addr + i*stride, enabled by lane_en[i];
 //   both enabled lanes share `wen` (dual load or dual store).
@@ -57,7 +57,7 @@
 // ports only): the issue-cycle contract is unchanged -- only the data
 // latency grows.
 
-module parmem3
+module parmem3_2
   #(parameter DEPTH    = 10,  //log2 of words per bank; 3*2^DEPTH words total
     parameter WIDTH    = 32,
     parameter STRIDE_W = 12,  //signed stride width, in words; <= DEPTH+2
@@ -353,4 +353,4 @@ module parmem3
    endgenerate
 
 
-endmodule // parmem3
+endmodule // parmem3_2

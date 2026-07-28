@@ -1,4 +1,4 @@
-# parmem3 out-of-context timing constraints for fmax analysis.
+# parmem3_2 out-of-context timing constraints for fmax analysis.
 #
 # Side A (dual load/store) and side B (NI) are independent clock domains;
 # the dual-clock BRAM banks are the CDC boundary, so the domains are

@@ -13,25 +13,24 @@
 
 `timescale 1 ns / 100 ps
 
-// Parallel memory: 5 prime-interleaved banks, dual (2-lane) strided
-// access group. Standalone specialization of the parmemn study generic
-// at (NB_BANKS, NB_LANES) = (5, 2) -- kept as its own component so that
-// pipeline registers can later be inserted to break the worst-case
+// Parallel memory: 5 prime-interleaved banks, quad (4-lane) strided
+// access group. Member of the parmem prime-interleaved family, at
+// (NB_BANKS, NB_LANES) = (5, 4) -- standalone body so that pipeline
+// registers can be inserted to break the worst-case
 // paths (measured combinational figures for this configuration:
-// 492 LUTs / 5 RAMB36, clka WNS -0.381 ns @ 5 ns OOC on xc7z020-1 --
-// see hw/lib/parmemn/RESULTS.md).
+// 955 LUTs / 5 RAMB36, clka WNS -1.994 ns @ 5 ns OOC on xc7z020-1 --
+// see hw/lib/parmem/doc/RESULTS.md).
 //
-//   lane i (i = 0..1): EA_i = addr + i*stride, enabled by lane_en[i];
-//   both enabled lanes share `wen` (dual load or dual store).
+//   lane i (i = 0..3): EA_i = addr + i*stride, enabled by lane_en[i];
+//   all enabled lanes share `wen` (group load or group store).
 //
 // CRT addressing, no divider: bank = EA mod 5, index = EA[DEPTH-1:0]
-// (bijective since gcd(5, 2^DEPTH) = 1). The pair conflicts iff
-// stride == 0 (mod 5) -- `conflict` is a pure function of the stride
-// residue and the lane mask; it may assert together with oob*, the
-// trap taking precedence. On conflict lane 0 is served (steering
-// priority; if lane 0 is out of range the bank idles). Power-of-2
-// strides never conflict -- and so do multiples of 3, unlike a 3-bank
-// design.
+// (bijective since gcd(5, 2^DEPTH) = 1). Lanes collide iff
+// stride == 0 (mod 5) -- `conflict` is ONE bit and a pure function of
+// the stride residue and the lane mask; it may assert together with
+// oob*, the trap taking precedence. On conflict the lowest enabled
+// lane is served (steering priority; if that lane is out of range the
+// bank idles). Power-of-2 strides never conflict.
 //
 // Every EA is range-checked at FULL width before truncation; out-of-
 // range lanes are reported on oob[i] and suppressed individually.
@@ -49,7 +48,7 @@
 // ports only): the issue-cycle contract is unchanged -- only the data
 // latency grows.
 
-module parmem5_2
+module parmem5_4
   #(parameter DEPTH    = 10,  //log2 of words per bank; 5*2^DEPTH words total
     parameter WIDTH    = 32,
     parameter STRIDE_W = 12,  //signed stride width, in words; <= DEPTH+3
@@ -57,18 +56,18 @@ module parmem5_2
     parameter OUTREGA  = 0,   //extra side-A output register (fmax option)
     parameter OUTREGB  = 0)   //extra side-B output register (fmax option)
 
-   (//Side A: one dual strided load/store access pair
+   (//Side A: one quad strided load/store access group
     input  logic                clka,
     input  logic                en,
-    input  logic                wen,      //shared by the pair
-    input  logic [1:0]          lane_en,  //per-lane enable
+    input  logic                wen,      //shared by the group
+    input  logic [3:0]          lane_en,  //per-lane enable
     input  logic [DEPTH+2:0]    addr,     //lane 0 linear address
     input  logic [STRIDE_W-1:0] stride,   //signed, in words
-    input  logic [2*WIDTH-1:0]  dia,      //lane write data
-    output logic [2*WIDTH-1:0]  doa,      //lane read data
+    input  logic [4*WIDTH-1:0]  dia,      //lane write data
+    output logic [4*WIDTH-1:0]  doa,      //lane read data
 
     output logic                conflict, //stride % 5 == 0: serialize
-    output logic [1:0]          oob,      //EA_i out of range
+    output logic [3:0]          oob,      //EA_i out of range
 
     //Side B: single linear-addressed port (network interface)
     input  logic                clkb,
@@ -79,8 +78,10 @@ module parmem5_2
     output logic [WIDTH-1:0]    dob,
     output logic                oobb);
 
+   localparam NL  = 4;                    //lanes
    localparam AW  = DEPTH + 3;            //linear address width
-   localparam EAW = AW + 3;               //lane EA: sign + |stride| margin
+   localparam EAW = AW + 4;               //lane EA: sign + |3*stride| margin
+   localparam SMW = STRIDE_W + 3;         //lane stride multiple, i <= 3
 
    // mod-5 digit fold: base-4 digits with alternating signs (4 == -1
    // mod 5); |neg| <= 24 -> OFFSET = 25; first-fold value <= 49 (6 bits)
@@ -156,6 +157,12 @@ module parmem5_2
       end
    endfunction
 
+   // (i * r) mod 5 for constant i, r < 5: pure 3-bit LUT functions
+   function automatic logic [2:0] mod5_muli(input logic [2:0] r,
+                                            input int unsigned i);
+      return 3'((32'(r) * i) % 5);
+   endfunction
+
 
    //================================================================
    // ADDRESS PHASE -- closed by the optional ADRREG pipeline register
@@ -165,7 +172,7 @@ module parmem5_2
    //================================================================
 
    //----------------------------------------------------------------
-   // Stride residue, sign-corrected (drives conflict and lane 1 bank)
+   // Stride residue, sign-corrected (drives conflict and lane banks)
    //----------------------------------------------------------------
    logic [2:0] smod, scorr;
 
@@ -173,44 +180,63 @@ module parmem5_2
    assign scorr = stride[STRIDE_W-1] ? mod5_add(smod, 3'(5 - CM)) : smod;
 
    //----------------------------------------------------------------
-   // Lane effective addresses and bank ids
+   // Lane effective addresses (parallel adders; 2s is a shift, 3s one
+   // narrow pre-add) and lane bank ids (depth-constant: bank0 plus a
+   // per-lane constant multiple of the stride residue)
    //----------------------------------------------------------------
-   logic signed [EAW-1:0] ea1_full;
-   logic [DEPTH-1:0]      idx0, idx1;
+   logic signed [SMW-1:0] sx;
+   logic signed [EAW-1:0] ea_full [0:NL-1];
+   logic [DEPTH-1:0]      idx [0:NL-1];
+   logic [NL-1:0][2:0]    bank;
    logic [4:0]            bank0_oh;
-   logic [2:0]            bank0, bank1;
-   logic [1:0]            ce;
+   logic [NL-1:0]         ce;
 
-   assign ea1_full = EAW'($signed({1'b0, addr}))
-                     + EAW'($signed(stride));
-   assign idx0     = addr[DEPTH-1:0];
-   assign idx1     = ea1_full[DEPTH-1:0];
+   assign sx = SMW'($signed(stride));
+
+   assign ea_full[0] = EAW'($signed({1'b0, addr}));
+   assign ea_full[1] = EAW'($signed({1'b0, addr})) + EAW'(sx);
+   assign ea_full[2] = EAW'($signed({1'b0, addr})) + EAW'(sx <<< 1);
+   assign ea_full[3] = EAW'($signed({1'b0, addr}))
+                       + EAW'(SMW'(sx + (sx <<< 1)));
 
    assign bank0_oh = mod5_oh({{(32 - AW){1'b0}}, addr});
-   assign bank0    = f_enc(bank0_oh);
-   assign bank1    = mod5_add(bank0, scorr);
+   assign bank[0]  = f_enc(bank0_oh);
+   assign bank[1]  = mod5_add(bank[0], scorr);
+   assign bank[2]  = mod5_add(bank[0], mod5_muli(scorr, 2));
+   assign bank[3]  = mod5_add(bank[0], mod5_muli(scorr, 3));
+
+   generate
+      for (genvar i = 0; i < NL; i = i + 1) begin: gen_idx
+         assign idx[i] = ea_full[i][DEPTH-1:0];
+      end
+   endgenerate
 
    //----------------------------------------------------------------
    // Out-of-range: sign | (top bits >= 5) -- no carry chain after the
-   // adder (full-width check before truncation: negative/overflowing
+   // adders (full-width check before truncation: negative/overflowing
    // sums would alias in-range cells)
    //----------------------------------------------------------------
    assign oob[0] = en & lane_en[0] & (addr[AW-1:DEPTH] >= 3'd5);
-   assign oob[1] = en & lane_en[1]
-                   & (ea1_full[EAW-1]
-                      | (ea1_full[EAW-2:DEPTH] >= (EAW - 1 - DEPTH)'(5)));
 
-   assign ce = {2{en}} & lane_en & ~oob;
+   generate
+      for (genvar i = 1; i < NL; i = i + 1) begin: gen_oob
+         assign oob[i] = en & lane_en[i]
+                         & (ea_full[i][EAW-1]
+                            | (ea_full[i][EAW-2:DEPTH] >= (EAW - 1 - DEPTH)'(5)));
+      end
+   endgenerate
+
+   assign ce = {NL{en}} & lane_en & ~oob;
 
    //----------------------------------------------------------------
    // Conflict: pure function of the stride residue and the lane mask
    //----------------------------------------------------------------
-   assign conflict = en & (scorr == '0) & (lane_en == 2'b11);
+   assign conflict = en & (scorr == '0) & ($countones(lane_en) > 1);
 
    //----------------------------------------------------------------
    // Per-bank steering: raw-match ownership (EARLY cone: residues and
-   // lane mask only); mux select = lane 0 match, lane 1 as default --
-   // the stride residue never enters the address/data select cone
+   // lane mask only -- oob/adders stay on the enable/WE cone); mux
+   // selects use first-match among lanes 0..2 with lane 3 as default
    //----------------------------------------------------------------
    logic [4:0]       ena_bank, wea_bank;
    logic [DEPTH-1:0] addra_bank [0:4];
@@ -218,20 +244,39 @@ module parmem5_2
 
    generate
       for (genvar b = 0; b < 5; b = b + 1) begin: gen_asteer
-         logic [1:0] rawm, sel;
+         logic [NL-1:0] rawm, sel, msel;
 
          assign rawm[0] = lane_en[0] & bank0_oh[b];
-         assign rawm[1] = lane_en[1] & (bank1 == 3'(b));
+         assign rawm[1] = lane_en[1] & (bank[1] == 3'(b));
+         assign rawm[2] = lane_en[2] & (bank[2] == 3'(b));
+         assign rawm[3] = lane_en[3] & (bank[3] == 3'(b));
 
+         // lowest raw-matching lane owns the bank (enable/WE cone)
          assign sel[0] = rawm[0];
          assign sel[1] = rawm[1] & ~rawm[0];
+         assign sel[2] = rawm[2] & ~(|rawm[1:0]);
+         assign sel[3] = rawm[3] & ~(|rawm[2:0]);
 
          assign ena_bank[b] = |(sel & ce);
          assign wea_bank[b] = ena_bank[b] & wen;
 
-         assign addra_bank[b] = rawm[0] ? idx0 : idx1;
-         assign dia_bank[b]   = rawm[0] ? dia[0 +: WIDTH]
-                                        : dia[WIDTH +: WIDTH];
+         // mux selects: lane 3 as default (its residue never enters
+         // the select cone); equivalent whenever the bank is enabled
+         assign msel[0] = rawm[0];
+         assign msel[1] = rawm[1] & ~rawm[0];
+         assign msel[2] = rawm[2] & ~(|rawm[1:0]);
+         assign msel[3] = ~(|rawm[2:0]);
+
+         always_comb begin
+            addra_bank[b] = '0;
+            dia_bank[b]   = '0;
+            for (int i = 0; i < NL; i++) begin
+               if (msel[i]) begin
+                  addra_bank[b] |= idx[i];
+                  dia_bank[b]   |= dia[i*WIDTH +: WIDTH];
+               end
+            end
+         end
       end
    endgenerate
 
@@ -241,11 +286,11 @@ module parmem5_2
    // cycle on data. Bank ids are load-enabled by ce (select-hold
    // semantics, matching the return-path registers).
    //----------------------------------------------------------------
-   logic [4:0]       ena_bank_q, wea_bank_q;
-   logic [DEPTH-1:0] addra_bank_q [0:4];
-   logic [WIDTH-1:0] dia_bank_q [0:4];
-   logic [1:0]       ce_q;
-   logic [2:0]       bank0_q, bank1_q;
+   logic [4:0]         ena_bank_q, wea_bank_q;
+   logic [DEPTH-1:0]   addra_bank_q [0:4];
+   logic [WIDTH-1:0]   dia_bank_q [0:4];
+   logic [NL-1:0]      ce_q;
+   logic [NL-1:0][2:0] bank_q;
 
    generate
       if (ADRREG != 0) begin: gen_adrreg
@@ -257,11 +302,10 @@ module parmem5_2
                addra_bank_q[b] <= addra_bank[b];
                dia_bank_q[b]   <= dia_bank[b];
             end
-            if (ce[0] == 1'b1) begin
-               bank0_q <= bank0;
-            end
-            if (ce[1] == 1'b1) begin
-               bank1_q <= bank1;
+            for (int i = 0; i < NL; i++) begin
+               if (ce[i] == 1'b1) begin
+                  bank_q[i] <= bank[i];
+               end
             end
          end
       end
@@ -269,8 +313,7 @@ module parmem5_2
          assign ena_bank_q = ena_bank;
          assign wea_bank_q = wea_bank;
          assign ce_q       = ce;
-         assign bank0_q    = bank0;
-         assign bank1_q    = bank1;
+         assign bank_q     = bank;
          for (genvar b = 0; b < 5; b = b + 1) begin: gen_pass
             assign addra_bank_q[b] = addra_bank[b];
             assign dia_bank_q[b]   = dia_bank[b];
@@ -327,45 +370,39 @@ module parmem5_2
    // Return path: per-lane 5:1 bank mux, select = registered bank id
    // aligned with the bank read latency (1 + OUTREG cycles)
    //----------------------------------------------------------------
-   logic [1:0][2:0] bank_r;
-   logic [2:0]      bankb_r;
+   logic [NL-1:0][2:0] bank_r;
+   logic [2:0]         bankb_r;
 
-   always_ff @(posedge clka) begin
-      if (ce_q[0] == 1'b1) begin
-         bank_r[0] <= bank0_q;
+   generate
+      for (genvar i = 0; i < NL; i = i + 1) begin: gen_selr
+         always_ff @(posedge clka) begin
+            if (ce_q[i] == 1'b1) begin
+               bank_r[i] <= bank_q[i];
+            end
+         end
+
+         if (OUTREGA != 0) begin: gen_rr
+            logic [2:0] bank_rr;
+            logic       ce_d;
+            always_ff @(posedge clka) begin
+               ce_d <= ce_q[i];
+               if (ce_d == 1'b1) begin
+                  bank_rr <= bank_r[i];
+               end
+            end
+            assign doa[i*WIDTH +: WIDTH] = bankdoa[bank_rr];
+         end
+         else begin: gen_rr
+            assign doa[i*WIDTH +: WIDTH] = bankdoa[bank_r[i]];
+         end
       end
-      if (ce_q[1] == 1'b1) begin
-         bank_r[1] <= bank1_q;
-      end
-   end
+   endgenerate
 
    always_ff @(posedge clkb) begin
       if (ceb == 1'b1) begin
          bankb_r <= bankb;
       end
    end
-
-   generate
-      if (OUTREGA != 0) begin: gen_selra
-         logic [1:0][2:0] bank_rr;
-         logic [1:0]      ce_d;
-         always_ff @(posedge clka) begin
-            ce_d <= ce_q;
-            if (ce_d[0] == 1'b1) begin
-               bank_rr[0] <= bank_r[0];
-            end
-            if (ce_d[1] == 1'b1) begin
-               bank_rr[1] <= bank_r[1];
-            end
-         end
-         assign doa[0 +: WIDTH]     = bankdoa[bank_rr[0]];
-         assign doa[WIDTH +: WIDTH] = bankdoa[bank_rr[1]];
-      end
-      else begin: gen_selra
-         assign doa[0 +: WIDTH]     = bankdoa[bank_r[0]];
-         assign doa[WIDTH +: WIDTH] = bankdoa[bank_r[1]];
-      end
-   endgenerate
 
    generate
       if (OUTREGB != 0) begin: gen_selrb
@@ -385,4 +422,4 @@ module parmem5_2
    endgenerate
 
 
-endmodule // parmem5_2
+endmodule // parmem5_4

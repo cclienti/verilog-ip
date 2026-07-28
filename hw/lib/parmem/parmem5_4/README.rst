@@ -1,23 +1,23 @@
-Parallel Memory, 5 Prime-Interleaved Banks, Dual Strided-Group Front End
+Parallel Memory, 5 Prime-Interleaved Banks, Quad Strided-Group Front End
 ========================================================================
 
 Description
 -----------
 
-The ``parmem5_2`` module is a **standalone specialization** of the
-``parmemn`` study generic at ``(NB_BANKS, NB_LANES) = (5, 2)``: five
+The ``parmem5_4`` module is a member of the ``parmem`` prime-interleaved
+family, at ``(NB_BANKS, NB_LANES) = (5, 4)``: five
 true-dual-port, dual-clock memory banks (``dpmemrf``, READ_FIRST — i.e.
-BRAM semantics) accessed as a **dual strided pair from one
+BRAM semantics) accessed as a **quad strided group from one
 instruction**:
 
-- lane ``i`` (``i = 0, 1``) accesses ``EA_i = addr + i*stride``
+- lane ``i`` (``i = 0 .. 3``) accesses ``EA_i = addr + i*stride``
   (``stride`` signed, in words);
-- ``lane_en[i]`` enables lane ``i`` individually;
-- both enabled lanes share ``wen``: a pair load (LD2) or a pair store
-  (ST2) — a read/write mix cannot be expressed.
+- ``lane_en[i]`` enables lane ``i`` individually (vector tails come free);
+- all enabled lanes share ``wen``: a group load (LD4) or a group store
+  (ST4) — a read/write mix cannot be expressed.
 
-It is deliberately **not** a wrapper around ``parmemn``: the body is kept
-standalone so that pipeline registers can be inserted to break the
+The body is standalone (no shared generic) so that pipeline registers
+can be inserted to break the
 worst-case paths. ``ADRREG = 1`` does exactly that: it registers the end
 of the address phase (bank enables/WE/address/data muxes and bank ids),
 before the bank access. ``conflict`` and ``oob`` are computed before the
@@ -27,12 +27,9 @@ to ``1 + ADRREG + OUTREGA`` cycles (writes commit one cycle later,
 invisibly, in order).
 
 Measured combinational figures for this configuration (post-route OOC,
-xc7z020-1, 5 ns, OUTREG = 1 — see ``hw/lib/parmemn/RESULTS.md``):
-**492 LUTs, 5 RAMB36, clka WNS −0.381 ns** (≈ 186 MHz pessimistic bound
-including ≈ 1 ns of OOC port artifacts — production-grade at L = 2).
-
-Compared to ``parmem3`` (3 banks), the 5-bank interleave also serves
-stride multiples of 3 conflict-free — only multiples of 5 conflict.
+xc7z020-1, 5 ns, OUTREG = 1 — see ``hw/lib/parmem/doc/RESULTS.md``):
+**955 LUTs, 5 RAMB36, clka WNS −1.994 ns** (≈ 143 MHz pessimistic bound,
+worst path stride→WE, 9 logic levels, 65 % routing).
 
 CRT (Chinese Remainder Theorem) addressing — **no divider**:
 
@@ -42,27 +39,35 @@ CRT (Chinese Remainder Theorem) addressing — **no divider**:
 - ``index(EA) = EA mod 2^DEPTH`` — the low address bits, free.
 
 Because ``gcd(5, 2^DEPTH) = 1`` this map is a bijection over the
-``5 * 2^DEPTH``-word space. The pair collides iff ``stride ≡ 0 (mod 5)``
-— so ``conflict`` is **one bit and a pure function of the stride residue
-and the lane mask** (both lanes active), never of the addresses: the EA
-adder stays out of the stall cone. It may assert together with ``oob*``;
-the oob trap takes precedence. On conflict, lane 0 is served and lane 1
-is dropped (by the steering priority itself — ``conflict`` is advisory;
-lane 1's ``doa`` is invalid, its write is not performed). **Power-of-2
-strides never conflict**.
+``5 * 2^DEPTH``-word space. Lanes collide iff ``stride ≡ 0 (mod 5)`` —
+so ``conflict`` is **one bit and a pure function of the stride residue
+and the lane mask** (>= 2 active lanes), never of the addresses: the EA
+adders stay out of the stall cone. It may assert together with ``oob*``;
+the oob trap takes precedence. On conflict, the lowest enabled lane is
+served and the other active lanes are dropped (by the steering priority
+itself — ``conflict`` is advisory; dropped lanes' ``doa`` is invalid,
+their writes are not performed). **Power-of-2 strides never conflict**;
+all strides except multiples of 5 serve four lanes conflict-free.
+
+Lane EAs are computed by **parallel adders** (``2s`` is a shift, ``3s``
+one narrow pre-add), and lane bank ids in **constant depth**:
+``bank_i = (bank_0 + i*scorr) mod 5``, where ``scorr`` is the
+sign-corrected stride residue and ``(i*scorr) mod 5`` a 3-bit LUT
+function.
 
 Every EA is range-checked at **full width before truncation** (a negative
 or overflowing sum can alias an in-range address): the test is
 ``sign | (top bits >= 5)`` — a one-LUT compare, no carry chain after the
 adder. Out-of-range lanes are reported on ``oob[i]`` and suppressed
-individually (the other lane proceeds).
+individually (other lanes proceed).
 
-Steering per bank: one 2:1 address mux, one 2:1 write-data mux, smart
-enables (``wea_bank[b] = ena_bank[b] & wen``), lane-0 priority. The mux
-selects use the lane-0 raw residue match with **lane 1 as default**,
-keeping the EA adder and out-of-range logic off the address/data select
-cone. Per lane: a 5:1 read-data bank mux whose select is the
-**registered** bank id, aligned with the read latency.
+Steering per bank: one 4:1 address mux, one 4:1 write-data mux (one-hot
+AND-OR), smart enables (``wea_bank[b] = ena_bank[b] & wen``),
+lowest-lane priority. The mux selects use the first raw residue match
+among lanes 0..2 with **lane 3 as default**, keeping the adders and
+out-of-range logic off the address/data select cone. Per lane: a 5:1
+read-data bank mux whose select is the **registered** bank id, aligned
+with the read latency.
 
 **Side B** (``clkb``, independent clock) is a single linear-addressed port
 with its own CRT decode — e.g. a NoC network interface (fixed stride-1
@@ -102,14 +107,14 @@ Name           I/O type      Range                       Description
 =============  ============  ==========================  ==================================================
 clka           input                                     Side A clock (load/store unit)
 en             input                                     Side A enable
-wen            input                                     Write enable, shared by the pair (0 = read)
-lane_en        input         [1:0]                       Per-lane enable (lane i at ``addr + i*stride``)
+wen            input                                     Write enable, shared by the group (0 = read)
+lane_en        input         [3:0]                       Per-lane enable (lane i at ``addr + i*stride``)
 addr           input         [DEPTH+2:0]                 Linear word address of lane 0
 stride         input         [STRIDE_W-1:0]              Signed word stride
-dia            input         [2*WIDTH-1:0]               Lane write data (lane i at ``i*WIDTH``)
-doa            output        [2*WIDTH-1:0]               Lane read data (1 + ADRREG + OUTREGA cycles)
-conflict       output                                    ``stride % 5 == 0`` and both lanes: serialize
-oob            output        [1:0]                       ``EA_i`` out of range, lane suppressed
+dia            input         [4*WIDTH-1:0]               Lane write data (lane i at ``i*WIDTH``)
+doa            output        [4*WIDTH-1:0]               Lane read data (1 + ADRREG + OUTREGA cycles)
+conflict       output                                    ``stride % 5 == 0`` and >= 2 lanes: serialize
+oob            output        [3:0]                       ``EA_i`` out of range, lane suppressed
 clkb           input                                     Side B clock (network interface)
 enb            input                                     Port B enable
 web            input                                     Port B write enable (0 = read)

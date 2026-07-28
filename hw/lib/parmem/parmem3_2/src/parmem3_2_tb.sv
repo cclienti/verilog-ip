@@ -13,7 +13,7 @@
 
 `timescale 1 ns / 100 ps
 
-// Self-checking testbench for parmem3 (3 banks, 2 lanes). A second
+// Self-checking testbench for parmem3_2 (3 banks, 2 lanes). A second
 // instance covers OUTREG = 1. Mirrors the reference model in
 // hw/vliw/study/crt_addressing.py:
 //   1. bijection: fill with single writes, read back with single reads
@@ -37,7 +37,7 @@
 //      reads (no enable extension needed), conflict/oob still
 //      combinational in the issue cycle
 
-module parmem3_tb();
+module parmem3_2_tb();
 
    parameter DEPTH    = 4;
    parameter WIDTH    = 32;
@@ -84,27 +84,27 @@ module parmem3_tb();
    logic [WIDTH-1:0]    refmem [0:WORDS-1];
 
 
-   parmem3 #(.DEPTH(DEPTH), .WIDTH(WIDTH), .STRIDE_W(STRIDE_W),
+   parmem3_2 #(.DEPTH(DEPTH), .WIDTH(WIDTH), .STRIDE_W(STRIDE_W),
              .OUTREGA(0), .OUTREGB(0))
-   parmem3_inst (.clka(clka), .en(en), .wen(wen), .lane_en(lane_en),
+   parmem3_2_inst (.clka(clka), .en(en), .wen(wen), .lane_en(lane_en),
                  .addr(addr), .stride(stride), .dia(dia), .doa(doa),
                  .conflict(conflict), .oob(oob),
                  .clkb(clkb), .enb(enb), .web(web), .addrb(addrb),
                  .dib(dib), .dob(dob), .oobb(oobb));
 
    // OUTREG = 1 variant: 2-cycle reads, enable-gated output register
-   parmem3 #(.DEPTH(DEPTH), .WIDTH(WIDTH), .STRIDE_W(STRIDE_W),
+   parmem3_2 #(.DEPTH(DEPTH), .WIDTH(WIDTH), .STRIDE_W(STRIDE_W),
              .OUTREGA(1), .OUTREGB(1))
-   parmem3_reg_inst (.clka(clka), .en(en_r), .wen(wen_r), .lane_en(2'b01),
+   parmem3_2_reg_inst (.clka(clka), .en(en_r), .wen(wen_r), .lane_en(2'b01),
                      .addr(addr_r), .stride('0), .dia(dia_r), .doa(doa_r),
                      .conflict(), .oob(),
                      .clkb(clkb), .enb(enb_r), .web(web_r), .addrb(addrb_r),
                      .dib(dib_r), .dob(dob_r), .oobb());
 
    // ADRREG = 1 variant: address-phase pipeline register, 2-cycle reads
-   parmem3 #(.DEPTH(DEPTH), .WIDTH(WIDTH), .STRIDE_W(STRIDE_W),
+   parmem3_2 #(.DEPTH(DEPTH), .WIDTH(WIDTH), .STRIDE_W(STRIDE_W),
              .ADRREG(1), .OUTREGA(0), .OUTREGB(0))
-   parmem3_adr_inst (.clka(clka), .en(en_p), .wen(wen_p), .lane_en(lane_en_p),
+   parmem3_2_adr_inst (.clka(clka), .en(en_p), .wen(wen_p), .lane_en(lane_en_p),
                      .addr(addr_p), .stride(stride_p), .dia(dia_p),
                      .doa(doa_p), .conflict(conflict_p), .oob(oob_p),
                      .clkb(clkb), .enb(1'b0), .web(1'b0), .addrb('0),
@@ -114,8 +114,8 @@ module parmem3_tb();
    // VCD
    //----------------------------------------------------------------
    initial begin
-      $dumpfile("parmem3_tb.vcd");
-      $dumpvars(0, parmem3_tb);
+      $dumpfile("parmem3_2_tb.vcd");
+      $dumpvars(0, parmem3_2_tb);
    end
 
    //----------------------------------------------------------------
@@ -473,14 +473,14 @@ module parmem3_tb();
 
       //--- Summary ------------------------------------------------------
       if (errors == 0) begin
-         $display("parmem3_tb: ALL TESTS PASSED (%0d words, DEPTH=%0d)",
+         $display("parmem3_2_tb: ALL TESTS PASSED (%0d words, DEPTH=%0d)",
                   WORDS, DEPTH);
       end
       else begin
-         $display("parmem3_tb: FAILED with %0d error(s)", errors);
+         $display("parmem3_2_tb: FAILED with %0d error(s)", errors);
       end
       $finish;
    end
 
 
-endmodule // parmem3_tb
+endmodule // parmem3_2_tb
