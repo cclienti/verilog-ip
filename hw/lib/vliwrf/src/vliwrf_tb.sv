@@ -16,10 +16,10 @@ module vliwrf_tb ();
    //----------------------------------------------------------------
    // Parameters
    //----------------------------------------------------------------
-   localparam int MEM_WIDTH                = 32;
-   localparam int LOG2_NB_REGS_PER_WR_PORT = 3;  // 8 regs per bank
-   localparam int NUM_WRITE_PORTS          = 4;
-   localparam int NUM_READ_PORTS           = 8;
+   parameter int MEM_WIDTH                = 32;
+   parameter int LOG2_NB_REGS_PER_WR_PORT = 3;  // 8 regs per bank
+   parameter int NUM_WRITE_PORTS          = 4;
+   parameter int NUM_READ_PORTS           = 8;
 
    localparam int LOG2_NUM_WR_PORTS = $clog2(NUM_WRITE_PORTS);
    localparam int RD_ADDR_WIDTH     = LOG2_NB_REGS_PER_WR_PORT + LOG2_NUM_WR_PORTS;

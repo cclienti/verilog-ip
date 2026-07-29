@@ -41,6 +41,13 @@ always writes within its own window and does not need (or have) a bank-select fi
 
 **Total register file capacity:** ``NUM_WRITE_PORTS × 2**LOG2_NB_REGS_PER_WR_PORT`` registers.
 
+``NUM_WRITE_PORTS`` need not be a power of two: the bank-select field is
+``clog2(NUM_WRITE_PORTS)`` bits wide and only banks ``0 ..
+NUM_WRITE_PORTS-1`` are populated — a read whose bank select addresses an
+unpopulated bank returns ``0`` (the compiler/assembler must not emit such
+addresses). This supports asymmetric VLIW configurations, e.g. a 5-bank
+(2 ALU + LS-A + LS-B + CTRL), 10-read-port register file.
+
 Write operations occur on the rising edge of ``clk`` when both ``enable`` and the corresponding
 ``wren`` bit are asserted. Read data is combinational (zero latency) when ``REGISTER_OUTPUTS``
 is ``0``, or registered with one clock cycle latency when ``REGISTER_OUTPUTS`` is ``1``.
@@ -53,7 +60,7 @@ Name                          Default value   Description
 ============================  ==============  ===========================================================
 MEM_WIDTH                     32              Register word width in bits (must be a power of 2)
 LOG2_NB_REGS_PER_WR_PORT      5               Log2 of registers per write-port bank (depth = 2**value)
-NUM_WRITE_PORTS               4               Number of independent write ports (power of 2, ≥ 2)
+NUM_WRITE_PORTS               4               Number of independent write ports (≥ 2)
 NUM_READ_PORTS                8               Number of independent read ports
 REGISTER_OUTPUTS              1               If 1, register read outputs (one clock cycle latency)
 ============================  ==============  ===========================================================

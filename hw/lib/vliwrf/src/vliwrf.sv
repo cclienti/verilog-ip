@@ -29,6 +29,11 @@
 //   [RD_ADDR_WIDTH-1 : LOG2_NB_REGS_PER_WR_PORT]  -> bank select (write port index)
 //   [LOG2_NB_REGS_PER_WR_PORT-1 : 0]               -> register offset within bank
 //
+// NUM_WRITE_PORTS need not be a power of 2: the bank-select field is
+// clog2(NUM_WRITE_PORTS) bits wide and only banks 0..NUM_WRITE_PORTS-1
+// are populated. A read whose bank select addresses an unpopulated bank
+// returns 0 (the assembler/compiler must not emit such addresses).
+//
 // Total register file capacity: NUM_WRITE_PORTS * 2**LOG2_NB_REGS_PER_WR_PORT words.
 //
 // If REGISTER_OUTPUTS is 1, read data is registered (one cycle latency) and
@@ -38,7 +43,7 @@
 module vliwrf
   #(parameter int  MEM_WIDTH                = 32,  // Width of a register word
     parameter int  LOG2_NB_REGS_PER_WR_PORT = 5,   // Log2 of registers per write port
-    parameter int  NUM_WRITE_PORTS          = 4,    // Number of write ports (power of 2, >= 2)
+    parameter int  NUM_WRITE_PORTS          = 4,    // Number of write ports (>= 2)
     parameter int  NUM_READ_PORTS           = 8,    // Number of read ports
     parameter bit  REGISTER_OUTPUTS         = 1'b1) // Register read outputs (1 cycle latency)
 
@@ -79,8 +84,6 @@ module vliwrf
          $fatal(1, "%m: LOG2_NB_REGS_PER_WR_PORT (%0d) must be >= 1", LOG2_NB_REGS_PER_WR_PORT);
       if (NUM_WRITE_PORTS < 2)
          $fatal(1, "%m: NUM_WRITE_PORTS (%0d) must be >= 2", NUM_WRITE_PORTS);
-      if ((NUM_WRITE_PORTS & (NUM_WRITE_PORTS - 1)) != 0)
-         $fatal(1, "%m: NUM_WRITE_PORTS (%0d) must be a power of 2", NUM_WRITE_PORTS);
       if (NUM_READ_PORTS < 1)
          $fatal(1, "%m: NUM_READ_PORTS (%0d) must be >= 1", NUM_READ_PORTS);
    end
