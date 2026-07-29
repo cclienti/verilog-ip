@@ -5,7 +5,8 @@
 The Load/Store (LS) Unit is the core's single memory port. It is responsible
 for:
 
-- Loads and stores to the on-chip **data scratchpad** (DPRAM, Port A)
+- Loads and stores to the on-chip **data scratchpad** (the `parmem3_2`
+  prime-interleaved banked memory, side A — §10)
 - Access to the **memory-mapped control registers** at the top of the data
   address space (hardware-loop context and IRQ control — see §4)
 - Address generation (`rs_base + sign_ext(imm)`), sub-word steering, and
@@ -53,16 +54,25 @@ hazards are covered by the single in-order port (§6).
 
 ## 3. Instruction Set
 
-Memory instructions are encoded in a **32-bit slot** with a single flat 6-bit
-opcode, in the LS slot's own opcode space:
+Memory instructions are encoded in a **32-bit slot** with a **two-tier
+opcode**, split by bit 31:
 
 ```
-[31:26]    [25:0]
-opcode(6)  payload(26)
+[31] = 0:   [31:26]    [25:0]           classic tier: flat 6-bit opcode
+            opcode(6)  payload(26)      (values 000000–011111, 32 codes)
+
+[31] = 1:   [31:28]    [27:0]           dual-access tier: 4-bit opcode
+            opcode(4)  payload(28)      (values 1000–1111, 8 codes — §10.2)
 ```
 
-**NOP** is `opcode = 000000` (the canonical empty-slot encoding; the assembler
-emits the all-zero word `0x00000000`).
+The dual-access pair instructions (§10) need 28 payload bits (up to four
+7-bit register sources), which a 6-bit opcode cannot leave room for; the
+4-bit tier trades opcode space for payload exactly there. By Kraft's
+budget the split costs the classic tier half its code points (32 remain
+— ample: 14 used today).
+
+**NOP** is classic-tier `opcode = 000000` (the canonical empty-slot
+encoding; the assembler emits the all-zero word `0x00000000`).
 
 ### 3.1 Encoding reference card
 
@@ -90,9 +100,10 @@ or `funct` field. `NOP = 000000`.
 | `001100` | `LBUX`   | `rd, (rs_base, rs_index)` | load byte indexed, zero-ext  | §3.6   |
 | `001101` | `LHUX`   | `rd, (rs_base, rs_index)` | load half indexed, zero-ext  | §3.6   |
 
-Reserved: opcodes `001110`–`111111` (50 entries). Executing a reserved opcode
-raises an **illegal-instruction trap** (same entry path as `TRAP`; `trap_code`
-in `ABI.md`) — the assembler must never emit one.
+Reserved: classic-tier opcodes `001110`–`011111` (18 entries) and
+dual-tier opcodes `1110`–`1111` (§10.2). Executing a reserved opcode
+raises an **illegal-instruction trap** (same entry path as `TRAP`;
+`trap_code` in `ABI.md`) — the assembler must never emit one.
 
 **Notes:**
 - `rs_base`, `rs_data` are **7-bit** global register addresses
@@ -277,9 +288,10 @@ accesses execute in **program order**. Consequences:
   DPRAM write precedes the later load's read by construction. Memory RAW/WAW/WAR
   ordering is therefore free — the register scoreboard does **not** need to track
   addresses.
-- **Port B (NoC / NI) is not coherent with Port A.** The two DPRAM ports carry
-  no arbitration and no snooping (ARCHITECTURE.md §Data Memory and NoC
-  Interface); ordering between core accesses and NoC accesses is the
+- **Port B (NoC / NI) is not coherent with Port A.** Port B is `parmem3_2`'s
+  side B (§10.1) — a single linear-addressed port on its own clock; the two
+  sides carry no arbitration and no snooping (ARCHITECTURE.md §Data Memory and
+  NoC Interface); ordering between core accesses and NoC accesses is the
   responsibility of the software / DMA protocol (typically scratchpad
   double-buffering — ARCHITECTURE.md §Memory Model). A core load has no way to
   observe an in-flight NoC write except through that protocol.
@@ -351,3 +363,149 @@ hardware, ARCHITECTURE.md §Interrupts and Exceptions):
     ADDI  sp, sp, 8
     ERET
 ```
+
+---
+
+## 10. Data Memory Implementation: `parmem3_2` and the Dual Access Pair
+
+### 10.1 Memory selection (normative)
+
+The data scratchpad is implemented by **`parmem3_2`**
+(`hw/lib/parmem/parmem3_2`): three prime-interleaved banks on
+true-dual-port dual-clock BRAM (READ_FIRST), CRT-addressed with **no
+divider** (`bank = EA mod 3`, `index = EA` low bits; bijective since
+`gcd(3, 2^DEPTH) = 1`). Side A is this LS unit; **side B is the NoC/NI
+port of §6** — a single linear-addressed requester on its own clock
+(the dual-clock banks are the clock-domain crossing), preserving the §6
+ordering model unchanged.
+
+Why 3 banks (measured — `hw/lib/parmem/doc/RESULTS.md`):
+
+- Meets the 200 MHz target even on xc7z020-1 at 295 LUTs / 3 RAMB36;
+  fastest cell of the parmem family on every measured fabric.
+- **Decimal-friendly conflict set**: since `10 ≡ 1 (mod 3)`, every
+  decimal-round stride (`10^k` and `d·10^k`: 10, 100, 1000, 640,
+  800, 1920 …) is conflict-free; a stride conflicts only when its
+  digit sum is divisible by 3. Power-of-2 strides never conflict.
+- Capacity is `3 × 2^DEPTH` words (the §8 `DMEM_DEPTH_LOG2` counts
+  words per bank); `BRAM_OUT_REG` maps to `OUTREGA/OUTREGB` (§5.3),
+  and the optional `ADRREG` address-phase register adds one cycle
+  while keeping `conflict`/`oob` combinational at issue.
+
+### 10.2 Dual strided access pair — encoding
+
+The LS slot's dual-op class accesses a **pair from one instruction**:
+lane `i` (`i = 0, 1`) at `EA_i = addr + i·stride` (`stride` signed, in
+words). Lane 0's result writes the LS-A bank, lane 1's the LS-B bank
+(one write port each — §2 grows to the 5-bank, 10-read-port register
+file). All dual ops live in the **dual-access tier** (`[31] = 1`,
+4-bit opcode, 28-bit payload — §3); the per-lane read/write mix
+(§10.3) is implied by the opcode, not a field.
+
+**Dual-tier opcode map:**
+
+| Opcode | Mnemonic | Operands                          | Lanes (0, 1)   |
+|--------|----------|-----------------------------------|----------------|
+| `1000` | `LD2`    | `d0, d1, (rs_base, rs_stride)`    | read, read     |
+| `1001` | `ST2`    | `(rs_base, rs_stride), s0, s1`    | write, write (word) |
+| `1010` | `ST2H`   | `(rs_base, rs_stride), s0, s1`    | write, write (half) |
+| `1011` | `ST2B`   | `(rs_base, rs_stride), s0, s1`    | write, write (byte) |
+| `1100` | `STLD2`  | `d1, (rs_base, rs_stride), s0`    | write, read (word) |
+| `1101` | `LDST2`  | `d0, (rs_base, rs_stride), s1`    | read, write (word) |
+| `1110` | —        | reserved                          |                |
+| `1111` | —        | reserved                          |                |
+
+**Payload layouts** — `rs_base` and `rs_stride` sit at the same
+positions in every dual-tier instruction (one shared extraction, same
+trick as the control slot's `[11:0]` immediates):
+
+```
+common:  [13:7] rs_base(7)   [6:0] rs_stride(7)
+
+LD2:     [27:23] d0(5)  [22:18] d1(5)  [17:16] w(2)  [15] u  [14] rsvd
+ST2*:    [27:21] s0(7)  [20:14] s1(7)                (width in opcode)
+STLD2:   [27:21] s0(7)  [20:16] d1(5)  [15:14] rsvd
+LDST2:   [27:23] d0(5)  [22:16] s1(7)  [15:14] rsvd
+```
+
+- `LD2` folds its width and extension into subfields: `w` = 00 byte,
+  01 half, 10 word; `u` = zero-extend (byte/half only). One opcode
+  covers `LD2B/LD2BU/LD2H/LD2HU/LD2W` (assembler mnemonics).
+- `ST2*` has a full 28-bit payload (four 7-bit sources would not leave
+  width bits), so the store width is folded into the opcode —
+  consistent with the classic tier's `SB/SH/SW` convention. Sources
+  are **full 7-bit global addresses** (any bank — the 10-read-port
+  register file removes the lane-implicit restriction).
+- The mixed forms (`STLD2`/`LDST2`) are **word-only** in this
+  revision (their use cases — streaming copy, exchange pipelines —
+  are word-based); their reserved bits are the landing zone for
+  sub-word variants if ever needed.
+- Load destinations are 5-bit, bank-implicit per lane (`d0` → LS-A,
+  `d1` → LS-B). Addresses are **word** EAs (the pair is word-aligned
+  by construction; sub-word dual accesses select within the word —
+  §3.4 extension rules apply per lane).
+
+### 10.3 Per-lane read/write mix (normative)
+
+`wen` is **per lane**: each enabled lane independently reads or writes.
+All four combinations are legal — dual load, dual store, and both
+mixed forms (e.g. lane 0 writes while lane 1 reads).
+
+- Because enabled lanes own distinct banks whenever
+  `stride ≢ 0 (mod 3)`, a mixed pair costs the same single cycle as a
+  uniform pair.
+- READ_FIRST semantics make a **writing lane return the pre-write cell
+  content** on its read-data lane — exchange (`XCHW`-class) semantics
+  come free; a single-lane exchange is the degenerate case.
+- **Single-slot streaming copy**: lane 0 writes `dst[i]` while lane 1
+  reads `src[i+1]`'s stream — one word moved per cycle from one LS
+  slot. The two lanes share one `addr`/`stride` pair, so `src` and
+  `dst` must sit at a constant layout distance `D` with
+  `D ≢ 0 (mod 3)` — an allocator placement rule, same family as the
+  padding hints of §10.4.
+- Register budget: a mixed pair reads `rs_base`, `rs_stride`, and one
+  store-data source (3 reads) and makes one load-result write — within
+  the dual-store worst case.
+
+### 10.4 Conflict auto-serialization (normative)
+
+`conflict` (`stride ≡ 0 (mod 3)` with both lanes enabled) is a pure
+function of the stride residue and the lane mask, available **in the
+issue cycle** (by construction, even with `ADRREG`). It is not a trap
+and not an illegal encoding — the hardware **serializes**:
+
+1. The LS unit splits the pair into two single-lane accesses (lane 0
+   first, then lane 1 — a one-bit sequencer re-presents the access
+   with the complementary lane mask).
+2. The pipeline inserts **one dynamic NOP**: IF/ID freeze for one
+   cycle, bubble downstream. The conflicting bundle occupies the
+   memory stage for two cycles; total cost is **+1 cycle**, nothing
+   else.
+3. Lane 1's load result writes back one cycle after lane 0's, into
+   the write slot freed by the bubble — no write-port arbitration.
+   Latency guide: conflicting dual load returns `d0` at `W + 2` and
+   `d1` at `W + 3` (baseline §5.1 numbering); the scoreboard covers
+   the actual latency as always (§5.2).
+4. **Split atomicity**: once the first half has executed, the bundle
+   is committed — the second half is non-interruptible. IRQ
+   acceptance is delayed by at most one cycle; a flush/squash cannot
+   separate the halves (consistent with the EX1 commit point,
+   CONTROL_UNIT.md §5). This rule is what makes a conflicting dual
+   **store** safe.
+
+Consequently, strides that are multiples of 3 are **legal but slow**.
+The compiler's layout rules (pad pitches whose digit sum is divisible
+by 3) are **performance hints, not correctness requirements**. `oob`
+is unchanged: per-lane trap, offending lane suppressed, and the trap
+takes precedence over `conflict` when both assert.
+
+### 10.5 Open items
+
+- Classic-tier additions enabled by the 10-read-port register file:
+  `XCHW` (single-lane exchange) and the indexed stores `SWX/SHX/SBX`
+  (a third read port makes them encodable) — opcode values to be
+  assigned in the §3.1 map.
+- Sub-word store support on the word-wide banks (byte write enables in
+  `dpmemrf`, as for the current DPRAM path of §3.4).
+- Per-lane `wen` in the `parmem3_2` RTL (the component currently
+  implements the shared-`wen` contract).
