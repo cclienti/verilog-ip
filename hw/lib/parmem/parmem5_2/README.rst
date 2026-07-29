@@ -28,7 +28,7 @@ invisibly, in order).
 
 Measured combinational figures for this configuration (post-route OOC,
 xc7z020-1, 5 ns, OUTREG = 1 — see ``hw/lib/parmem/doc/RESULTS.md``):
-**492 LUTs, 5 RAMB36, clka WNS −0.381 ns** (≈ 186 MHz pessimistic bound
+**484 LUTs, 5 RAMB36, clka WNS −0.13 ns** (≈ 195 MHz pessimistic bound
 including ≈ 1 ns of OOC port artifacts — production-grade at L = 2).
 
 Compared to ``parmem3_2`` (3 banks), the 5-bank interleave also serves

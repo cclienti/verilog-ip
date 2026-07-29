@@ -19,13 +19,13 @@ from one instruction**:
   (ST16) — a read/write mix cannot be expressed.
 
 **Validity domain** (measured, ``hw/lib/parmem/doc/RESULTS.md``): the
-combinational B17L16 point costs **10 161 LUTs (19 % of an xc7z020!) /
+combinational M17L16 point costs **10 497 LUTs (20 % of an xc7z020!) /
 17 RAMB36** and misses a 5 ns budget by **−17.2 ns** — it is *not* a
 single-cycle memory on 7-series fabric at any useful clock. This
 component is kept as the **measured counterfactual** of the study's
 architecture analysis (this is exactly the operating region where a SIMD
 unit with a single aligned wide memory port and fixed-pattern shuffles
-replaces the O(L·M) banking crossbar — RESULTS.md §5.5) and for
+replaces the O(L·M) banking crossbar — RESULTS.md §5, item 5) and for
 pipelined/faster-fabric exploration via ``ADRREG``.
 
 ``ADRREG = 1`` registers the end of the address phase (bank

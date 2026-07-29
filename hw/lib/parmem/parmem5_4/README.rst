@@ -28,7 +28,7 @@ invisibly, in order).
 
 Measured combinational figures for this configuration (post-route OOC,
 xc7z020-1, 5 ns, OUTREG = 1 — see ``hw/lib/parmem/doc/RESULTS.md``):
-**955 LUTs, 5 RAMB36, clka WNS −1.994 ns** (≈ 143 MHz pessimistic bound,
+**1 064 LUTs, 5 RAMB36, clka WNS −2.34 ns** (≈ 136 MHz pessimistic bound,
 worst path stride→WE, 9 logic levels, 65 % routing).
 
 CRT (Chinese Remainder Theorem) addressing — **no divider**:

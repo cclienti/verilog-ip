@@ -17,13 +17,13 @@ instruction**:
   (ST8) — a read/write mix cannot be expressed.
 
 **Validity domain** (measured, ``hw/lib/parmem/doc/RESULTS.md``): the
-combinational B11L8 point costs **4 027 LUTs / 11 RAMB36** and misses a
+combinational M11L8 point costs **4 037 LUTs / 11 RAMB36** and misses a
 5 ns budget by **−7.0 ns** on xc7z020-1 — it is *not* a single-cycle
 memory on slow 7-series fabric. This component exists for faster fabrics
 (Kintex-7/UltraScale+) and for the ``ADRREG`` pipelined operating point;
 in the study's architecture analysis this lane count is the region where
 a SIMD unit with a single aligned wide memory port becomes preferable to
-banking (RESULTS.md §5.5).
+banking (RESULTS.md §5, item 5).
 
 ``ADRREG = 1`` registers the end of the address phase (bank
 enables/WE/address/data muxes and bank ids), before the bank access.

@@ -39,7 +39,7 @@ interchangeable under a common load/store unit.
 ===============  ====  ====  =======================================================
 Component        M     L     Status on a 5 ns (200 MHz) OOC budget
 ===============  ====  ====  =======================================================
-``parmem3_2``    3     2     Single-cycle on all fabrics (artifact-level slack)
+``parmem3_2``    3     2     Single-cycle on all fabrics (meets outright on Zynq)
 ``parmem5_2``    5     2     Single-cycle on all fabrics; strides ×3 conflict-free
 ``parmem5_4``    5     4     Single-cycle from Kintex-7; ADRREG on Zynq-7000
 ``parmem11_8``   11    8     Single-cycle on Kintex UltraScale+ only

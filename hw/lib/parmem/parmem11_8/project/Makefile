@@ -16,7 +16,7 @@ VIVADO_BOARDFILE   ?= parmem11_8.xdc
 # Module-level fmax study: synthesize out of context (no IOBUFs).
 VIVADO_PROJECT_OOC ?= 1
 
-# Reference figures (B11L8 sweep, hw/lib/parmem/doc/RESULTS.md):
+# Reference figures (M11L8 sweep, hw/lib/parmem/doc/RESULTS.md):
 #   make vivado-gen-post-impl VIVADO_SYNTH_OPTIONS="-flatten_hierarchy full \
 #     -no_iobuf -generic OUTREGA=1 -generic OUTREGB=1 -generic ADRREG=1"
 

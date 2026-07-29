@@ -17,8 +17,8 @@
 // group -- the Burroughs BSP configuration (16 lanes, 17 banks;
 // 17 = 2^4 + 1 folds the residue on nibbles). Standalone
 // Member of the parmem prime-interleaved family at (NB_BANKS, NB_LANES)
-// = (17, 16). Measured combinational figures: 10161 LUTs (19% of an
-// xc7z020!) / 17 RAMB36, clka WNS -17.210 ns @ 5 ns OOC -- NOT viable
+// = (17, 16). Measured combinational figures: 10497 LUTs (20% of an
+// xc7z020!) / 17 RAMB36, clka WNS -17.12 ns @ 5 ns OOC -- NOT viable
 // as a single-cycle memory on 7-series (see hw/lib/parmem/doc/RESULTS.md;
 // this operating region is where a SIMD unit with aligned wide memory
 // replaces banking). The component exists as the measured

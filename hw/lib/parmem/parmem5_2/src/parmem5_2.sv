@@ -18,7 +18,7 @@
 // (NB_BANKS, NB_LANES) = (5, 2) -- standalone body so that pipeline
 // registers can be inserted to break the worst-case
 // paths (measured combinational figures for this configuration:
-// 492 LUTs / 5 RAMB36, clka WNS -0.381 ns @ 5 ns OOC on xc7z020-1 --
+// 484 LUTs / 5 RAMB36, clka WNS -0.13 ns @ 5 ns OOC on xc7z020-1 --
 // see hw/lib/parmem/doc/RESULTS.md).
 //
 //   lane i (i = 0..1): EA_i = addr + i*stride, enabled by lane_en[i];

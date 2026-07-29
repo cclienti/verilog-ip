@@ -17,8 +17,8 @@
 // group. Member of the parmem prime-interleaved family, at
 // (NB_BANKS, NB_LANES) = (11, 8) -- kept as its own component so that
 // pipeline registers can break the worst-case paths. Measured
-// combinational figures for this configuration: 4027 LUTs / 11 RAMB36,
-// clka WNS -7.021 ns @ 5 ns OOC on xc7z020-1 -- NOT viable as a
+// combinational figures for this configuration: 4037 LUTs / 11 RAMB36,
+// clka WNS -6.91 ns @ 5 ns OOC on xc7z020-1 -- NOT viable as a
 // single-cycle memory on 7-series at 200 MHz (see
 // hw/lib/parmem/doc/RESULTS.md); this component targets faster fabrics
 // and/or the ADRREG pipelined operating point.

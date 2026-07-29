@@ -17,9 +17,9 @@
 // access pair for a dual load/store (LD2/ST2) unit. Same interface
 // family as parmem5_2 / parmem5_4 (per-lane enables, packed
 // lane data) so the memories are interchangeable under a common L/S
-// unit. Measured combinational figures: ~300 LUTs / 3 RAMB36, clka
-// slack at artifact level @ 5 ns OOC on xc7z020-1 -- see
-// hw/lib/parmem/doc/RESULTS.md (B3L2).
+// unit. Measured combinational figures: 295 LUTs / 3 RAMB36, timing MET
+// @ 5 ns OOC even on xc7z020-1 -- see
+// hw/lib/parmem/doc/RESULTS.md (M3L2).
 //
 //   lane i (i = 0..1): EA_i = addr + i*stride, enabled by lane_en[i];
 //   both enabled lanes share `wen` (dual load or dual store).
@@ -96,21 +96,50 @@ module parmem3_2
    end
 
 
+   // mod-3 digit fold: sixteen base-4 digits, plain sum (4 == +1 mod 3,
+   // casting out threes); first-fold value <= 16*3 = 48 (6 bits)
+   localparam SRW = 6;
+
    //----------------------------------------------------------------
-   // mod-3 digit-sum tree (casting out threes, base-4 digits) and
-   // small mod-3 adder (both synthesize to LUT trees)
+   // mod-3 helpers (all arithmetic on narrow bounded vectors -- the
+   // 32-bit int formulation was measured to map onto CARRY8 chains on
+   // UltraScale+)
    //----------------------------------------------------------------
    function automatic logic [1:0] mod3(input logic [31:0] a);
-      int unsigned s;
+      logic [SRW-1:0] s;
       begin
-         s = 0;
-         for (int i = 0; i < 32; i += 2) begin
-            s += {30'b0, a[i+1], a[i]};
+         s = '0;
+         for (int i = 0; i < 16; i++) begin
+            s += SRW'((a >> (2 * i)) & 2'b11);
          end
-         s = (s & 3) + ((s >> 2) & 3) + ((s >> 4) & 3);
-         if (s >= 6) s -= 6;
-         if (s >= 3) s -= 3;
-         return s[1:0];
+         // bounded value (s <= 48): constant modulo = small LUT function
+         return 2'(s % SRW'(3));
+      end
+   endfunction
+
+   // one-hot variant: reduction and bank compare fused per output bit
+   function automatic logic [2:0] mod3_oh(input logic [31:0] a);
+      logic [1:0] r;
+      logic [2:0] oh;
+      begin
+         r = mod3(a);
+         for (int b = 0; b < 3; b++) begin
+            oh[b] = (r == 2'(b));
+         end
+         return oh;
+      end
+   endfunction
+
+   function automatic logic [1:0] f_enc(input logic [2:0] oh);
+      logic [1:0] r;
+      begin
+         r = '0;
+         for (int b = 0; b < 3; b++) begin
+            if (oh[b]) begin
+               r |= 2'(b);
+            end
+         end
+         return r;
       end
    endfunction
 
@@ -148,6 +177,7 @@ module parmem3_2
    //----------------------------------------------------------------
    logic signed [AW:0] ea1_full;
    logic [DEPTH-1:0]   idx0, idx1;
+   logic [2:0]         bank0_oh;
    logic [1:0]         bank0, bank1;
    logic [1:0]         ce;
 
@@ -156,8 +186,12 @@ module parmem3_2
    assign idx0 = addr[DEPTH-1:0];
    assign idx1 = ea1_full[DEPTH-1:0];
 
-   assign bank0 = mod3({{(32 - AW){1'b0}}, addr});
-   assign bank1 = mod3_add(bank0, scorr);
+   // lane 0's bank as a one-hot straight out of the tree (select
+   // cone); the binary form (residue chain, return select) derives
+   // from it off-cone
+   assign bank0_oh = mod3_oh({{(32 - AW){1'b0}}, addr});
+   assign bank0    = f_enc(bank0_oh);
+   assign bank1    = mod3_add(bank0, scorr);
 
    //----------------------------------------------------------------
    // Out-of-range: full-width test as a pure check on the sum -- no
@@ -190,7 +224,7 @@ module parmem3_2
       for (genvar b = 0; b < 3; b = b + 1) begin: gen_asteer
          logic [1:0] rawm, sel;
 
-         assign rawm[0] = lane_en[0] & (bank0 == b[1:0]);
+         assign rawm[0] = lane_en[0] & bank0_oh[b];
          assign rawm[1] = lane_en[1] & (bank1 == b[1:0]);
 
          assign sel[0] = rawm[0];
@@ -255,19 +289,21 @@ module parmem3_2
    //----------------------------------------------------------------
    // Side B: CRT decode, single requester (no muxes)
    //----------------------------------------------------------------
+   logic [2:0]       bankb_oh;
    logic [1:0]       bankb;
    logic [DEPTH-1:0] idxb;
    logic             ceb;
    logic [2:0]       enb_bank, web_bank;
 
-   assign bankb = mod3({{(32 - AW){1'b0}}, addrb});
-   assign idxb  = addrb[DEPTH-1:0];
-   assign oobb  = enb & (addrb[AW-1:AW-2] == 2'b11);
-   assign ceb   = enb & ~oobb;
+   assign bankb_oh = mod3_oh({{(32 - AW){1'b0}}, addrb});
+   assign bankb    = f_enc(bankb_oh);
+   assign idxb     = addrb[DEPTH-1:0];
+   assign oobb     = enb & (addrb[AW-1:AW-2] == 2'b11);
+   assign ceb      = enb & ~oobb;
 
    generate
       for (genvar b = 0; b < 3; b = b + 1) begin: gen_bsteer
-         assign enb_bank[b] = ceb & (bankb == b[1:0]);
+         assign enb_bank[b] = ceb & bankb_oh[b];
          assign web_bank[b] = enb_bank[b] & web;
       end
    endgenerate
