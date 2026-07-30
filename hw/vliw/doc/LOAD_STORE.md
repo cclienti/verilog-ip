@@ -26,29 +26,64 @@ spills and fills registers through this slot with ordinary `store`/`load`
 
 ## 2. Register File Interface
 
-The LS Unit is one of the four issue slots. It owns **bank 2** (`010`) of the
-register file; its `rd` writes go there (5-bit destination, bank implicit).
+The LS Unit is one of the four issue slots. It owns **banks 2 and 3** of the
+register file — `LS-A` (`010`, lane-0 results) and `LS-B` (`011`, lane-1
+results); destinations are 5-bit with the bank implicit from the lane.
 
 | Port        | Count | Width                               | Purpose                                   |
 |-------------|-------|-------------------------------------|-------------------------------------------|
-| Read ports  | **2** | 7-bit addr (3-bit bank + 5-bit reg) | `rs_base`; `rs_data` (stores) or `rs_index` (indexed loads) |
-| Write port  | **1** | 5-bit addr, bank implicit from slot | `rd` (loads)                              |
+| Read ports  | **4** | 7-bit addr (3-bit bank + 5-bit reg) | `rs_base`; `rs_index`/`rs_stride`/`rs_data`; `s0`; `s1` |
+| Write ports | **2** | 5-bit addr, bank implicit from lane | `rd`/`d0` (LS-A); `d1` (LS-B)             |
 
-Rationale for **2 read / 1 write**:
+Maximum simultaneous demand is set by the dual store (§10.2): `rs_base` +
+`rs_stride` + `s0` + `s1` = **4 reads**; the dual load writes `d0` + `d1` =
+**2 writes**. All sources are full 7-bit **global** addresses (any bank, any
+slot's results); destinations are 5-bit.
 
-| Instruction class | rd  | rs_base | 2nd read   |
-|-------------------|-----|---------|------------|
-| Load (base+imm)   | yes | yes     | —          |
-| Indexed load      | yes | yes     | `rs_index` |
-| Store             | no  | yes     | `rs_data`  |
+| Instruction class          | Writes    | Reads                                  |
+|----------------------------|-----------|----------------------------------------|
+| Load (base+imm)            | `rd`      | `rs_base`                              |
+| Indexed load               | `rd`      | `rs_base`, `rs_index`                  |
+| Store                      | —         | `rs_base`, `rs_data`                   |
+| `LD2` (dual load)          | `d0`,`d1` | `rs_base`, `rs_stride`                 |
+| `ST2*` (dual store)        | —         | `rs_base`, `rs_stride`, `s0`, `s1`     |
+| `STLD2`/`LDST2` (mixed)    | `d1`/`d0` | `rs_base`, `rs_stride`, `s0`/`s1`      |
 
-Maximum simultaneous demand = **2 reads** (a store reads `rs_base` + `rs_data`;
-an indexed load reads `rs_base` + `rs_index`) and **1 write** (a load writes
-`rd`). Sources are full 7-bit global
-addresses (any bank); the load destination is 5-bit (the LS bank). Source-
-register hazards (a load/store whose `rs_base`/`rs_data` is still in flight) are
-covered by the hardware scoreboard (ARCHITECTURE.md §Scoreboard); memory-address
-hazards are covered by the single in-order port (§6).
+### 2.1 Operand rails (encoding constraint)
+
+Register fields are **not** placed per-instruction: every operand role is
+pinned to a fixed bit range — a *rail* — shared by every instruction that
+uses that role. Each register-file port therefore takes its address from
+**one constant bit range**, with no per-opcode address multiplexer at the
+head of the register-read path:
+
+| Port          | Rail      | Roles carried                                        |
+|---------------|-----------|------------------------------------------------------|
+| read 1        | `[20:14]` | `rs_base` (every memory instruction)                 |
+| read 2        | `[13:7]`  | `rs_index`, `rs_stride`, `rs_data` (classic store)   |
+| read 3        | `[27:21]` | `s0` (dual-tier stores — dual tier only)             |
+| read 4        | `[6:0]`   | `s1` (`ST2*`, `LDST2`)                               |
+| write A addr  | `[25:21]` | `rd`, `d0`                                           |
+| write B addr  | `[6:2]`   | `d1`                                                 |
+
+Consequences:
+
+- An instruction that does not use a rail leaves those bits as an
+  immediate field, a subfield or reserved; the corresponding port still
+  issues a (harmless) read, so **decode supplies a per-port valid bit** —
+  the scoreboard must not see an unused rail as a dependency (§5.2).
+- Rails 3 and 4 overlap immediate bits in the classic tier, so `s0`/`s1`
+  exist only in the dual tier — matching the fact that only dual stores
+  need four reads.
+- The residual multiplexing is on the **data** side (lane-0 write data
+  comes from rail 2 for a classic store, rail 3 for a dual store) and on
+  the immediate reassembly path — both off the register-read address
+  path, which is the timing-critical one (the RR→EX1 path,
+  ARCHITECTURE.md §Pipeline).
+
+Source-register hazards (a load/store whose sources are still in flight)
+are covered by the hardware scoreboard (ARCHITECTURE.md §Scoreboard);
+memory-address hazards are covered by the single in-order port (§6).
 
 ---
 
@@ -113,8 +148,9 @@ raises an **illegal-instruction trap** (same entry path as `TRAP`;
 - Load offset is `imm14` (**±8 KB**); store offset is `imm12` (**±2 KB**) — the
   store spends 7 extra encoding bits on its second source register (§3.3).
 - Register-**indexed** loads (`LBX`…`LHUX`, §3.6) replace the immediate with a
-  second source register `rs_index` (`EA = rs_base + rs_index`); there is no
-  indexed store (it would need a third read port).
+  second source register `rs_index` (`EA = rs_base + rs_index`). Indexed
+  *stores* need a third read port, which the 4-read-port register file of §2
+  now provides — they are a planned addition (§10.5).
 
 ### 3.2 Load format
 
@@ -128,15 +164,19 @@ raises an **illegal-instruction trap** (same entry path as `TRAP`;
 
 ### 3.3 Store format
 
-| [31:26]   | [25:19]    | [18:12]    | [11:0]    |
-|-----------|------------|------------|-----------|
-| opcode(6) | rs_data(7) | rs_base(7) | imm12(12) |
+| [31:26]   | [25:21]     | [20:14]    | [13:7]     | [6:0]      |
+|-----------|-------------|------------|------------|------------|
+| opcode(6) | imm[11:7]   | rs_base(7) | rs_data(7) | imm[6:0]   |
 
-- Effective address `EA = rs_base + sign_ext(imm12)` (byte address).
+- Effective address `EA = rs_base + sign_ext(imm12)` (byte address), with
+  `imm12 = {inst[25:21], inst[6:0]}`.
 - `imm12` signed → offset range **±2047 bytes (±2 KB)**.
 - `mem[EA] <- rs_data` over the addressed byte lane(s) only (§3.4).
 - A store reads **two** registers (`rs_data` + `rs_base`, both 7-bit), which is
   why only 12 immediate bits remain versus the load's 14.
+- The immediate is **split** so that `rs_base` and `rs_data` stay on rails 1
+  and 2 (§2.1) — the same reason RISC-V splits its S-type immediate.
+  Reassembly is fixed wiring; the split costs nothing at run time.
 
 ### 3.4 Access widths and extension
 
@@ -180,8 +220,8 @@ instead of base + immediate:
 - `EA = rs_base + rs_index` (byte address); the same width/extension (§3.4) and
   alignment (§3.5) rules apply. Available for all five load widths
   (`LBX LHX LWX LBUX LHUX`).
-- Reads two registers (`rs_base`, `rs_index`) and writes `rd` — fits the LS
-  slot's existing **2 read / 1 write** ports, so **no new register-file ports**.
+- Reads two registers (`rs_base`, `rs_index`) and writes `rd`, both on their
+  §2.1 rails (`rs_index` shares rail 2 with `rs_stride`).
 - **Stores have no indexed form**: an indexed store would read three registers
   (`rs_base` + `rs_index` + `rs_data`), exceeding the 2 read ports. Bump store
   pointers with the control-slot integer ALU (CONTROL_UNIT.md §3.9) instead.
@@ -415,17 +455,18 @@ file). All dual ops live in the **dual-access tier** (`[31] = 1`,
 | `1110` | —        | reserved                          |                |
 | `1111` | —        | reserved                          |                |
 
-**Payload layouts** — `rs_base` and `rs_stride` sit at the same
-positions in every dual-tier instruction (one shared extraction, same
-trick as the control slot's `[11:0]` immediates):
+**Payload layouts** — every field sits on its §2.1 rail, shared with the
+classic tier (`rs_base` on rail 1, the second address operand on rail 2,
+`rd`/`d0` on the write-A rail), so no register-file port needs an
+address multiplexer:
 
 ```
-common:  [13:7] rs_base(7)   [6:0] rs_stride(7)
+common:  [20:14] rs_base(7)  [13:7] rs_stride(7)          (rails 1, 2)
 
-LD2:     [27:23] d0(5)  [22:18] d1(5)  [17:16] w(2)  [15] u  [14] rsvd
-ST2*:    [27:21] s0(7)  [20:14] s1(7)                (width in opcode)
-STLD2:   [27:21] s0(7)  [20:16] d1(5)  [15:14] rsvd
-LDST2:   [27:23] d0(5)  [22:16] s1(7)  [15:14] rsvd
+LD2:     [27:26] w(2)   [25:21] d0(5)   [6:2] d1(5)  [1] u  [0] rsvd
+ST2*:    [27:21] s0(7)                  [6:0] s1(7)         (width in opcode)
+STLD2:   [27:21] s0(7)                  [6:2] d1(5)  [1:0] rsvd
+LDST2:   [27:26] rsvd   [25:21] d0(5)   [6:0] s1(7)
 ```
 
 - `LD2` folds its width and extension into subfields: `w` = 00 byte,
