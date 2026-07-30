@@ -22,6 +22,7 @@ import io
 import os
 import re
 import sys
+import textwrap
 import unittest
 
 SLOT_WIDTH = 32
@@ -47,6 +48,14 @@ FIELDS = {
     "imm12":     ([(25, 21), (6, 0)], None, "signed byte offset (split)"),
     "imm7":      ([(6, 0)],   None,      "signed byte offset (exchange)"),
 }
+
+# Immediates are two's complement; every other field is unsigned.
+SIGNED = {"imm14", "imm12", "imm7"}
+
+# Field name shown to the reader where it differs from the table key
+# (rs_datax is the port-4 rail; the assembler operand is still rs_data).
+DISPLAY = {"rs_datax": "rs_data"}
+
 
 # ---------------------------------------------------------------- formats
 # name -> (field list, reserved bit list, layout note)
@@ -143,9 +152,12 @@ INSTRUCTIONS = [
 
 # EA_i = rs_base + i * rs_stride (words) for the dual tier; EA = rs_base +
 # sign_ext(imm) (bytes) for the classic tier -- LOAD_STORE.md 3.5 / 10.
-LATENCY = ("Loads retire at W + 2 (W + 3 with BRAM_OUT_REG); a conflicting "
-           "dual access (stride = 0 mod 3) costs one extra cycle and "
-           "returns d1 one cycle after d0 -- LOAD_STORE.md 5.1 / 10.4.")
+LATENCY = ("Load results retire at W + 2 in the baseline configuration, and "
+           "one cycle later for each of the memory's BRAM_OUT_REG and ADRREG "
+           "options. A conflicting dual access (stride divisible by 3) is "
+           "split by the hardware: it costs one extra cycle and returns d1 "
+           "one cycle after d0. Stores produce no register result. See "
+           "LOAD_STORE.md sections 5.1 and 10.4.")
 
 
 def common_prefix(names):
@@ -177,9 +189,27 @@ def field_str(name):
     return chunks[0] if len(chunks) == 1 else "{%s}" % ", ".join(chunks)
 
 
-def place(name, value):
-    """Place a field value into its (possibly split) bit positions."""
-    word, rest = 0, value
+def field_limits(name):
+    """Inclusive (min, max) an operand may take for this field."""
+    w = field_width(name)
+    return ((-(1 << (w - 1)), (1 << (w - 1)) - 1) if name in SIGNED
+            else (0, (1 << w) - 1))
+
+
+def display(name):
+    return DISPLAY.get(name, name)
+
+
+def place(name, val):
+    """Place a field value into its (possibly split) bit positions.
+
+    Raises ValueError if the value does not fit -- silently truncating an
+    operand would emit a different instruction than the one written.
+    """
+    lo, hi = field_limits(name)
+    if not lo <= val <= hi:
+        raise ValueError("%s: %d out of range [%d, %d]" % (name, val, lo, hi))
+    word, rest = 0, val & ((1 << field_width(name)) - 1)
     for msb, lsb in reversed(FIELDS[name][0]):      # low chunk first
         n = msb - lsb + 1
         word |= (rest & ((1 << n) - 1)) << lsb
@@ -194,6 +224,15 @@ def extract(name, word):
         value |= ((word >> lsb) & ((1 << n) - 1)) << shift
         shift += n
     return value
+
+
+def value(name, word):
+    """Field value as written by the programmer (sign-extended if signed)."""
+    raw = extract(name, word)
+    w = field_width(name)
+    if name in SIGNED and raw >> (w - 1):
+        raw -= 1 << w
+    return raw
 
 
 def encode(inst, operands=None):
@@ -289,7 +328,8 @@ def check():
         for k, f in enumerate(fields):
             if f.startswith("opcode") or f in inst["sub"]:
                 continue
-            ops[f] = ((k + 1) * 0x2B) & ((1 << field_width(f)) - 1)
+            lo, hi = field_limits(f)
+            ops[f] = lo + ((k + 1) * 0x2B) % (hi - lo + 1)
         word = encode(inst, ops)
         tier = "dual" if (word >> 31) & 1 else "classic"
         if tier != inst["tier"]:
@@ -303,15 +343,15 @@ def check():
             err.append("%s: decodes to %s (ambiguous encoding)"
                        % (inst["mnemonic"], [h["mnemonic"] for h in hits]))
         for f, v in ops.items():
-            if extract(f, word) != v:
+            if value(f, word) != v:
                 err.append("%s: field %s does not round trip (%d -> %d)"
-                           % (inst["mnemonic"], f, v, extract(f, word)))
+                           % (inst["mnemonic"], f, v, value(f, word)))
 
     for e in err:
-        print("error: " + e)
+        print("error: " + e, file=sys.stderr)
     print("%d fields, %d formats, %d instructions: %s"
           % (len(FIELDS), len(FORMATS), len(INSTRUCTIONS),
-             "OK" if not err else "%d ERROR(S)" % len(err)))
+             "OK" if not err else "%d ERROR(S)" % len(err)), file=sys.stderr)
     return 1 if err else 0
 
 
@@ -357,7 +397,7 @@ def check_doc(path=DOC):
     try:
         text = open(path).read()
     except OSError as exc:
-        print("error: %s" % exc)
+        print("error: %s" % exc, file=sys.stderr)
         return 1
     dfields, dops = _parse_doc(text)
 
@@ -401,30 +441,48 @@ def check_doc(path=DOC):
                            % (tier, claim, want))
 
     for e in err:
-        print("error: " + e)
+        print("error: " + e, file=sys.stderr)
     print("doc %s: %d fields, %d opcodes: %s"
           % (os.path.relpath(path), sum(len(v) for v in dfields.values()),
-             len(dops), "OK" if not err else "%d ERROR(S)" % len(err)))
+             len(dops), "OK" if not err else "%d ERROR(S)" % len(err)),
+          file=sys.stderr)
     return 1 if err else 0
 
 
 # -------------------------------------------------------------- emit: asm
+def _runs(bits):
+    """Contiguous descending runs of a bit list: [1,0] -> [(1, 0)]."""
+    out = []
+    for b in sorted(bits, reverse=True):
+        if out and out[-1][1] == b + 1:
+            out[-1] = (out[-1][0], b)
+        else:
+            out.append((b, b))
+    return out
+
+
 def bit_diagram(inst):
-    """'[31:26]=000011 rd[25:21] rs_base[20:14] imm14[13:0]'"""
+    """'[31:26]=000011  rd[25:21]  rs_base[20:14]  imm14[13:0]'
+
+    Lists every field and every reserved run in descending bit order, so
+    the diagram accounts for all 32 bits of the slot.
+    """
     fields, reserved, _ = FORMATS[inst["format"]]
     parts = []
     for f in fields:
+        msb = max(field_bits(f))
         if f in ("opcode6", "opcode4"):
-            parts.append("%s=%s" % (field_str(f), format(
-                inst["opcode"], "0%db" % field_width(f))))
+            parts.append((msb, "%s=%s" % (field_str(f), format(
+                inst["opcode"], "0%db" % field_width(f)))))
         elif f in inst["sub"]:
-            parts.append("%s%s=%s" % (f, field_str(f), format(
-                inst["sub"][f], "0%db" % field_width(f))))
+            parts.append((msb, "%s%s=%s" % (display(f), field_str(f), format(
+                inst["sub"][f], "0%db" % field_width(f)))))
         else:
-            parts.append("%s%s" % (f, field_str(f)))
-    if reserved:
-        parts.append("rsvd")
-    return "  ".join(parts)
+            parts.append((msb, "%s%s" % (display(f), field_str(f))))
+    for msb, lsb in _runs(reserved):
+        parts.append((msb, "rsvd[%d:%d]" % (msb, lsb) if msb != lsb
+                      else "rsvd[%d]" % msb))
+    return "  ".join(t for _, t in sorted(parts, reverse=True))
 
 
 def emit_asm():
@@ -434,7 +492,7 @@ def emit_asm():
     print("Sources are 7-bit global register addresses (3-bit bank + 5-bit")
     print("register, any bank); destinations are 5-bit with the bank implicit")
     print("(rd/d0 -> LS-A, d1 -> LS-B).\n")
-    print(LATENCY.replace(". ", ".\n") + "\n")
+    print(textwrap.fill(LATENCY, 76) + "\n")
 
     for tier in TIERS:
         insts = [i for i in INSTRUCTIONS if i["tier"] == tier]
@@ -449,7 +507,7 @@ def emit_asm():
             print("%-8s %-30s %s" % (i["mnemonic"], i["syntax"], i["desc"]))
         print()
         for i in insts:
-            print("%s %s" % (i["mnemonic"], i["syntax"]))
+            print(("%s %s" % (i["mnemonic"], i["syntax"])).rstrip())
             print("    %s" % bit_diagram(i))
             print("    %s" % i["desc"])
             print()
@@ -523,7 +581,13 @@ def emit_sv():
 
 # ------------------------------------------------------------ emit: decode
 def emit_decode(text):
-    word = int(text, 0) if text.startswith(("0x", "0b")) else int(text, 16)
+    try:
+        word = (int(text, 0) if text.startswith(("0x", "0b", "0o"))
+                else int(text, 16))
+    except ValueError:
+        print("error: %r is not a 32-bit word (use 0x..., 0b... or bare hex)"
+              % text)
+        return
     word &= 0xFFFFFFFF
     tier = "dual" if (word >> 31) & 1 else "classic"
     opf, width, _, _ = TIERS[tier]
@@ -541,11 +605,11 @@ def emit_decode(text):
     for f in FORMATS[inst["format"]][0]:
         if f.startswith("opcode"):
             continue
-        v = extract(f, word)
+        v = value(f, word)
         note = ""
         if FIELDS[f][1] in ("read 1", "read 2", "read 3", "read 4"):
             note = "  (bank %d, reg %d)" % (v >> 5, v & 0x1F)
-        print("  %-9s %-18s = %d%s" % (f, field_str(f), v, note))
+        print("  %-9s %-18s = %d%s" % (display(f), field_str(f), v, note))
 
 
 # ------------------------------------------------------------------ tests
@@ -562,12 +626,14 @@ class _Tests(unittest.TestCase):
             self.assertEqual(field_width(name), len(field_bits(name)), name)
 
     def test_split_field_round_trip(self):
-        for v in range(1 << field_width("imm12")):       # all 4096 values
-            self.assertEqual(extract("imm12", place("imm12", v)), v)
+        lo, hi = field_limits("imm12")                   # all 4096 values
+        for v in range(lo, hi + 1):
+            self.assertEqual(value("imm12", place("imm12", v)), v)
 
     def test_place_lands_only_in_own_bits(self):
         for name in FIELDS:
-            word = place(name, (1 << field_width(name)) - 1)
+            word = place(name, -1 if name in SIGNED
+                         else (1 << field_width(name)) - 1)
             self.assertEqual({b for b in range(SLOT_WIDTH) if word >> b & 1},
                              field_bits(name), name)
 
@@ -585,10 +651,10 @@ class _Tests(unittest.TestCase):
             0x0C650040)
 
     def test_golden_sw_split_immediate(self):
-        # SW rs_data=bank0:reg5, rs_base=bank0:reg20, imm12=0xABC
+        # SW rs_data=bank0:reg5, rs_base=bank0:reg20, imm12=-1348 (0xABC)
         self.assertEqual(
             encode(_inst("SW"),
-                   {"rs_data": 5, "rs_base": 20, "imm12": 0xABC}),
+                   {"rs_data": 5, "rs_base": 20, "imm12": -1348}),
             0x22A502BC)
 
     def test_golden_st2(self):
@@ -643,6 +709,69 @@ class _Tests(unittest.TestCase):
                             for f, v in c["sub"].items())]
             self.assertEqual(hits, [inst["mnemonic"]])
 
+    def test_encode_rejects_out_of_range_register(self):
+        for bad in (32, 99, -1):                  # rd is 5 bits, unsigned
+            with self.assertRaises(ValueError, msg=bad):
+                encode(_inst("LW"), {"rd": bad})
+
+    def test_encode_rejects_out_of_range_immediate(self):
+        lo, hi = field_limits("imm7")             # XCHW offset: -64..63
+        self.assertEqual((lo, hi), (-64, 63))
+        encode(_inst("XCHW"), {"imm7": lo})       # bounds are accepted
+        encode(_inst("XCHW"), {"imm7": hi})
+        for bad in (hi + 1, lo - 1):
+            with self.assertRaises(ValueError, msg=bad):
+                encode(_inst("XCHW"), {"imm7": bad})
+
+    def test_negative_immediates_round_trip(self):
+        for name, mnemonic in (("imm14", "LW"), ("imm7", "XCHW")):
+            lo, hi = field_limits(name)
+            for v in (lo, -4, -1, 0, 1, hi):
+                word = encode(_inst(mnemonic), {name: v})
+                self.assertEqual(value(name, word), v, (name, v))
+                self.assertGreaterEqual(extract(name, word), 0)   # raw bits
+
+    def test_unsigned_fields_are_not_sign_extended(self):
+        word = encode(_inst("LW"), {"rs_base": 0x7F})
+        self.assertEqual(value("rs_base", word), 0x7F)
+
+    def test_bit_diagram_accounts_for_all_32_bits(self):
+        for inst in INSTRUCTIONS:
+            diagram = bit_diagram(inst)
+            covered = set()
+            for msb, lsb in re.findall(r"\[(\d+):(\d+)\]", diagram):
+                covered |= set(range(int(lsb), int(msb) + 1))
+            for bit in re.findall(r"\[(\d+)\]", diagram):
+                covered.add(int(bit))
+            self.assertEqual(covered, set(range(SLOT_WIDTH)),
+                             "%s: %s" % (inst["mnemonic"], diagram))
+
+    def test_generated_views_do_not_carry_validator_output(self):
+        for emit in (emit_asm, emit_md, emit_sv):
+            with contextlib.redirect_stderr(io.StringIO()), \
+                 contextlib.redirect_stdout(io.StringIO()) as out:
+                check()          # its summary must go to stderr, not here
+                emit()
+            self.assertNotIn("instructions:", out.getvalue(), emit.__name__)
+
+    def test_asm_and_decode_show_the_operand_name(self):
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            emit_asm()
+        text = out.getvalue()
+        self.assertIn("rs_data[6:0]", text)       # not the rs_datax rail name
+        self.assertNotIn("rs_datax", text)
+
+    def test_decode_reports_a_bad_argument_without_a_traceback(self):
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            emit_decode("not-a-word")
+        self.assertIn("is not a 32-bit word", out.getvalue())
+
+    def test_decode_shows_signed_immediates(self):
+        word = encode(_inst("LW"), {"rd": 1, "rs_base": 2, "imm14": -4})
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            emit_decode("0x%08X" % word)
+        self.assertIn("= -4", out.getvalue())
+
     def test_encode_rejects_field_absent_from_format(self):
         with self.assertRaises(KeyError):
             encode(_inst("LW"), {"rs_stride": 1})
@@ -657,21 +786,21 @@ class _Tests(unittest.TestCase):
         self.assertEqual(common_prefix(["ST2"]), "ST2")
 
     def test_check_passes_on_shipped_tables(self):
-        with contextlib.redirect_stdout(io.StringIO()):
+        with contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(check(), 0)
 
     def test_check_catches_a_broken_table(self):
         saved = FORMATS["L"]
         FORMATS["L"] = (["opcode6", "rd", "rs_base"], [], "truncated")
         try:
-            with contextlib.redirect_stdout(io.StringIO()) as out:
+            with contextlib.redirect_stderr(io.StringIO()) as err:
                 self.assertEqual(check(), 1)
-            self.assertIn("covers 18 bits", out.getvalue())
+            self.assertIn("covers 18 bits", err.getvalue())
         finally:
             FORMATS["L"] = saved
 
     def test_check_doc_passes_on_the_shipped_specification(self):
-        with contextlib.redirect_stdout(io.StringIO()):
+        with contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(check_doc(), 0)
 
     def test_check_doc_catches_the_drift_classes(self):
@@ -693,10 +822,10 @@ class _Tests(unittest.TestCase):
             with open(path, "w") as fh:
                 fh.write(good.replace(old, new, 1))
             try:
-                with contextlib.redirect_stdout(io.StringIO()) as out:
+                with contextlib.redirect_stderr(io.StringIO()) as err:
                     rc = check_doc(path)
                 self.assertEqual(rc, 1, old)
-                self.assertIn(needle, out.getvalue(), old)
+                self.assertIn(needle, err.getvalue(), old)
             finally:
                 os.remove(path)
 
@@ -791,7 +920,6 @@ def main():
             emit()
         print("wrote %s" % args.output)
     else:
-        print()
         emit()
     return 0
 
