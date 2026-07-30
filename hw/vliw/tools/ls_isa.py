@@ -42,8 +42,6 @@ FIELDS = {
     "d1":        ([(6, 2)],   "write B", "lane-1 destination (LS-B bank)"),
     "imm14":     ([(13, 0)],  None,      "signed byte offset"),
     "imm12":     ([(25, 21), (6, 0)], None, "signed byte offset (split)"),
-    "w":         ([(27, 26)], None,      "LD2 access width: 00 B, 01 H, 10 W"),
-    "u":         ([(1, 1)],   None,      "LD2 zero-extend (byte/half)"),
 }
 
 # ---------------------------------------------------------------- formats
@@ -54,8 +52,8 @@ FORMATS = {
     "S":     (["opcode6", "imm12", "rs_base", "rs_data"], [], "base + immediate store"),
     "LX":    (["opcode6", "rd", "rs_base", "rs_index"], list(range(0, 7)),
               "base + index load"),
-    "LD2":   (["opcode4", "w", "d0", "rs_base", "rs_stride", "d1", "u"], [0],
-              "dual load, width/sign in subfields"),
+    "L2":    (["opcode6", "d0", "rs_base", "rs_stride", "d1"], [0, 1],
+              "dual strided load"),
     "ST2":   (["opcode4", "s0", "rs_base", "rs_stride", "s1"], [],
               "dual store, width in opcode"),
 }
@@ -103,28 +101,25 @@ INSTRUCTIONS = [
     I("LHUX",  "classic", 0b001101, "LX", {}, "rd, (rs_base, rs_index)",
       "rd <- zero_ext(mem16[rs_base + rs_index])"),
 
-    # dual tier: LD2 variants share one opcode, selected by w/u subfields
-    I("LD2B",  "dual", 0b1000, "LD2", {"w": 0b00, "u": 0},
-      "d0, d1, (rs_base, rs_stride)",
+    # dual strided loads: only 24 payload bits, so they live in the
+    # classic tier with width and sign folded into the opcode
+    I("LD2B",  "classic", 0b001110, "L2", {}, "d0, d1, (rs_base, rs_stride)",
       "d0 <- sign_ext(mem8[EA0]); d1 <- sign_ext(mem8[EA1])"),
-    I("LD2BU", "dual", 0b1000, "LD2", {"w": 0b00, "u": 1},
-      "d0, d1, (rs_base, rs_stride)",
+    I("LD2BU", "classic", 0b001111, "L2", {}, "d0, d1, (rs_base, rs_stride)",
       "d0 <- zero_ext(mem8[EA0]); d1 <- zero_ext(mem8[EA1])"),
-    I("LD2H",  "dual", 0b1000, "LD2", {"w": 0b01, "u": 0},
-      "d0, d1, (rs_base, rs_stride)",
+    I("LD2H",  "classic", 0b010000, "L2", {}, "d0, d1, (rs_base, rs_stride)",
       "d0 <- sign_ext(mem16[EA0]); d1 <- sign_ext(mem16[EA1])"),
-    I("LD2HU", "dual", 0b1000, "LD2", {"w": 0b01, "u": 1},
-      "d0, d1, (rs_base, rs_stride)",
+    I("LD2HU", "classic", 0b010001, "L2", {}, "d0, d1, (rs_base, rs_stride)",
       "d0 <- zero_ext(mem16[EA0]); d1 <- zero_ext(mem16[EA1])"),
-    I("LD2W",  "dual", 0b1000, "LD2", {"w": 0b10, "u": 0},
-      "d0, d1, (rs_base, rs_stride)",
+    I("LD2W",  "classic", 0b010010, "L2", {}, "d0, d1, (rs_base, rs_stride)",
       "d0 <- mem32[EA0]; d1 <- mem32[EA1]"),
 
-    I("ST2",   "dual", 0b1001, "ST2", {}, "(rs_base, rs_stride), s0, s1",
+    # dual tier: the four-source stores, the only ops needing 28 payload bits
+    I("ST2",   "dual", 0b1000, "ST2", {}, "(rs_base, rs_stride), s0, s1",
       "mem32[EA0] <- s0; mem32[EA1] <- s1"),
-    I("ST2H",  "dual", 0b1010, "ST2", {}, "(rs_base, rs_stride), s0, s1",
+    I("ST2H",  "dual", 0b1001, "ST2", {}, "(rs_base, rs_stride), s0, s1",
       "mem16[EA0] <- s0[15:0]; mem16[EA1] <- s1[15:0]"),
-    I("ST2B",  "dual", 0b1011, "ST2", {}, "(rs_base, rs_stride), s0, s1",
+    I("ST2B",  "dual", 0b1010, "ST2", {}, "(rs_base, rs_stride), s0, s1",
       "mem8[EA0] <- s0[7:0]; mem8[EA1] <- s1[7:0]"),
 ]
 
@@ -399,11 +394,6 @@ def emit_sv():
                      "" if len(names) == 1
                      else "   // " + ", ".join(names)))
         print()
-    print("   // LD2 width/extension subfields")
-    for nm, val in (("W_BYTE", 0), ("W_HALF", 1), ("W_WORD", 2)):
-        print("   localparam logic [1:0] LS_%-6s = 2'b%s;"
-              % (nm, format(val, "02b")))
-    print("   localparam logic       LS_U_ZERO = 1'b1;   // zero-extend\n")
     print("   // field extraction (constant slices -- no address mux)")
     for n in FIELDS:
         if n.startswith("opcode"):
@@ -472,7 +462,6 @@ class _Tests(unittest.TestCase):
 
     def test_field_str_formats(self):
         self.assertEqual(field_str("rs_base"), "[20:14]")
-        self.assertEqual(field_str("u"), "[1]")
         self.assertEqual(field_str("imm12"), "{[25:21], [6:0]}")
 
     def test_nop_is_all_zero_word(self):
@@ -493,18 +482,35 @@ class _Tests(unittest.TestCase):
 
     def test_golden_st2(self):
         # ST2 s0=bank1:reg3, base=bank0:reg20, stride=bank0:reg1, s1=bank2:reg7
+        # (re-blessed when ST2 moved to dual opcode 1000)
         self.assertEqual(
             encode(_inst("ST2"), {"s0": (1 << 5) | 3, "rs_base": 20,
                                   "rs_stride": 1, "s1": (2 << 5) | 7}),
-            0x946500C7)
+            0x846500C7)
 
-    def test_ld2_variants_share_opcode_differ_in_subfields(self):
+    def test_ld2_variants_are_distinct_classic_opcodes(self):
+        names = ("LD2B", "LD2BU", "LD2H", "LD2HU", "LD2W")
         words = {m: encode(_inst(m), {"d0": 1, "d1": 2, "rs_base": 3,
-                                      "rs_stride": 4})
-                 for m in ("LD2B", "LD2BU", "LD2H", "LD2HU", "LD2W")}
+                                      "rs_stride": 4}) for m in names}
         self.assertEqual(len(set(words.values())), len(words))
-        for w in words.values():
-            self.assertEqual(extract("opcode4", w), _inst("LD2W")["opcode"])
+        for m, w in words.items():
+            self.assertEqual(_inst(m)["tier"], "classic")
+            self.assertFalse(w >> 31, m)          # classic tier
+            self.assertEqual(extract("opcode6", w), _inst(m)["opcode"])
+
+    def test_golden_ld2w(self):
+        # LD2W d0=3, d1=7, rs_base=bank0:reg20, rs_stride=bank0:reg1
+        self.assertEqual(
+            encode(_inst("LD2W"), {"d0": 3, "d1": 7, "rs_base": 20,
+                                   "rs_stride": 1}),
+            0x4865009C)
+
+    def test_only_four_source_ops_use_the_dual_tier(self):
+        for inst in INSTRUCTIONS:
+            reads = [f for f in FORMATS[inst["format"]][0]
+                     if FIELDS[f][1] and "read" in FIELDS[f][1]]
+            self.assertEqual(inst["tier"] == "dual", len(reads) == 4,
+                             inst["mnemonic"])
 
     def test_tier_selected_by_bit31(self):
         for inst in INSTRUCTIONS:

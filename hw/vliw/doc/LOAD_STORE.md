@@ -46,7 +46,7 @@ slot's results); destinations are 5-bit.
 | Load (base+imm)            | `rd`      | `rs_base`                              |
 | Indexed load               | `rd`      | `rs_base`, `rs_index`                  |
 | Store                      | —         | `rs_base`, `rs_data`                   |
-| `LD2` (dual load)          | `d0`,`d1` | `rs_base`, `rs_stride`                 |
+| `LD2*` (dual load)         | `d0`,`d1` | `rs_base`, `rs_stride`                 |
 | `ST2*` (dual store)        | —         | `rs_base`, `rs_stride`, `s0`, `s1`     |
 
 ### 2.1 Operand rails (encoding constraint)
@@ -69,12 +69,12 @@ head of the register-read path:
 Consequences:
 
 - An instruction that does not use a rail leaves those bits as an
-  immediate field, a subfield or reserved; the corresponding port still
+  immediate field or reserved; the corresponding port still
   issues a (harmless) read, so **decode supplies a per-port valid bit** —
   the scoreboard must not see an unused rail as a dependency (§5.2).
 - Rails 3 and 4 overlap immediate bits in the classic tier, so `s0`/`s1`
-  exist only in the dual tier — matching the fact that only dual stores
-  need four reads.
+  exist only in the dual tier — which is exactly the set of instructions
+  needing four reads (the dual stores).
 - The residual multiplexing is on the **data** side (lane-0 write data
   comes from rail 2 for a classic store, rail 3 for a dual store) and on
   the immediate reassembly path — both off the register-read address
@@ -100,11 +100,13 @@ opcode**, split by bit 31:
             opcode(4)  payload(28)      (values 1000–1111, 8 codes — §10.2)
 ```
 
-The dual-access pair instructions (§10) need 28 payload bits (up to four
-7-bit register sources), which a 6-bit opcode cannot leave room for; the
-4-bit tier trades opcode space for payload exactly there. By Kraft's
-budget the split costs the classic tier half its code points (32 remain
-— ample: 14 used today).
+The **dual stores** (§10.2) read four 7-bit registers — `rs_base`,
+`rs_stride`, `s0`, `s1` = 28 payload bits — which a 6-bit opcode cannot
+leave room for; the 4-bit tier trades opcode space for payload exactly
+there, and nothing else needs it. Dual *loads* read two registers and
+write two 5-bit destinations (24 bits), so they stay in the classic
+tier. By Kraft's budget the split costs the classic tier half its code
+points (32 remain — 19 used today).
 
 **NOP** is classic-tier `opcode = 000000` (the canonical empty-slot
 encoding; the assembler emits the all-zero word `0x00000000`).
@@ -113,9 +115,8 @@ encoding; the assembler emits the all-zero word `0x00000000`).
 
 Opcode assignment is **flat and sequential** within each tier (same
 convention as the control slot). Access width and sign/zero behaviour are
-folded into the opcode for every classic-tier instruction and for the dual
-stores; only `LD2` carries them as payload subfields (§10.2). There is no
-`funct` field. `NOP = 000000`.
+folded into the opcode for **every** instruction — there are no width or
+`funct` fields anywhere in the slot. `NOP = 000000`.
 
 **Field positions** — the single authoritative field map. Every operand
 role is pinned to one bit range (its §2.1 rail) across all instructions
@@ -129,16 +130,14 @@ use that role:
 | `rs_base`   | `[20:14]`               | 7     | read 1       | **all** loads, stores, dual ops          |
 | `rs_index`  | `[13:7]`                | 7     | read 2       | indexed loads (`LBX`…`LHUX`)             |
 | `rs_data`   | `[13:7]`                | 7     | read 2       | classic stores (`SB`/`SH`/`SW`)          |
-| `rs_stride` | `[13:7]`                | 7     | read 2       | all dual ops                             |
+| `rs_stride` | `[13:7]`                | 7     | read 2       | dual loads and stores                    |
 | `s0`        | `[27:21]`               | 7     | read 3       | `ST2*` (lane-0 store data)               |
 | `s1`        | `[6:0]`                 | 7     | read 4       | `ST2*` (lane-1 store data)               |
 | `rd`        | `[25:21]`               | 5     | write A addr | all classic loads                        |
-| `d0`        | `[25:21]`               | 5     | write A addr | `LD2` (lane-0 result → LS-A)             |
-| `d1`        | `[6:2]`                 | 5     | write B addr | `LD2` (lane-1 result → LS-B)             |
+| `d0`        | `[25:21]`               | 5     | write A addr | `LD2*` (lane-0 result → LS-A)            |
+| `d1`        | `[6:2]`                 | 5     | write B addr | `LD2*` (lane-1 result → LS-B)            |
 | `imm14`     | `[13:0]`                | 14    | —            | base+immediate loads                     |
 | `imm12`     | `{[25:21], [6:0]}`      | 12    | —            | classic stores (split, §3.3)             |
-| `w`         | `[27:26]`               | 2     | —            | `LD2` access width (00 B, 01 H, 10 W)    |
-| `u`         | `[1]`                   | 1     | —            | `LD2` zero-extend (byte/half)            |
 
 Notes on the map:
 
@@ -146,7 +145,7 @@ Notes on the map:
   covers `d0` `[25:21]` (no instruction has both), and `s1` `[6:0]`
   covers `d1` `[6:2]`. Each port still reads a constant slice.
 - A port whose rail carries something else in the current instruction
-  (an immediate, a subfield, opcode bits) performs a harmless read or
+  (an immediate, reserved bits, opcode bits) performs a harmless read or
   is write-disabled; decode provides the per-port valid bit (§2.1).
 - All layouts (§3.2, §3.3, §3.6, and the four dual forms of §10.2)
   account for exactly 32 bits.
@@ -179,10 +178,15 @@ tools/ls_isa.py --check | --md | --asm | --sv | --decode <word>
 | `001011` | `LWX`    | `rd, (rs_base, rs_index)` | load word indexed            | §3.6   |
 | `001100` | `LBUX`   | `rd, (rs_base, rs_index)` | load byte indexed, zero-ext  | §3.6   |
 | `001101` | `LHUX`   | `rd, (rs_base, rs_index)` | load half indexed, zero-ext  | §3.6   |
+| `001110` | `LD2B`   | `d0, d1, (rs_base, rs_stride)` | dual load byte, sign-ext | §10.2 |
+| `001111` | `LD2BU`  | `d0, d1, (rs_base, rs_stride)` | dual load byte, zero-ext | §10.2 |
+| `010000` | `LD2H`   | `d0, d1, (rs_base, rs_stride)` | dual load half, sign-ext | §10.2 |
+| `010001` | `LD2HU`  | `d0, d1, (rs_base, rs_stride)` | dual load half, zero-ext | §10.2 |
+| `010010` | `LD2W`   | `d0, d1, (rs_base, rs_stride)` | dual load word           | §10.2 |
 
-Reserved: classic-tier opcodes `001110`–`011111` (18 entries) and
-dual-tier opcodes `1110`–`1111` (§10.2). Executing a reserved opcode
-raises an **illegal-instruction trap** (same entry path as `TRAP`;
+Reserved: classic-tier opcodes `010011`–`011111` (13 entries) and
+dual-tier opcodes `1011`–`1111` (5 entries, §10.2). Executing a reserved
+opcode raises an **illegal-instruction trap** (same entry path as `TRAP`;
 `trap_code` in `ABI.md`) — the assembler must never emit one.
 
 **Notes:**
@@ -483,40 +487,50 @@ The LS slot's dual-op class accesses a **pair from one instruction**:
 lane `i` (`i = 0, 1`) at `EA_i = addr + i·stride` (`stride` signed, in
 words). Lane 0's result writes the LS-A bank, lane 1's the LS-B bank
 (one write port each — §2 grows to the 5-bank, 10-read-port register
-file). All dual ops live in the **dual-access tier** (`[31] = 1`,
-4-bit opcode, 28-bit payload — §3); the access direction (§10.3) is
-given by the opcode, not a field.
+file). The access direction and width (§10.3) are given by the opcode,
+never by a field.
 
-**Dual-tier opcode map:**
+The pair instructions **split across the two encoding tiers by how many
+registers they name**, not by being "dual":
 
-| Opcode | Mnemonic | Operands                          | Lanes (0, 1)   |
-|--------|----------|-----------------------------------|----------------|
-| `1000` | `LD2`    | `d0, d1, (rs_base, rs_stride)`    | read, read     |
-| `1001` | `ST2`    | `(rs_base, rs_stride), s0, s1`    | write, write (word) |
-| `1010` | `ST2H`   | `(rs_base, rs_stride), s0, s1`    | write, write (half) |
-| `1011` | `ST2B`   | `(rs_base, rs_stride), s0, s1`    | write, write (byte) |
-| `1100`–`1111` | — | reserved (4 codes)              |                |
+| Instruction | Tier | Registers named | Payload |
+|-------------|------|-----------------|---------|
+| `LD2*` (5 opcodes, `001110`–`010010`) | classic, 6-bit opcode | 2 reads + 2 destinations | 24 of 26 bits |
+| `ST2*` (3 opcodes, `1000`–`1010`)     | dual, 4-bit opcode     | 4 reads                  | 28 of 28 bits |
 
-**Payload layouts** — every field sits on its §2.1 rail, shared with the
-classic tier (`rs_base` on rail 1, the second address operand on rail 2,
-`rd`/`d0` on the write-A rail), so no register-file port needs an
-address multiplexer:
+Only the four-source stores need the wide payload, so only they pay the
+4-bit opcode; the dual loads fit the ordinary classic layout with two
+bits to spare. Dual-tier codes `1011`–`1111` stay reserved — the
+natural users are further four-source forms (an indexed dual store
+`ST2X*` would need exactly the same 28 bits).
+
+**Dual-tier opcode map** (the dual loads are in the §3.1 classic map):
+
+| Opcode | Mnemonic | Operands                       | Description        |
+|--------|----------|--------------------------------|--------------------|
+| `1000` | `ST2`    | `(rs_base, rs_stride), s0, s1` | dual store word    |
+| `1001` | `ST2H`   | `(rs_base, rs_stride), s0, s1` | dual store half    |
+| `1010` | `ST2B`   | `(rs_base, rs_stride), s0, s1` | dual store byte    |
+| `1011`–`1111` | — | reserved (5 codes)              |                    |
+
+**Payload layouts** — every field sits on its §2.1 rail, so no
+register-file port needs an address multiplexer and the dual loads reuse
+the classic tier's rails unchanged (`d0` shares the `rd` rail, `rs_base`
+rail 1, `rs_stride` rail 2):
 
 ```
 common:  [20:14] rs_base(7)  [13:7] rs_stride(7)          (rails 1, 2)
 
-LD2:     [27:26] w(2)   [25:21] d0(5)   [6:2] d1(5)  [1] u  [0] rsvd
-ST2*:    [27:21] s0(7)                  [6:0] s1(7)         (width in opcode)
+LD2*:    [31:26] opcode(6)  [25:21] d0(5)   [6:2] d1(5)   [1:0] rsvd
+ST2*:    [31:28] opcode(4)  [27:21] s0(7)   [6:0] s1(7)
 ```
 
-- `LD2` folds its width and extension into subfields: `w` = 00 byte,
-  01 half, 10 word; `u` = zero-extend (byte/half only). One opcode
-  covers `LD2B/LD2BU/LD2H/LD2HU/LD2W` (assembler mnemonics).
-- `ST2*` has a full 28-bit payload (four 7-bit sources would not leave
-  width bits), so the store width is folded into the opcode —
-  consistent with the classic tier's `SB/SH/SW` convention. Sources
-  are **full 7-bit global addresses** (any bank — the 10-read-port
-  register file removes the lane-implicit restriction).
+- `LD2B/LD2BU/LD2H/LD2HU/LD2W` are five classic opcodes, one per
+  width and extension — the same convention as `LB/LBU/LH/LHU/LW`.
+- `ST2/ST2H/ST2B` fill their 28-bit payload with four 7-bit sources, so
+  the width goes in the opcode as well. Sources are **full 7-bit global
+  addresses** (any bank — the 10-read-port register file removes any
+  lane-implicit restriction).
 - Load destinations are 5-bit, bank-implicit per lane (`d0` → LS-A,
   `d1` → LS-B). Addresses are **word** EAs (the pair is word-aligned
   by construction; sub-word dual accesses select within the word —
