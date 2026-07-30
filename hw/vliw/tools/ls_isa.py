@@ -35,8 +35,8 @@ FIELDS = {
     "rs_index":  ([(13, 7)],  "read 2",  "index register (indexed loads)"),
     "rs_data":   ([(13, 7)],  "read 2",  "store data (classic stores)"),
     "rs_stride": ([(13, 7)],  "read 2",  "signed word stride (dual ops)"),
-    "s0":        ([(27, 21)], "read 3",  "lane-0 store data"),
-    "s1":        ([(6, 0)],   "read 4",  "lane-1 store data"),
+    "s0":        ([(27, 21)], "read 3",  "lane-0 store data (dual stores)"),
+    "s1":        ([(6, 0)],   "read 4",  "lane-1 store data (dual stores)"),
     "rd":        ([(25, 21)], "write A", "load destination (LS-A bank)"),
     "d0":        ([(25, 21)], "write A", "lane-0 destination (LS-A bank)"),
     "d1":        ([(6, 2)],   "write B", "lane-1 destination (LS-B bank)"),
@@ -58,10 +58,6 @@ FORMATS = {
               "dual load, width/sign in subfields"),
     "ST2":   (["opcode4", "s0", "rs_base", "rs_stride", "s1"], [],
               "dual store, width in opcode"),
-    "STLD2": (["opcode4", "s0", "rs_base", "rs_stride", "d1"], [0, 1],
-              "lane 0 stores, lane 1 loads"),
-    "LDST2": (["opcode4", "d0", "rs_base", "rs_stride", "s1"], [26, 27],
-              "lane 0 loads, lane 1 stores"),
 }
 
 TIERS = {  # tier -> (opcode field, opcode width, first code, last code)
@@ -130,11 +126,6 @@ INSTRUCTIONS = [
       "mem16[EA0] <- s0[15:0]; mem16[EA1] <- s1[15:0]"),
     I("ST2B",  "dual", 0b1011, "ST2", {}, "(rs_base, rs_stride), s0, s1",
       "mem8[EA0] <- s0[7:0]; mem8[EA1] <- s1[7:0]"),
-
-    I("STLD2", "dual", 0b1100, "STLD2", {}, "d1, (rs_base, rs_stride), s0",
-      "mem32[EA0] <- s0; d1 <- mem32[EA1]"),
-    I("LDST2", "dual", 0b1101, "LDST2", {}, "d0, (rs_base, rs_stride), s1",
-      "d0 <- mem32[EA0]; mem32[EA1] <- s1"),
 ]
 
 # EA_i = rs_base + i * rs_stride (words) for the dual tier; EA = rs_base +

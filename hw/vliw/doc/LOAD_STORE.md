@@ -37,7 +37,8 @@ results); destinations are 5-bit with the bank implicit from the lane.
 
 Maximum simultaneous demand is set by the dual store (§10.2): `rs_base` +
 `rs_stride` + `s0` + `s1` = **4 reads**; the dual load writes `d0` + `d1` =
-**2 writes**. All sources are full 7-bit **global** addresses (any bank, any
+**2 writes**. No instruction does both: reads 3/4 carry store data and
+write B carries a load result, so the two never coexist. All sources are full 7-bit **global** addresses (any bank, any
 slot's results); destinations are 5-bit.
 
 | Instruction class          | Writes    | Reads                                  |
@@ -47,7 +48,6 @@ slot's results); destinations are 5-bit.
 | Store                      | —         | `rs_base`, `rs_data`                   |
 | `LD2` (dual load)          | `d0`,`d1` | `rs_base`, `rs_stride`                 |
 | `ST2*` (dual store)        | —         | `rs_base`, `rs_stride`, `s0`, `s1`     |
-| `STLD2`/`LDST2` (mixed)    | `d1`/`d0` | `rs_base`, `rs_stride`, `s0`/`s1`      |
 
 ### 2.1 Operand rails (encoding constraint)
 
@@ -61,8 +61,8 @@ head of the register-read path:
 |---------------|-----------|------------------------------------------------------|
 | read 1        | `[20:14]` | `rs_base` (every memory instruction)                 |
 | read 2        | `[13:7]`  | `rs_index`, `rs_stride`, `rs_data` (classic store)   |
-| read 3        | `[27:21]` | `s0` (dual-tier stores — dual tier only)             |
-| read 4        | `[6:0]`   | `s1` (`ST2*`, `LDST2`)                               |
+| read 3        | `[27:21]` | `s0` (dual stores — dual tier only)                  |
+| read 4        | `[6:0]`   | `s1` (dual stores — dual tier only)                  |
 | write A addr  | `[25:21]` | `rd`, `d0`                                           |
 | write B addr  | `[6:2]`   | `d1`                                                 |
 
@@ -130,11 +130,11 @@ use that role:
 | `rs_index`  | `[13:7]`                | 7     | read 2       | indexed loads (`LBX`…`LHUX`)             |
 | `rs_data`   | `[13:7]`                | 7     | read 2       | classic stores (`SB`/`SH`/`SW`)          |
 | `rs_stride` | `[13:7]`                | 7     | read 2       | all dual ops                             |
-| `s0`        | `[27:21]`               | 7     | read 3       | `ST2*`, `STLD2` (lane-0 store data)      |
-| `s1`        | `[6:0]`                 | 7     | read 4       | `ST2*`, `LDST2` (lane-1 store data)      |
+| `s0`        | `[27:21]`               | 7     | read 3       | `ST2*` (lane-0 store data)               |
+| `s1`        | `[6:0]`                 | 7     | read 4       | `ST2*` (lane-1 store data)               |
 | `rd`        | `[25:21]`               | 5     | write A addr | all classic loads                        |
-| `d0`        | `[25:21]`               | 5     | write A addr | `LD2`, `LDST2` (lane-0 result → LS-A)    |
-| `d1`        | `[6:2]`                 | 5     | write B addr | `LD2`, `STLD2` (lane-1 result → LS-B)    |
+| `d0`        | `[25:21]`               | 5     | write A addr | `LD2` (lane-0 result → LS-A)             |
+| `d1`        | `[6:2]`                 | 5     | write B addr | `LD2` (lane-1 result → LS-B)             |
 | `imm14`     | `[13:0]`                | 14    | —            | base+immediate loads                     |
 | `imm12`     | `{[25:21], [6:0]}`      | 12    | —            | classic stores (split, §3.3)             |
 | `w`         | `[27:26]`               | 2     | —            | `LD2` access width (00 B, 01 H, 10 W)    |
@@ -484,8 +484,8 @@ lane `i` (`i = 0, 1`) at `EA_i = addr + i·stride` (`stride` signed, in
 words). Lane 0's result writes the LS-A bank, lane 1's the LS-B bank
 (one write port each — §2 grows to the 5-bank, 10-read-port register
 file). All dual ops live in the **dual-access tier** (`[31] = 1`,
-4-bit opcode, 28-bit payload — §3); the per-lane read/write mix
-(§10.3) is implied by the opcode, not a field.
+4-bit opcode, 28-bit payload — §3); the access direction (§10.3) is
+given by the opcode, not a field.
 
 **Dual-tier opcode map:**
 
@@ -495,10 +495,7 @@ file). All dual ops live in the **dual-access tier** (`[31] = 1`,
 | `1001` | `ST2`    | `(rs_base, rs_stride), s0, s1`    | write, write (word) |
 | `1010` | `ST2H`   | `(rs_base, rs_stride), s0, s1`    | write, write (half) |
 | `1011` | `ST2B`   | `(rs_base, rs_stride), s0, s1`    | write, write (byte) |
-| `1100` | `STLD2`  | `d1, (rs_base, rs_stride), s0`    | write, read (word) |
-| `1101` | `LDST2`  | `d0, (rs_base, rs_stride), s1`    | read, write (word) |
-| `1110` | —        | reserved                          |                |
-| `1111` | —        | reserved                          |                |
+| `1100`–`1111` | — | reserved (4 codes)              |                |
 
 **Payload layouts** — every field sits on its §2.1 rail, shared with the
 classic tier (`rs_base` on rail 1, the second address operand on rail 2,
@@ -510,8 +507,6 @@ common:  [20:14] rs_base(7)  [13:7] rs_stride(7)          (rails 1, 2)
 
 LD2:     [27:26] w(2)   [25:21] d0(5)   [6:2] d1(5)  [1] u  [0] rsvd
 ST2*:    [27:21] s0(7)                  [6:0] s1(7)         (width in opcode)
-STLD2:   [27:21] s0(7)                  [6:2] d1(5)  [1:0] rsvd
-LDST2:   [27:26] rsvd   [25:21] d0(5)   [6:0] s1(7)
 ```
 
 - `LD2` folds its width and extension into subfields: `w` = 00 byte,
@@ -522,36 +517,38 @@ LDST2:   [27:26] rsvd   [25:21] d0(5)   [6:0] s1(7)
   consistent with the classic tier's `SB/SH/SW` convention. Sources
   are **full 7-bit global addresses** (any bank — the 10-read-port
   register file removes the lane-implicit restriction).
-- The mixed forms (`STLD2`/`LDST2`) are **word-only** in this
-  revision (their use cases — streaming copy, exchange pipelines —
-  are word-based); their reserved bits are the landing zone for
-  sub-word variants if ever needed.
 - Load destinations are 5-bit, bank-implicit per lane (`d0` → LS-A,
   `d1` → LS-B). Addresses are **word** EAs (the pair is word-aligned
   by construction; sub-word dual accesses select within the word —
   §3.4 extension rules apply per lane).
 
-### 10.3 Per-lane read/write mix (normative)
+### 10.3 Access direction and exchange semantics (normative)
 
-`wen` is **per lane**: each enabled lane independently reads or writes.
-All four combinations are legal — dual load, dual store, and both
-mixed forms (e.g. lane 0 writes while lane 1 reads).
+Both lanes of a pair have the **same direction**: a pair is either a
+dual load (`LD2`) or a dual store (`ST2*`) — the memory takes one
+shared write enable for the group, as `parmem3_2` implements today.
 
-- Because enabled lanes own distinct banks whenever
-  `stride ≢ 0 (mod 3)`, a mixed pair costs the same single cycle as a
-  uniform pair.
-- READ_FIRST semantics make a **writing lane return the pre-write cell
-  content** on its read-data lane — exchange (`XCHW`-class) semantics
-  come free; a single-lane exchange is the degenerate case.
-- **Single-slot streaming copy**: lane 0 writes `dst[i]` while lane 1
-  reads `src[i+1]`'s stream — one word moved per cycle from one LS
-  slot. The two lanes share one `addr`/`stride` pair, so `src` and
-  `dst` must sit at a constant layout distance `D` with
-  `D ≢ 0 (mod 3)` — an allocator placement rule, same family as the
-  padding hints of §10.4.
-- Register budget: a mixed pair reads `rs_base`, `rs_stride`, and one
-  store-data source (3 reads) and makes one load-result write — within
-  the dual-store worst case.
+READ_FIRST still gives a useful property for free: a **writing lane
+returns the pre-write content** of its cell on the corresponding read
+data lane. A single-lane store therefore yields the old value without
+a second access — the basis for the planned `XCHW` exchange
+instruction (§10.5), which needs no memory change at all.
+
+> **Design note — mixed read/write pairs.** An earlier revision
+> defined mixed forms (`STLD2`/`LDST2`: one lane storing while the
+> other loads, for single-slot streaming copies and delay-line
+> updates) and a per-lane `wen`. They were **removed**: word-only
+> mixed ops serve mainly the sub-word data the dual tier exists to
+> stream, and making them sub-word does not fit — the shared width
+> plus the load lane's sign control need 3 payload bits where only 2
+> remain, so width would have to move into the opcode and consume 4 of
+> the tier's 8 codes. Their payoff is also modest: the LS slot is
+> single-issue, so the alternative costs one extra bundle, and bulk
+> copies belong to the NoC/DMA path (§6). Opcodes `1100`–`1111` are
+> reserved; if a kernel study shows delay-line updates dominating, the
+> natural re-introduction is width-in-opcode
+> (`STLD2W/STLD2H/LDST2W/LDST2H`) with the load lane's `u` in a
+> reserved payload bit.
 
 ### 10.4 Conflict auto-serialization (normative)
 
@@ -587,11 +584,21 @@ takes precedence over `conflict` when both assert.
 
 ### 10.5 Open items
 
-- Classic-tier additions enabled by the 10-read-port register file:
-  `XCHW` (single-lane exchange) and the indexed stores `SWX/SHX/SBX`
-  (a third read port makes them encodable) — opcode values to be
-  assigned in the §3.1 map.
+- Classic-tier additions enabled by the 4-read-port register file, both
+  of which fit the §2.1 rails without new fields — opcode values to be
+  assigned in the §3.1 map:
+  - `XCHW rd, rs_data, imm(rs_base)` — exchange, on the READ_FIRST
+    property of §10.3: `rd[25:21]`, `rs_base[20:14]`,
+    `rs_data[13:7]`, and a 7-bit `imm[6:0]` (±63 bytes);
+  - indexed stores `SWX/SHX/SBX` — `rs_base[20:14]`,
+    `rs_index[13:7]`, store data on rail 3 or 4, which the third read
+    port now makes possible.
 - Sub-word store support on the word-wide banks (byte write enables in
   `dpmemrf`, as for the current DPRAM path of §3.4).
-- Per-lane `wen` in the `parmem3_2` RTL (the component currently
-  implements the shared-`wen` contract).
+- **Sub-word dual addressing.** §10.2 states dual lane addresses as
+  word EAs while §10.3's stride is in words, which leaves byte- and
+  half-granular `LD2`/`ST2*` unable to name a sub-word element. Either
+  `addr`/`stride` become byte quantities for those variants (bank word
+  = `EA_i >> 2`, byte lane = `EA_i[1:0]`) or the sub-word dual forms
+  are defined as word-strided with in-word selection only. To be
+  resolved before the dual tier is implemented.
