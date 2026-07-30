@@ -9,8 +9,8 @@ else -- the specification tables, the assembler reference listing and the
 RTL decode parameters -- is generated from them, so the doc, the RTL and
 the toolchain cannot drift apart.
 
-Run with --help for the available views (--check, --asm, --md, --sv,
---decode), and -o to write one to a file.
+Run with --help for the available actions (--check, --test, --asm, --md,
+--sv, --decode), and -o to write a generated view to a file.
 
 Extending to the other slots (ALU, CTRL) means adding their FIELDS /
 FORMATS / INSTRUCTIONS tables; the checkers and emitters are generic.
@@ -18,7 +18,9 @@ FORMATS / INSTRUCTIONS tables; the checkers and emitters are generic.
 
 import argparse
 import contextlib
+import io
 import sys
+import unittest
 
 SLOT_WIDTH = 32
 
@@ -454,6 +456,145 @@ def emit_decode(text):
         print("  %-9s %-18s = %d%s" % (f, field_str(f), v, note))
 
 
+# ------------------------------------------------------------------ tests
+class _Tests(unittest.TestCase):
+    """Unit tests for the encoding helpers and the generated views.
+
+    The golden vectors are hand-computed from the field map: a failure
+    there means the encoding changed, which is an ISA change -- update
+    the vector deliberately, never to make the test pass.
+    """
+
+    def test_field_widths_match_ranges(self):
+        for name in FIELDS:
+            self.assertEqual(field_width(name), len(field_bits(name)), name)
+
+    def test_split_field_round_trip(self):
+        for v in range(1 << field_width("imm12")):       # all 4096 values
+            self.assertEqual(extract("imm12", place("imm12", v)), v)
+
+    def test_place_lands_only_in_own_bits(self):
+        for name in FIELDS:
+            word = place(name, (1 << field_width(name)) - 1)
+            self.assertEqual({b for b in range(SLOT_WIDTH) if word >> b & 1},
+                             field_bits(name), name)
+
+    def test_field_str_formats(self):
+        self.assertEqual(field_str("rs_base"), "[20:14]")
+        self.assertEqual(field_str("u"), "[1]")
+        self.assertEqual(field_str("imm12"), "{[25:21], [6:0]}")
+
+    def test_nop_is_all_zero_word(self):
+        self.assertEqual(encode(_inst("NOP")), 0)
+
+    def test_golden_lw(self):
+        # LW rd=3, rs_base=bank0:reg20, imm14=64
+        self.assertEqual(
+            encode(_inst("LW"), {"rd": 3, "rs_base": 20, "imm14": 64}),
+            0x0C650040)
+
+    def test_golden_sw_split_immediate(self):
+        # SW rs_data=bank0:reg5, rs_base=bank0:reg20, imm12=0xABC
+        self.assertEqual(
+            encode(_inst("SW"),
+                   {"rs_data": 5, "rs_base": 20, "imm12": 0xABC}),
+            0x22A502BC)
+
+    def test_golden_st2(self):
+        # ST2 s0=bank1:reg3, base=bank0:reg20, stride=bank0:reg1, s1=bank2:reg7
+        self.assertEqual(
+            encode(_inst("ST2"), {"s0": (1 << 5) | 3, "rs_base": 20,
+                                  "rs_stride": 1, "s1": (2 << 5) | 7}),
+            0x946500C7)
+
+    def test_ld2_variants_share_opcode_differ_in_subfields(self):
+        words = {m: encode(_inst(m), {"d0": 1, "d1": 2, "rs_base": 3,
+                                      "rs_stride": 4})
+                 for m in ("LD2B", "LD2BU", "LD2H", "LD2HU", "LD2W")}
+        self.assertEqual(len(set(words.values())), len(words))
+        for w in words.values():
+            self.assertEqual(extract("opcode4", w), _inst("LD2W")["opcode"])
+
+    def test_tier_selected_by_bit31(self):
+        for inst in INSTRUCTIONS:
+            word = encode(inst)
+            self.assertEqual(bool(word >> 31), inst["tier"] == "dual",
+                             inst["mnemonic"])
+
+    def test_every_instruction_round_trips(self):
+        for inst in INSTRUCTIONS:
+            fields = FORMATS[inst["format"]][0]
+            ops = {f: 1 for f in fields
+                   if not f.startswith("opcode") and f not in inst["sub"]}
+            word = encode(inst, ops)
+            tier = "dual" if word >> 31 else "classic"
+            hits = [c["mnemonic"] for c in INSTRUCTIONS
+                    if c["tier"] == tier
+                    and c["opcode"] == extract(TIERS[tier][0], word)
+                    and all(extract(f, word) == v
+                            for f, v in c["sub"].items())]
+            self.assertEqual(hits, [inst["mnemonic"]])
+
+    def test_encode_rejects_field_absent_from_format(self):
+        with self.assertRaises(KeyError):
+            encode(_inst("LW"), {"rs_stride": 1})
+
+    def test_rails_are_shared_not_moved(self):
+        rail2 = {"rs_index", "rs_data", "rs_stride"}
+        self.assertEqual({field_str(f) for f in rail2}, {"[13:7]"})
+        self.assertEqual(field_str("rd"), field_str("d0"))
+
+    def test_common_prefix(self):
+        self.assertEqual(common_prefix(["LD2B", "LD2BU", "LD2W"]), "LD2")
+        self.assertEqual(common_prefix(["ST2"]), "ST2")
+
+    def test_check_passes_on_shipped_tables(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(check(), 0)
+
+    def test_check_catches_a_broken_table(self):
+        saved = FORMATS["L"]
+        FORMATS["L"] = (["opcode6", "rd", "rs_base"], [], "truncated")
+        try:
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                self.assertEqual(check(), 1)
+            self.assertIn("covers 18 bits", out.getvalue())
+        finally:
+            FORMATS["L"] = saved
+
+    def test_emitters_produce_expected_content(self):
+        for emit, needles in ((emit_asm, ("LD2HU", "reserved", "[31:28]")),
+                              (emit_md, ("| `rs_base` |", "opcode map")),
+                              (emit_sv, ("package ls_isa_pkg;",
+                                         "LS_OP_LD2", "endpackage"))):
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                emit()
+            for n in needles:
+                self.assertIn(n, out.getvalue(), emit.__name__)
+
+    def test_decode_reports_reserved_opcode(self):
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            emit_decode("0xF0000000")
+        self.assertIn("illegal-instruction trap", out.getvalue())
+
+    def test_decode_reports_banks_and_registers(self):
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            emit_decode("0x946500C7")
+        text = out.getvalue()
+        self.assertIn("ST2", text)
+        self.assertIn("bank 2, reg 7", text)          # s1
+
+
+def _inst(mnemonic):
+    return next(i for i in INSTRUCTIONS if i["mnemonic"] == mnemonic)
+
+
+def run_tests():
+    suite = unittest.TestLoader().loadTestsFromTestCase(_Tests)
+    ok = unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful()
+    return 0 if ok else 1
+
+
 def main():
     ap = argparse.ArgumentParser(
         prog="ls_isa.py",
@@ -464,6 +605,8 @@ def main():
     act = ap.add_mutually_exclusive_group()
     act.add_argument("--check", action="store_true",
                      help="validate the encoding tables (default action)")
+    act.add_argument("--test", action="store_true",
+                     help="run the unit tests for the helpers and emitters")
     act.add_argument("--asm", action="store_true",
                      help="instruction reference, assembly-manual style")
     act.add_argument("--md", action="store_true",
@@ -475,6 +618,9 @@ def main():
     ap.add_argument("-o", "--output", metavar="FILE",
                     help="write the generated view to FILE instead of stdout")
     args = ap.parse_args()
+
+    if args.test:
+        return run_tests()
 
     if check():                       # never emit from a broken table
         return 1
