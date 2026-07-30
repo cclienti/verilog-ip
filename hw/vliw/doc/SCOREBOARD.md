@@ -347,64 +347,75 @@ bundle per cycle.
 
 ### 7.6 Worked example: latency-blind versus latency-aware code
 
-The kernel is `dst[i] = src[i] + 1`, with `c1`/`c3` the source and
-destination pointers in the CTRL bank, `m*` in LS-A, `a*` in the ALU0 bank.
-Both versions use the hardware loop, so no branch occupies the control slot.
-Baseline latencies: a load and an `ADD` are both readable at `W + 2`
-(LOAD_STORE.md §5.1).
+The kernel is `dst[i] = src[i] + 1` for four elements, unrolled, with `c1`
+and `c3` the source and destination pointers, `m*` in LS-A and `a*` in the
+ALU0 bank. Unrolling addresses every element with an immediate offset, so
+the body needs no pointer arithmetic at all. Baseline latencies: a load and
+an `ADD` are both readable at `W + 2` (LOAD_STORE.md §5.1).
 
 **Latency-blind.** Each consumer sits directly behind its producer. The code
 is *correct* — that is the scoreboard's contract — but pays a stall at every
 dependence:
 
 ```asm
-        LOOPI  N, blind_end
-blind:  LW    m0, 0(c1)   | ADDI c1, c1, 4    ; LS | CTRL
+        LW    m0, 0(c1)
     ;
-        ADD   a0, m0, 1                       ; ALU0   <- RAW on m0: 1 stall
+        ADD   a0, m0, 1          ; RAW on m0: 1 stall
     ;
-        SW    a0, 0(c3)   | ADDI c3, c3, 4    ; LS | CTRL  <- RAW on a0: 1 stall
+        SW    a0, 0(c3)          ; RAW on a0: 1 stall
     ;
-blind_end:
+        LW    m1, 4(c1)
+    ;
+        ADD   a1, m1, 1          ; RAW: 1 stall
+    ;
+        SW    a1, 4(c3)          ; RAW: 1 stall
+    ;
+        ...                      ; two more elements, same shape
 ```
 
-Three bundles, five cycles: the second bundle waits one cycle for `m0` and
-the third one cycle for `a0`.
+Twelve bundles and eight stalls: **20 cycles for four elements**.
 
-**Latency-aware.** Software-pipelined at an initiation interval of two
-bundles, with the destinations alternating between two registers so that a
-producer always retires before the next write to the same name (no WAW
-stall, §4). Each bundle's consumers read values produced two bundles
-earlier, which is exactly the machine latency:
+**Latency-aware.** The same instructions, reordered so that every consumer
+sits two bundles behind its producer — exactly the machine latency — with
+the loads hoisted to fill the pipeline:
 
 ```asm
-        LOOPI  N/2, sw_end
-sw:     LW    m0, 0(c1)   | ADD  a1, m1, 1   | ADDI c1, c1, 4   ; load i,   add i-1
+        LW    m0,  0(c1)
     ;
-        SW    a0, 0(c3)                      | ADDI c3, c3, 4   ; store i-2
+        LW    m1,  4(c1)
     ;
-        LW    m1, 0(c1)   | ADD  a0, m0, 1   | ADDI c1, c1, 4   ; load i+1, add i
+        LW    m2,  8(c1)   | ADD  a0, m0, 1      ; m0 ready this cycle
     ;
-        SW    a1, 0(c3)                      | ADDI c3, c3, 4   ; store i-1
+        LW    m3, 12(c1)   | ADD  a1, m1, 1
     ;
-sw_end:
+        SW    a0,  0(c3)   | ADD  a2, m2, 1      ; a0 ready this cycle
+    ;
+        SW    a1,  4(c3)   | ADD  a3, m3, 1
+    ;
+        SW    a2,  8(c3)
+    ;
+        SW    a3, 12(c3)
+    ;
 ```
 
-No bundle stalls: every source was written two bundles earlier, and every
-destination's previous write retired two bundles earlier. Four bundles now
-carry two elements — **two cycles per element against five**, and the
-scoreboard never intervenes.
+Eight bundles, **8 cycles for four elements** — no stall anywhere, and the
+LS slot carries a memory access in every bundle. Three properties make it
+stall-free, and each maps onto one check of §4:
+
+- every source is read exactly two bundles after it was written (**RAW**
+  satisfied at the machine latency, §7.1);
+- unrolling gives each element its own destination registers, so no two
+  writes to one name are ever in flight (**WAW** never fires — the rotation
+  a looped version would need, `m0`/`m1` alternating, exists only because a
+  loop reuses names);
+- the four `ADD`s occupy one ALU slot in four different bundles and the
+  writes retire one per bank per cycle (**`wbres`** never fires).
 
 What remains is not a data hazard but a **structural** bound: two memory
-accesses per element and a single LS slot per bundle. Reaching one cycle per
-element requires the pair instructions, which move two elements per memory
-bundle (`LD2W` + `ST2`, LOAD_STORE.md §10.2) — with the same two-bundle
-pipeline and alternating registers, and `stride % 3 != 0` so the pair never
-serializes (LOAD_STORE.md §10.4).
-
-Note that the prologue and epilogue are omitted: `sw` reads `m1`/`a0`/`a1`
-before the loop has produced them, so a real emitter fills the pipeline with
-two warm-up bundles and drains it with two more.
+accesses per element and a single LS slot per bundle, hence two cycles per
+element. Reaching one requires the pair instructions, which move two
+elements per memory bundle (`LD2W` + `ST2`, LOAD_STORE.md §10.2), with
+`stride % 3 != 0` so the pair never serializes (LOAD_STORE.md §10.4).
 
 ---
 
