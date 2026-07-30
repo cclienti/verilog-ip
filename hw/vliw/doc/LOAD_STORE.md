@@ -111,10 +111,45 @@ encoding; the assembler emits the all-zero word `0x00000000`).
 
 ### 3.1 Encoding reference card
 
-The 6-bit opcode is a **flat, sequential** assignment in the LS slot's own
-opcode space (same convention as the control slot). The access width and
-sign/zero behaviour are **folded into the opcode** — there is no separate width
-or `funct` field. `NOP = 000000`.
+Opcode assignment is **flat and sequential** within each tier (same
+convention as the control slot). Access width and sign/zero behaviour are
+folded into the opcode for every classic-tier instruction and for the dual
+stores; only `LD2` carries them as payload subfields (§10.2). There is no
+`funct` field. `NOP = 000000`.
+
+**Field positions** — the single authoritative field map. Every operand
+role is pinned to one bit range (its §2.1 rail) across all instructions
+that use it; a field is absent, not moved, when an instruction does not
+use that role:
+
+| Field       | Bits                    | Width | Port / rail  | Used by                                  |
+|-------------|-------------------------|-------|--------------|------------------------------------------|
+| `opcode`    | `[31:26]`               | 6     | —            | classic tier (`[31] = 0`)                |
+| `opcode`    | `[31:28]`               | 4     | —            | dual tier (`[31] = 1`)                   |
+| `rs_base`   | `[20:14]`               | 7     | read 1       | **all** loads, stores, dual ops          |
+| `rs_index`  | `[13:7]`                | 7     | read 2       | indexed loads (`LBX`…`LHUX`)             |
+| `rs_data`   | `[13:7]`                | 7     | read 2       | classic stores (`SB`/`SH`/`SW`)          |
+| `rs_stride` | `[13:7]`                | 7     | read 2       | all dual ops                             |
+| `s0`        | `[27:21]`               | 7     | read 3       | `ST2*`, `STLD2` (lane-0 store data)      |
+| `s1`        | `[6:0]`                 | 7     | read 4       | `ST2*`, `LDST2` (lane-1 store data)      |
+| `rd`        | `[25:21]`               | 5     | write A addr | all classic loads                        |
+| `d0`        | `[25:21]`               | 5     | write A addr | `LD2`, `LDST2` (lane-0 result → LS-A)    |
+| `d1`        | `[6:2]`                 | 5     | write B addr | `LD2`, `STLD2` (lane-1 result → LS-B)    |
+| `imm14`     | `[13:0]`                | 14    | —            | base+immediate loads                     |
+| `imm12`     | `{[25:21], [6:0]}`      | 12    | —            | classic stores (split, §3.3)             |
+| `w`         | `[27:26]`               | 2     | —            | `LD2` access width (00 B, 01 H, 10 W)    |
+| `u`         | `[1]`                   | 1     | —            | `LD2` zero-extend (byte/half)            |
+
+Notes on the map:
+
+- Rails may **overlap** between roles that never coexist: `s0` `[27:21]`
+  covers `d0` `[25:21]` (no instruction has both), and `s1` `[6:0]`
+  covers `d1` `[6:2]`. Each port still reads a constant slice.
+- A port whose rail carries something else in the current instruction
+  (an immediate, a subfield, opcode bits) performs a harmless read or
+  is write-disabled; decode provides the per-port valid bit (§2.1).
+- All seven layouts (§3.2, §3.3, §3.6, and the four dual forms of §10.2)
+  account for exactly 32 bits.
 
 **Opcode map** — the single authoritative list of LS-slot opcodes:
 
