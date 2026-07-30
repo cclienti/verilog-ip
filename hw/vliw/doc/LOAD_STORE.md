@@ -46,6 +46,7 @@ slot's results); destinations are 5-bit.
 | Load (base+imm)            | `rd`      | `rs_base`                              |
 | Indexed load               | `rd`      | `rs_base`, `rs_index`                  |
 | Store                      | —         | `rs_base`, `rs_data`                   |
+| Indexed store              | —         | `rs_base`, `rs_index`, `rs_data`       |
 | `LD2*` (dual load)         | `d0`,`d1` | `rs_base`, `rs_stride`                 |
 | `ST2*` (dual store)        | —         | `rs_base`, `rs_stride`, `s0`, `s1`     |
 
@@ -62,7 +63,7 @@ head of the register-read path:
 | read 1        | `[20:14]` | `rs_base` (every memory instruction)                 |
 | read 2        | `[13:7]`  | `rs_index`, `rs_stride`, `rs_data` (classic store)   |
 | read 3        | `[27:21]` | `s0` (dual stores — dual tier only)                  |
-| read 4        | `[6:0]`   | `s1` (dual stores — dual tier only)                  |
+| read 4        | `[6:0]`   | `s1` (dual stores), `rs_datax` (indexed stores)      |
 | write A addr  | `[25:21]` | `rd`, `d0`                                           |
 | write B addr  | `[6:2]`   | `d1`                                                 |
 
@@ -72,9 +73,14 @@ Consequences:
   immediate field or reserved; the corresponding port still
   issues a (harmless) read, so **decode supplies a per-port valid bit** —
   the scoreboard must not see an unused rail as a dependency (§5.2).
-- Rails 3 and 4 overlap immediate bits in the classic tier, so `s0`/`s1`
-  exist only in the dual tier — which is exactly the set of instructions
-  needing four reads (the dual stores).
+- Rail 3 overlaps opcode bits in the classic tier, so `s0` exists only in
+  the dual tier — which is exactly the set of instructions needing four
+  reads (the dual stores). Rail 4 is reachable from both tiers.
+- An indexed **store** reads three registers, and puts its data on rail 4
+  (`rs_datax`) rather than rail 2: that keeps `rs_index` on rail 2 with
+  the indexed loads, so the effective-address adder's second operand is
+  always read port 2 and the **address** path needs no multiplexer. The
+  cost lands on the store-data multiplexer instead — the shorter path.
 - The residual multiplexing is on the **data** side (lane-0 write data
   comes from rail 2 for a classic store, rail 3 for a dual store) and on
   the immediate reassembly path — both off the register-read address
@@ -133,6 +139,7 @@ use that role:
 | `rs_stride` | `[13:7]`                | 7     | read 2       | dual loads and stores                    |
 | `s0`        | `[27:21]`               | 7     | read 3       | `ST2*` (lane-0 store data)               |
 | `s1`        | `[6:0]`                 | 7     | read 4       | `ST2*` (lane-1 store data)               |
+| `rs_datax`  | `[6:0]`                 | 7     | read 4       | indexed stores (`SWX`/`SHX`/`SBX`)       |
 | `rd`        | `[25:21]`               | 5     | write A addr | all classic loads                        |
 | `d0`        | `[25:21]`               | 5     | write A addr | `LD2*` (lane-0 result → LS-A)            |
 | `d1`        | `[6:2]`                 | 5     | write B addr | `LD2*` (lane-1 result → LS-B)            |
@@ -183,8 +190,11 @@ tools/ls_isa.py --check | --md | --asm | --sv | --decode <word>
 | `010000` | `LD2H`   | `d0, d1, (rs_base, rs_stride)` | dual load half, sign-ext | §10.2 |
 | `010001` | `LD2HU`  | `d0, d1, (rs_base, rs_stride)` | dual load half, zero-ext | §10.2 |
 | `010010` | `LD2W`   | `d0, d1, (rs_base, rs_stride)` | dual load word           | §10.2 |
+| `010011` | `SWX`    | `rs_data, (rs_base, rs_index)` | store word indexed       | §3.7   |
+| `010100` | `SHX`    | `rs_data, (rs_base, rs_index)` | store half indexed       | §3.7   |
+| `010101` | `SBX`    | `rs_data, (rs_base, rs_index)` | store byte indexed       | §3.7   |
 
-Reserved: classic-tier opcodes `010011`–`011111` (13 entries) and
+Reserved: classic-tier opcodes `010110`–`011111` (10 entries) and
 dual-tier opcodes `1011`–`1111` (5 entries, §10.2). Executing a reserved
 opcode raises an **illegal-instruction trap** (same entry path as `TRAP`;
 `trap_code` in `ABI.md`) — the assembler must never emit one.
@@ -271,11 +281,30 @@ instead of base + immediate:
   (`LBX LHX LWX LBUX LHUX`).
 - Reads two registers (`rs_base`, `rs_index`) and writes `rd`, both on their
   §2.1 rails (`rs_index` shares rail 2 with `rs_stride`).
-- **Stores have no indexed form**: an indexed store would read three registers
-  (`rs_base` + `rs_index` + `rs_data`), exceeding the 2 read ports. Bump store
-  pointers with the control-slot integer ALU (CONTROL_UNIT.md §3.9) instead.
 - The `rs_index` / stride register is typically maintained by the control-slot
   integer ALU, keeping the address recurrence off the ALU slots.
+
+### 3.7 Indexed store (register offset)
+
+The store counterpart of §3.6, reading **three** registers — possible
+because the register file provides four read ports (§2):
+
+| [31:26]   | [25:21]   | [20:14]    | [13:7]      | [6:0]        |
+|-----------|-----------|------------|-------------|--------------|
+| opcode(6) | unused(5) | rs_base(7) | rs_index(7) | rs_datax(7)  |
+
+- `EA = rs_base + rs_index` (byte address); `mem[EA] <- rs_data` over the
+  addressed byte lane(s) only, with the same width (§3.4) and alignment
+  (§3.5) rules as the immediate-offset stores. Available at all three
+  store widths (`SWX SHX SBX`).
+- The store data is read on **port 4** (`rs_datax`, rail 4) rather than
+  port 2. This keeps `rs_index` on rail 2 alongside `rs_stride` and the
+  indexed loads' index, so the effective-address adder's second operand
+  is always port 2 — no multiplexer on the address path (§2.1). The
+  assembler syntax still writes the operand as `rs_data`.
+- Typical uses: scatter (`a[idx[k]] = v`), table and frame writes at a
+  computed offset, and symmetry with the indexed loads — an asymmetric
+  set costs the compiler an extra `ADD` for no reason.
 
 ---
 
@@ -598,15 +627,14 @@ takes precedence over `conflict` when both assert.
 
 ### 10.5 Open items
 
-- Classic-tier additions enabled by the 4-read-port register file, both
-  of which fit the §2.1 rails without new fields — opcode values to be
-  assigned in the §3.1 map:
-  - `XCHW rd, rs_data, imm(rs_base)` — exchange, on the READ_FIRST
-    property of §10.3: `rd[25:21]`, `rs_base[20:14]`,
-    `rs_data[13:7]`, and a 7-bit `imm[6:0]` (±63 bytes);
-  - indexed stores `SWX/SHX/SBX` — `rs_base[20:14]`,
-    `rs_index[13:7]`, store data on rail 3 or 4, which the third read
-    port now makes possible.
+- `XCHW rd, rs_data, imm(rs_base)` — exchange, resting on the READ_FIRST
+  property of §10.3 (a writing lane returns the pre-write content, so no
+  memory change is needed). Fits the rails as `rd[25:21]`,
+  `rs_base[20:14]`, `rs_data[13:7]`, `imm[6:0]` — the immediate shrinks
+  to 7 bits (±63 bytes) because `rd` takes the field a classic store
+  uses for `imm[11:7]`. Opcode value to be assigned in the §3.1 map.
+  Its target pattern is the circular delay-line update (write the newest
+  sample, receive the evicted one) in a single access.
 - Sub-word store support on the word-wide banks (byte write enables in
   `dpmemrf`, as for the current DPRAM path of §3.4).
 - **Sub-word dual addressing.** §10.2 states dual lane addresses as

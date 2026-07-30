@@ -37,6 +37,7 @@ FIELDS = {
     "rs_stride": ([(13, 7)],  "read 2",  "signed word stride (dual ops)"),
     "s0":        ([(27, 21)], "read 3",  "lane-0 store data (dual stores)"),
     "s1":        ([(6, 0)],   "read 4",  "lane-1 store data (dual stores)"),
+    "rs_datax":  ([(6, 0)],   "read 4",  "store data (indexed stores)"),
     "rd":        ([(25, 21)], "write A", "load destination (LS-A bank)"),
     "d0":        ([(25, 21)], "write A", "lane-0 destination (LS-A bank)"),
     "d1":        ([(6, 2)],   "write B", "lane-1 destination (LS-B bank)"),
@@ -52,6 +53,8 @@ FORMATS = {
     "S":     (["opcode6", "imm12", "rs_base", "rs_data"], [], "base + immediate store"),
     "LX":    (["opcode6", "rd", "rs_base", "rs_index"], list(range(0, 7)),
               "base + index load"),
+    "SX":    (["opcode6", "rs_base", "rs_index", "rs_datax"],
+              list(range(21, 26)), "base + index store"),
     "L2":    (["opcode6", "d0", "rs_base", "rs_stride", "d1"], [0, 1],
               "dual strided load"),
     "ST2":   (["opcode4", "s0", "rs_base", "rs_stride", "s1"], [],
@@ -113,6 +116,13 @@ INSTRUCTIONS = [
       "d0 <- zero_ext(mem16[EA0]); d1 <- zero_ext(mem16[EA1])"),
     I("LD2W",  "classic", 0b010010, "L2", {}, "d0, d1, (rs_base, rs_stride)",
       "d0 <- mem32[EA0]; d1 <- mem32[EA1]"),
+
+    I("SWX",   "classic", 0b010011, "SX", {}, "rs_data, (rs_base, rs_index)",
+      "mem32[rs_base + rs_index] <- rs_data"),
+    I("SHX",   "classic", 0b010100, "SX", {}, "rs_data, (rs_base, rs_index)",
+      "mem16[rs_base + rs_index] <- rs_data[15:0]"),
+    I("SBX",   "classic", 0b010101, "SX", {}, "rs_data, (rs_base, rs_index)",
+      "mem8[rs_base + rs_index] <- rs_data[7:0]"),
 
     # dual tier: the four-source stores, the only ops needing 28 payload bits
     I("ST2",   "dual", 0b1000, "ST2", {}, "(rs_base, rs_stride), s0, s1",
