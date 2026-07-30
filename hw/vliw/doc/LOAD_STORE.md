@@ -148,8 +148,18 @@ Notes on the map:
 - A port whose rail carries something else in the current instruction
   (an immediate, a subfield, opcode bits) performs a harmless read or
   is write-disabled; decode provides the per-port valid bit (§2.1).
-- All seven layouts (§3.2, §3.3, §3.6, and the four dual forms of §10.2)
+- All layouts (§3.2, §3.3, §3.6, and the four dual forms of §10.2)
   account for exactly 32 bits.
+
+The field map and both opcode maps are held as tables in
+`hw/vliw/tools/ls_isa.py`, which validates them (field widths, layout
+coverage, rail consistency, opcode uniqueness, `NOP` = 0, encode/decode
+round trip) and generates these markdown tables, the assembler
+instruction reference and the RTL decode package:
+
+```sh
+tools/ls_isa.py --check | --md | --asm | --sv | --decode <word>
+```
 
 **Opcode map** — the single authoritative list of LS-slot opcodes:
 
