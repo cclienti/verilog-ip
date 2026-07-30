@@ -384,32 +384,41 @@ the loads hoisted to fill the pipeline:
     ;
         LW    m1,  4(c1)
     ;
-        LW    m2,  8(c1)   | ADD  a0, m0, 1      ; m0 ready this cycle
+        LW    m0,  8(c1)   | ADD  a0, m0, 1      ; the ADD reads the m0 of b0
     ;
-        LW    m3, 12(c1)   | ADD  a1, m1, 1
+        LW    m1, 12(c1)   | ADD  a1, m1, 1
     ;
-        SW    a0,  0(c3)   | ADD  a2, m2, 1      ; a0 ready this cycle
+        SW    a0,  0(c3)   | ADD  a0, m0, 1      ; the SW reads the a0 of b2
     ;
-        SW    a1,  4(c3)   | ADD  a3, m3, 1
+        SW    a1,  4(c3)   | ADD  a1, m1, 1
     ;
-        SW    a2,  8(c3)
+        SW    a0,  8(c3)
     ;
-        SW    a3, 12(c3)
+        SW    a1, 12(c3)
     ;
 ```
 
-Eight bundles, **8 cycles for four elements** — no stall anywhere, and the
-LS slot carries a memory access in every bundle. Three properties make it
-stall-free, and each maps onto one check of §4:
+Eight bundles, **8 cycles for four elements** — no stall anywhere, the LS
+slot carrying a memory access in every bundle, and **two register names per
+bank**, not one per element. Each of the three checks of §4 is exercised
+exactly at its limit:
 
-- every source is read exactly two bundles after it was written (**RAW**
-  satisfied at the machine latency, §7.1);
-- unrolling gives each element its own destination registers, so no two
-  writes to one name are ever in flight (**WAW** never fires — the rotation
-  a looped version would need, `m0`/`m1` alternating, exists only because a
-  loop reuses names);
-- the four `ADD`s occupy one ALU slot in four different bundles and the
-  writes retire one per bank per cycle (**`wbres`** never fires).
+- **RAW**: every source is read exactly two bundles after it was written,
+  the machine latency (§7.1) — one cycle earlier would stall, one later
+  would waste a slot.
+- **WAR**: from `b2` on, a bundle's `LW` rewrites the very register its
+  `ADD` reads, and its `SW` reads the register the `ADD` in the same bundle
+  rewrites. Both are free: all reads happen at RR, all writes at EX2 (§5).
+- **WAW**: a name is rewritten exactly when its previous write retires
+  (`m0` at `b0` then `b2`, `a0` at `b2` then `b4`), which is the earliest
+  the check of §4 permits.
+
+The general rule for how many names a rotation needs: a value that must
+survive `L` bundles, produced every `II` bundles, needs `ceil(L / II)`
+names — here `L = 2`, `II = 1`, so two. Giving each element its own
+register (`m0`…`m3`, `a0`…`a3`) is equally correct and easier to read at a
+glance, but it doubles the register pressure for no gain in cycles: the
+minimum above is what a modulo scheduler emits.
 
 What remains is not a data hazard but a **structural** bound: two memory
 accesses per element and a single LS slot per bundle, hence two cycles per
