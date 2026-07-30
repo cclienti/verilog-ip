@@ -156,8 +156,8 @@ Notes on the map:
 - A port whose rail carries something else in the current instruction
   (an immediate, reserved bits, opcode bits) performs a harmless read or
   is write-disabled; decode provides the per-port valid bit (§2.1).
-- All layouts (§3.2, §3.3, §3.6, and the four dual forms of §10.2)
-  account for exactly 32 bits.
+- All layouts (§3.2, §3.3, §3.6, §3.7, §3.8 and the two pair forms of
+  §10.2) account for exactly 32 bits.
 
 The field map and both opcode maps are held as tables in
 `hw/vliw/tools/ls_isa.py`, which validates them (field widths, layout
@@ -205,14 +205,16 @@ opcode raises an **illegal-instruction trap** (same entry path as `TRAP`;
 **Notes:**
 - `rs_base`, `rs_data` are **7-bit** global register addresses
   (`bank[2:0]` + `reg[4:0]`).
-- `rd` is **5-bit** (bank implicit — the LS bank).
+- `rd`, `d0` and `d1` are **5-bit** with the bank implicit: `rd`/`d0`
+  write LS-A, `d1` writes LS-B (§2).
 - The immediate is a **signed byte offset** (§3.5).
 - Load offset is `imm14` (**±8 KB**); store offset is `imm12` (**±2 KB**) — the
-  store spends 7 extra encoding bits on its second source register (§3.3).
-- Register-**indexed** loads (`LBX`…`LHUX`, §3.6) replace the immediate with a
-  second source register `rs_index` (`EA = rs_base + rs_index`). Indexed
-  *stores* need a third read port, which the 4-read-port register file of §2
-  now provides — they are a planned addition (§10.5).
+  store spends 7 extra encoding bits on its second source register (§3.3);
+  `XCHW`'s offset is `imm7` (**±63 B**, §3.8).
+- Register-**indexed** loads (`LBX`…`LHUX`, §3.6) and stores
+  (`SWX`/`SHX`/`SBX`, §3.7) replace the immediate with a second source
+  register `rs_index` (`EA = rs_base + rs_index`); the indexed store reads
+  three registers, which the 4-read-port register file of §2 provides.
 
 ### 3.2 Load format
 
@@ -250,7 +252,7 @@ opcode raises an **illegal-instruction trap** (same entry path as `TRAP`;
 | `LBU`| —     | byte (8-bit)  | zero-extended to 32   |
 | `LHU`| —     | half (16-bit) | zero-extended to 32   |
 
-- Stores write only the addressed byte lane(s) via the DPRAM byte write-enables;
+- Stores write only the addressed byte lane(s) via the bank byte write-enables;
   the rest of the 32-bit word is unchanged.
 - Data memory is **little-endian**: byte 0 of a word is the least-significant
   byte.
@@ -258,13 +260,19 @@ opcode raises an **illegal-instruction trap** (same entry path as `TRAP`;
 ### 3.5 Addressing and alignment
 
 - The data address space is **byte-addressed**. The effective address selects a
-  32-bit DPRAM word by `EA[DMEM_DEPTH_LOG2+1 : 2]` and a byte lane by `EA[1:0]`.
-- **Natural alignment is required**: `LH/LHU/SH` need `EA[0] = 0`; `LW/SW` need
-  `EA[1:0] = 00`; `LB/LBU/SB` have no alignment constraint. A misaligned access
-  raises an **alignment trap** (synchronous, via the `TRAP` path; `trap_code` in
-  `ABI.md`). The hardware does not split misaligned accesses.
-- Addressing modes are **base + immediate** (§3.2/§3.3) and **base + index
-  register** (indexed loads, §3.6). There is no PC-relative or auto-update
+  32-bit memory word by `EA[DMEM_DEPTH_LOG2+3 : 2]` and a byte lane by
+  `EA[1:0]`; the word address is `DMEM_DEPTH_LOG2 + 2` bits wide because the
+  scratchpad holds `3 × 2^DMEM_DEPTH_LOG2` words (§10.1).
+- **Natural alignment is required**, by access width and independently of the
+  addressing mode: half-word accesses (`LH/LHU/SH/SHX/LD2H/LD2HU/ST2H`) need
+  `EA[0] = 0`; word accesses (`LW/SW/SWX/LD2W/ST2/XCHW`) need `EA[1:0] = 00`;
+  byte accesses have no constraint. Each lane of a pair is checked
+  independently. A misaligned access raises an **alignment trap**
+  (synchronous, via the `TRAP` path; `trap_code` in `ABI.md`). The hardware
+  does not split misaligned accesses.
+- Addressing modes are **base + immediate** (§3.2/§3.3/§3.8), **base + index
+  register** (§3.6/§3.7) and **base + lane × stride register** (the pairs of
+  §10.2). There is no PC-relative or auto-update
   (post-increment) addressing: pointer/stride arithmetic is done in the ALU or
   control slots — the control slot's integer ALU (CONTROL_UNIT.md §3.9) can bump
   a pointer in parallel without stealing an ALU slot. `imm(rs_base)` is the
@@ -339,21 +347,31 @@ Writes a register to memory and returns the **pre-write** word:
 
 ### 4.1 Layout
 
-The data address space is the on-chip **DPRAM scratchpad**:
-`2^DMEM_DEPTH_LOG2` words of 32 bits (byte size `2^(DMEM_DEPTH_LOG2+2)`). Port A
-is this LS slot; Port B is the NoC / network interface (ARCHITECTURE.md §Data
-Memory and NoC Interface). The **top 9 words** are not backed by DPRAM: the LS
-unit decodes them as memory-mapped control registers (§4.2).
+The data address space is the on-chip **`parmem3_2` scratchpad** (§10.1):
+three banks of `2^DMEM_DEPTH_LOG2` words, so
+**`3 × 2^DMEM_DEPTH_LOG2` words** of 32 bits (byte size
+`3 × 2^(DMEM_DEPTH_LOG2+2)`). Side A is this LS slot; side B is the NoC /
+network interface (§6, ARCHITECTURE.md §Data Memory and NoC Interface).
+The **top 9 words** are not backed by memory: the LS unit decodes them as
+memory-mapped control registers (§4.2).
 
 ```
-byte 0                                         top of data space
-| general scratchpad (DPRAM)              | MMIO regs (top 9 words) |
+byte 0                                              top of data space
+| general scratchpad (3 x 2^DMEM_DEPTH_LOG2 - 9)  | MMIO regs (9 words) |
 ```
+
+> Because the word address is `DMEM_DEPTH_LOG2 + 2` bits wide while only
+> `3 × 2^DMEM_DEPTH_LOG2` words are backed, a further `2^DMEM_DEPTH_LOG2`
+> words at the top of the *encodable* range are unbacked by construction
+> (that region is what `parmem3_2` reports through `oob`). Relocating the
+> MMIO block there would return those 9 words to the scratchpad and make
+> the decode a plain range check — noted as an option in §10.5, not the
+> current map.
 
 ### 4.2 Memory-mapped control registers
 
 The LS unit routes accesses whose word address falls in the top region to the
-control registers below instead of the DPRAM. This is the single authoritative
+control registers below instead of the scratchpad banks. This is the single authoritative
 map; the loop registers are used by CONTROL_UNIT.md §4.8 and the IRQ registers
 by ARCHITECTURE.md §Interrupts and Exceptions.
 
@@ -378,8 +396,8 @@ by ARCHITECTURE.md §Interrupts and Exceptions.
   word-aligned; a sub-word or misaligned MMIO access raises an alignment trap.
 - Writes to **RO** registers have no effect; reads of narrow registers
   zero-extend to 32 bits.
-- Offsets are word offsets from the top; e.g. `-1` is byte address
-  `2^(DMEM_DEPTH_LOG2+2) - 4`.
+- Offsets are word offsets from the top of the backed region; e.g. `-1` is
+  byte address `3 × 2^(DMEM_DEPTH_LOG2+2) - 4`.
 
 ### 4.3 Endianness
 
@@ -394,11 +412,13 @@ scalar-ISA convention borrowed from RV32IM.
 
 | Instruction | Result available (VLIW words after issue) | Notes                         |
 |-------------|-------------------------------------------|-------------------------------|
-| `LB`…`LHU`  | `rd` at **W + 2**                         | `BRAM_OUT_REG = 0` baseline   |
-| `SB`…`SW`   | — (no register result)                    | commits in program order (§6) |
+| `LB`…`LHU`, `L*X` | `rd` at **W + 2**                   | `BRAM_OUT_REG = 0` baseline   |
+| `SB`…`SW`, `S*X`  | — (no register result)              | commits in program order (§6) |
 | `XCHW`      | `rd` at **W + 2**                         | pre-write word (§3.8)         |
+| `LD2*`      | `d0` **and** `d1` at **W + 2**            | conflicting pair: `d1` at `W + 3`, +1 cycle (§10.4) |
+| `ST2*`      | — (no register result)                    | conflicting pair: +1 cycle (§10.4) |
 
-Address calculation happens in EX1; the registered DPRAM read returns data at
+Address calculation happens in EX1; the registered bank read returns data at
 EX2, so a load result retires at `W + 2` — the same distance as an ALU `ADD`
 (ARCHITECTURE.md §Compiler latency model). These latencies are a **scheduling
 guide**, not a correctness contract: the scoreboard enforces correctness
@@ -410,15 +430,23 @@ regardless (§5.2).
   scheduled write-back (EX2). A dependent instruction that reads `rd` **before**
   `W + 2` is **stalled** by the scoreboard, never fed stale data — a
   mis-scheduled load-use costs a cycle, never correctness.
-- A load/store whose `rs_base` (or a store's `rs_data`) is still in flight
-  stalls at issue until the source is ready — ordinary RAW handling.
-- A store produces no register result, so it makes no `rd` reservation.
+- A load/store whose sources (`rs_base`, `rs_data`, `rs_index`, `rs_stride`,
+  `s0`, `s1`) are still in flight stalls at issue until they are ready —
+  ordinary RAW handling. Only the rails an instruction actually uses are
+  checked, per the decode valid bits of §2.1.
+- A store produces no register result, so it makes no reservation; `XCHW`
+  does make one, exactly like a load.
+- A dual load reserves **both** destinations, `d0` in LS-A and `d1` in LS-B.
+  When the pair conflicts (§10.4) the access is split and `d1`'s write-back
+  slips one cycle; the scoreboard covers that like any other latency, so the
+  extra cycle costs performance, never correctness.
 
 ### 5.3 BRAM output register (`fmax`)
 
-The DPRAM may enable the hardened **output register** (`BRAM_OUT_REG`,
-ARCHITECTURE.md §Memory Model), adding **one** read-latency cycle for higher
-`fmax` (the synthesizer absorbs a datapath register into the BRAM macro). This
+The banks may enable the hardened **output register** (`BRAM_OUT_REG`, mapped
+to `parmem3_2`'s `OUTREGA`/`OUTREGB` — §10.1), adding **one** read-latency
+cycle for higher `fmax` (the synthesizer absorbs a datapath register into the
+BRAM macro). This
 shifts the load result to `W + 3`; the scoreboard covers the actual latency
 whatever it is, so no binary changes — only cycle counts move.
 
@@ -431,7 +459,7 @@ accesses execute in **program order**. Consequences:
 
 - **A load observes every prior store from this core** to the same address, with
   no store buffer and no store-to-load forwarding network: the earlier store's
-  DPRAM write precedes the later load's read by construction. Memory RAW/WAW/WAR
+  bank write precedes the later load's read by construction. Memory RAW/WAW/WAR
   ordering is therefore free — the register scoreboard does **not** need to track
   addresses.
 - **Port B (NoC / NI) is not coherent with Port A.** Port B is `parmem3_2`'s
@@ -467,8 +495,9 @@ the base, then a `0` offset.
 
 | Parameter          | Default | Description                                                     |
 |--------------------|---------|-----------------------------------------------------------------|
-| `DMEM_DEPTH_LOG2`  | 11      | Data memory depth: `2^DMEM_DEPTH_LOG2` 32-bit words (1K–16K)     |
-| `BRAM_OUT_REG`     | TBD     | DPRAM output register; `1` adds one load-latency cycle (§5.3)    |
+| `DMEM_DEPTH_LOG2`  | 11      | Words **per bank**; the scratchpad holds `3 × 2^DMEM_DEPTH_LOG2` 32-bit words (§10.1) |
+| `BRAM_OUT_REG`     | TBD     | Bank output register (`OUTREGA`/`OUTREGB` of `parmem3_2`); `1` adds one load-latency cycle (§5.3) |
+| `ADRREG`           | 0       | Address-phase pipeline register in `parmem3_2` (§10.1); `1` adds one further load-latency cycle, `conflict`/`oob` stay combinational |
 
 `NB_IRQ` (ARCHITECTURE.md) sizes the `IRQ_*` MMIO registers in §4.2.
 
@@ -494,6 +523,38 @@ loop) to avoid the stall.
 
 ```asm
     LW    r5, LOOP_COUNT    ; MMIO word at offset -6 from top of data space
+```
+
+**Dual-operand streaming** (one `LD2` fetches one element of each input
+array; the stride register holds the distance between the two arrays, so a
+single pointer walks both — §10.2):
+
+```asm
+    LD2W  r10, r11, (r20, r21)  ; r20 = &a[i]; r21 = &b[i] - &a[i] (words)
+                                ;   a[i] -> r10 (LS-A), b[i] -> r11 (LS-B)
+    MUL   r12, r10, r11         ; ALU0 (schedule >= 2 words after the LD2)
+    ADD   r13, r13, r12         ; ALU1: accumulate
+    ADDI  r20, r20, 4           ; control slot: bump the single pointer
+```
+
+The distance `r21` must satisfy `r21 % 3 != 0` for the pair to issue in one
+cycle; otherwise the access still executes, one cycle slower (§10.4). Padding
+the two arrays apart is a performance hint, not a correctness requirement.
+
+**Scatter** (indexed load and indexed store share the index register on
+rail 2 — §3.6/§3.7):
+
+```asm
+    LWX   r10, (r20, r21)       ; r10 <- src[idx]   (r21 = byte index)
+    SWX   r10, (r22, r21)       ; dst[idx] <- r10
+```
+
+**Circular delay line** (`XCHW` writes the newest sample into the cell
+holding the oldest and returns the evicted one — §3.8):
+
+```asm
+    XCHW  r10, r11, 0(r20)      ; r10 <- x[p] (oldest); x[p] <- r11 (newest)
+                                ; r20 walks the circular buffer
 ```
 
 **Register spill in an interrupt handler** (software context save — no dedicated
@@ -615,8 +676,8 @@ memory change at all.
 > remain, so width would have to move into the opcode and consume 4 of
 > the tier's 8 codes. Their payoff is also modest: the LS slot is
 > single-issue, so the alternative costs one extra bundle, and bulk
-> copies belong to the NoC/DMA path (§6). Opcodes `1100`–`1111` are
-> reserved; if a kernel study shows delay-line updates dominating, the
+> copies belong to the NoC/DMA path (§6). Dual-tier opcodes
+> `1011`–`1111` are reserved; if a kernel study shows delay-line updates dominating, the
 > natural re-introduction is width-in-opcode
 > (`STLD2W/STLD2H/LDST2W/LDST2H`) with the load lane's `u` in a
 > reserved payload bit.
@@ -656,7 +717,14 @@ takes precedence over `conflict` when both assert.
 ### 10.5 Open items
 
 - Sub-word store support on the word-wide banks (byte write enables in
-  `dpmemrf`, as for the current DPRAM path of §3.4).
+  `dpmemrf`, as §3.4 requires).
+- **MMIO relocation.** The word address is `DMEM_DEPTH_LOG2 + 2` bits
+  while only `3 × 2^DMEM_DEPTH_LOG2` words are backed, so a whole
+  `2^DMEM_DEPTH_LOG2`-word region above the scratchpad is unbacked by
+  construction. Moving the §4.2 control registers there would return 9
+  words to the scratchpad and turn their decode into a plain range
+  check; it also overlaps `parmem3_2`'s `oob` region, so the two
+  decodes must be reconciled.
 - **Sub-word dual addressing.** §10.2 states dual lane addresses as
   word EAs while §10.3's stride is in words, which leaves byte- and
   half-granular `LD2`/`ST2*` unable to name a sub-word element. Either
