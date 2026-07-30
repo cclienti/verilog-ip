@@ -413,12 +413,23 @@ exactly at its limit:
   (`m0` at `b0` then `b2`, `a0` at `b2` then `b4`), which is the earliest
   the check of §4 permits.
 
-The general rule for how many names a rotation needs: a value that must
-survive `L` bundles, produced every `II` bundles, needs `ceil(L / II)`
-names — here `L = 2`, `II = 1`, so two. Giving each element its own
-register (`m0`…`m3`, `a0`…`a3`) is equally correct and easier to read at a
-glance, but it doubles the register pressure for no gain in cycles: the
-minimum above is what a modulo scheduler emits.
+Two names is also the **minimum**, and the bound is worth stating because
+it is the scoreboard's two write rules combined. A name may be rewritten
+only once its previous write has retired (WAW, `L` bundles) and no earlier
+than the bundle in which its last reader issues (a reader one bundle later
+would stall and then observe the *new* value — the WAR exemption covers the
+same bundle only). So writes to one name must be `max(L, lifetime)` bundles
+apart, and a schedule producing a value every `II` bundles needs
+`ceil(max(L, lifetime) / II)` names — here `2 / 1 = 2`.
+
+The cost of going below it is not a stall but a slower schedule: with a
+single name per bank the loads must be spaced two bundles apart, which
+collides with the stores on the one LS slot, and the best schedule for the
+same four elements takes **12 bundles instead of 8** — three cycles per
+element for two registers saved. Above the minimum nothing is gained:
+giving each element its own register (`m0`…`m3`, `a0`…`a3`) is equally
+correct and easier to read, at double the register pressure and the same
+eight bundles.
 
 What remains is not a data hazard but a **structural** bound: two memory
 accesses per element and a single LS slot per bundle, hence two cycles per
