@@ -43,6 +43,7 @@ FIELDS = {
     "d1":        ([(6, 2)],   "write B", "lane-1 destination (LS-B bank)"),
     "imm14":     ([(13, 0)],  None,      "signed byte offset"),
     "imm12":     ([(25, 21), (6, 0)], None, "signed byte offset (split)"),
+    "imm7":      ([(6, 0)],   None,      "signed byte offset (exchange)"),
 }
 
 # ---------------------------------------------------------------- formats
@@ -55,6 +56,8 @@ FORMATS = {
               "base + index load"),
     "SX":    (["opcode6", "rs_base", "rs_index", "rs_datax"],
               list(range(21, 26)), "base + index store"),
+    "X":     (["opcode6", "rd", "rs_base", "rs_data", "imm7"], [],
+              "exchange: store and return the pre-write word"),
     "L2":    (["opcode6", "d0", "rs_base", "rs_stride", "d1"], [0, 1],
               "dual strided load"),
     "ST2":   (["opcode4", "s0", "rs_base", "rs_stride", "s1"], [],
@@ -123,6 +126,9 @@ INSTRUCTIONS = [
       "mem16[rs_base + rs_index] <- rs_data[15:0]"),
     I("SBX",   "classic", 0b010101, "SX", {}, "rs_data, (rs_base, rs_index)",
       "mem8[rs_base + rs_index] <- rs_data[7:0]"),
+
+    I("XCHW",  "classic", 0b010110, "X",  {}, "rd, rs_data, imm(rs_base)",
+      "rd <- mem32[EA]; mem32[EA] <- rs_data   (EA = rs_base + imm)"),
 
     # dual tier: the four-source stores, the only ops needing 28 payload bits
     I("ST2",   "dual", 0b1000, "ST2", {}, "(rs_base, rs_stride), s0, s1",

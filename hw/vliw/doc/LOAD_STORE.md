@@ -47,6 +47,7 @@ slot's results); destinations are 5-bit.
 | Indexed load               | `rd`      | `rs_base`, `rs_index`                  |
 | Store                      | —         | `rs_base`, `rs_data`                   |
 | Indexed store              | —         | `rs_base`, `rs_index`, `rs_data`       |
+| `XCHW` (exchange)          | `rd`      | `rs_base`, `rs_data`                   |
 | `LD2*` (dual load)         | `d0`,`d1` | `rs_base`, `rs_stride`                 |
 | `ST2*` (dual store)        | —         | `rs_base`, `rs_stride`, `s0`, `s1`     |
 
@@ -112,7 +113,7 @@ leave room for; the 4-bit tier trades opcode space for payload exactly
 there, and nothing else needs it. Dual *loads* read two registers and
 write two 5-bit destinations (24 bits), so they stay in the classic
 tier. By Kraft's budget the split costs the classic tier half its code
-points (32 remain — 19 used today).
+points (32 remain — 23 used today).
 
 **NOP** is classic-tier `opcode = 000000` (the canonical empty-slot
 encoding; the assembler emits the all-zero word `0x00000000`).
@@ -134,7 +135,7 @@ use that role:
 | `opcode`    | `[31:26]`               | 6     | —            | classic tier (`[31] = 0`)                |
 | `opcode`    | `[31:28]`               | 4     | —            | dual tier (`[31] = 1`)                   |
 | `rs_base`   | `[20:14]`               | 7     | read 1       | **all** loads, stores, dual ops          |
-| `rs_index`  | `[13:7]`                | 7     | read 2       | indexed loads (`LBX`…`LHUX`)             |
+| `rs_index`  | `[13:7]`                | 7     | read 2       | indexed loads and stores (`L*X`, `S*X`)  |
 | `rs_data`   | `[13:7]`                | 7     | read 2       | classic stores (`SB`/`SH`/`SW`)          |
 | `rs_stride` | `[13:7]`                | 7     | read 2       | dual loads and stores                    |
 | `s0`        | `[27:21]`               | 7     | read 3       | `ST2*` (lane-0 store data)               |
@@ -145,6 +146,7 @@ use that role:
 | `d1`        | `[6:2]`                 | 5     | write B addr | `LD2*` (lane-1 result → LS-B)            |
 | `imm14`     | `[13:0]`                | 14    | —            | base+immediate loads                     |
 | `imm12`     | `{[25:21], [6:0]}`      | 12    | —            | classic stores (split, §3.3)             |
+| `imm7`      | `[6:0]`                 | 7     | —            | `XCHW` (§3.8)                            |
 
 Notes on the map:
 
@@ -193,8 +195,9 @@ tools/ls_isa.py --check | --md | --asm | --sv | --decode <word>
 | `010011` | `SWX`    | `rs_data, (rs_base, rs_index)` | store word indexed       | §3.7   |
 | `010100` | `SHX`    | `rs_data, (rs_base, rs_index)` | store half indexed       | §3.7   |
 | `010101` | `SBX`    | `rs_data, (rs_base, rs_index)` | store byte indexed       | §3.7   |
+| `010110` | `XCHW`   | `rd, rs_data, imm(rs_base)`    | exchange word            | §3.8   |
 
-Reserved: classic-tier opcodes `010110`–`011111` (10 entries) and
+Reserved: classic-tier opcodes `010111`–`011111` (9 entries) and
 dual-tier opcodes `1011`–`1111` (5 entries, §10.2). Executing a reserved
 opcode raises an **illegal-instruction trap** (same entry path as `TRAP`;
 `trap_code` in `ABI.md`) — the assembler must never emit one.
@@ -306,6 +309,30 @@ because the register file provides four read ports (§2):
   computed offset, and symmetry with the indexed loads — an asymmetric
   set costs the compiler an extra `ADD` for no reason.
 
+### 3.8 Exchange (`XCHW`)
+
+Writes a register to memory and returns the **pre-write** word:
+
+| [31:26]   | [25:21] | [20:14]    | [13:7]     | [6:0]     |
+|-----------|---------|------------|------------|-----------|
+| opcode(6) | rd(5)   | rs_base(7) | rs_data(7) | imm7(7)   |
+
+- `EA = rs_base + sign_ext(imm7)` (byte address, word-aligned);
+  `rd <- mem32[EA]` **and** `mem32[EA] <- rs_data` in one access.
+- The immediate is 7 bits (**±63 bytes**) because `rd` occupies the
+  field an immediate-offset store uses for `imm[11:7]` (§3.3).
+- **Word only**: there are no `XCHB`/`XCHH` forms in this revision.
+- No memory support is required: the banks are READ_FIRST, so a write
+  already presents the pre-write cell content on the read port (§10.3)
+  — `XCHW` is a store that names a destination for that value.
+- Reads two registers and writes one (§2), all on their §2.1 rails.
+  The result retires like a load, at `W + 2` (§5.1).
+- Typical uses: the circular **delay-line update** — write the newest
+  sample into the cell holding the oldest and receive the evicted
+  sample in `rd`, one access per tap step; flag or semaphore swap with
+  the NoC interface (post a state and learn the previous one — §6);
+  free-list pop.
+
 ---
 
 ## 4. Data Memory Address Space
@@ -369,6 +396,7 @@ scalar-ISA convention borrowed from RV32IM.
 |-------------|-------------------------------------------|-------------------------------|
 | `LB`…`LHU`  | `rd` at **W + 2**                         | `BRAM_OUT_REG = 0` baseline   |
 | `SB`…`SW`   | — (no register result)                    | commits in program order (§6) |
+| `XCHW`      | `rd` at **W + 2**                         | pre-write word (§3.8)         |
 
 Address calculation happens in EX1; the registered DPRAM read returns data at
 EX2, so a load result retires at `W + 2` — the same distance as an ALU `ADD`
@@ -574,8 +602,8 @@ shared write enable for the group, as `parmem3_2` implements today.
 READ_FIRST still gives a useful property for free: a **writing lane
 returns the pre-write content** of its cell on the corresponding read
 data lane. A single-lane store therefore yields the old value without
-a second access — the basis for the planned `XCHW` exchange
-instruction (§10.5), which needs no memory change at all.
+a second access — this is what `XCHW` (§3.8) exposes, and it needs no
+memory change at all.
 
 > **Design note — mixed read/write pairs.** An earlier revision
 > defined mixed forms (`STLD2`/`LDST2`: one lane storing while the
@@ -627,14 +655,6 @@ takes precedence over `conflict` when both assert.
 
 ### 10.5 Open items
 
-- `XCHW rd, rs_data, imm(rs_base)` — exchange, resting on the READ_FIRST
-  property of §10.3 (a writing lane returns the pre-write content, so no
-  memory change is needed). Fits the rails as `rd[25:21]`,
-  `rs_base[20:14]`, `rs_data[13:7]`, `imm[6:0]` — the immediate shrinks
-  to 7 bits (±63 bytes) because `rd` takes the field a classic store
-  uses for `imm[11:7]`. Opcode value to be assigned in the §3.1 map.
-  Its target pattern is the circular delay-line update (write the newest
-  sample, receive the evicted one) in a single access.
 - Sub-word store support on the word-wide banks (byte write enables in
   `dpmemrf`, as for the current DPRAM path of §3.4).
 - **Sub-word dual addressing.** §10.2 states dual lane addresses as
