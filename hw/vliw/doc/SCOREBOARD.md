@@ -29,7 +29,9 @@ File): each slot writes only its own bank, any slot reads any bank. This
 asymmetry maps directly onto the scoreboard:
 
 - **WAW hazards and write-port conflicts are local to a bank** — only that
-  bank's owning slot ever writes it (one write port per bank, four total).
+  bank's owning slot ever writes it (one write port per bank; five in total:
+  ALU0, ALU1, LS-A, LS-B and CTRL, the LS slot owning one bank per lane of a
+  dual load — LOAD_STORE.md §2).
 - **Only RAW hazards cross banks** — because any slot can read any bank.
 
 Everything below follows from this single-writer-per-bank property; it is the
@@ -40,7 +42,7 @@ machine.
 
 ## 3. Architectural State
 
-For each bank `b` (4 banks × 32 registers):
+For each bank `b` (5 banks × 32 registers):
 
 | Structure          | Size                    | Purpose                                     |
 |--------------------|-------------------------|---------------------------------------------|
@@ -48,9 +50,9 @@ For each bank `b` (4 banks × 32 registers):
 | `wbres_b[0..LMAX]` | `LMAX`+1 bits per bank  | write-port reservations for future cycles   |
 
 - **`busy_b[r]`** — set when an instruction that writes `(b, r)` issues,
-  cleared when the write retires. An optional refinement `ready_at_b[r]`
-  records the cycle the value becomes readable, enabling early (bypassed)
-  issue.
+  cleared when the write retires. `busy` answers *"is a write in flight?"*;
+  it is the WAW and write-port interlock. Whether a **reader** must wait is
+  a different question, answered by `ready_at_b[r]` (§7).
 - **`wbres_b`** — a shift-register delay line. Results retire at different
   stages (ADD/LOAD @ EX2, shift @ EX3, MUL/MULH @ EX4, INV_SQRT @ EX5), so two
   ops issued by the **same** slot at different cycles can land on that bank's
@@ -75,7 +77,7 @@ single verdict for the entire packet.
 
 - For each **source** `(bank, reg)` global read: **RAW stall** if
   `busy_bank[reg]` and the value is not yet readable/forwardable this cycle.
-  This is the only wide network — up to ~8 read operands (2 per ALU, up to 2
+  This is the only wide network — up to 10 read operands (2 per ALU, up to 4
   for LS, 2 for CTRL) muxed across the banks into comparators. It mirrors the
   RF read crossbar (same fan-in).
 - For each **destination** `(own bank b, reg)`: **WAW stall** if `busy_b[reg]`;
@@ -240,7 +242,173 @@ because a stalled bundle has made no reservations (§6.6).
 
 ---
 
-## 7. Variable-Latency Extension
+## 7. Early Issue: `ready_at` and the Bypass Network
+
+### 7.1 The question `busy` cannot answer
+
+`busy_b[r]` marks a write **in flight**. A consumer scheduled at exactly the
+producer's latency — the normal case for correctly scheduled code — issues in
+the very cycle that write retires. Whether it stalls therefore depends on a
+definition, not on a hazard:
+
+- if `busy` means *"not yet written"*, the consumer sees it still set and
+  stalls one cycle **even though the compiler scheduled correctly**, and the
+  latency tables in the slot documents are all wrong by one;
+- if `busy` means *"not yet readable"*, the consumer issues.
+
+The second reading is normative. Two mechanisms implement it, and they are
+independent:
+
+| Mechanism | Effect | Cost |
+|-----------|--------|------|
+| **Write-first register file** — a value written in cycle `W` is visible to a read in cycle `W` | a dependence at *exactly* the machine latency never stalls | none (a `dpmemrf`/LUTRAM property) |
+| **Bypass network** (§7.3) with `ready_at` (§7.2) | a dependence at latency **− 1** never stalls | a forwarding crossbar (§7.4) |
+
+Without the first, every correctly scheduled dependence costs a spurious
+stall. The second is a performance option on top.
+
+### 7.2 `ready_at`: readable versus written
+
+`ready_at_b[r]` records when the value may be **consumed**, which is the
+write-back cycle minus the forwarding depth:
+
+```
+ready_at = write_back_cycle - BYPASS_DEPTH        (BYPASS_DEPTH = 0 or 1)
+```
+
+It is held as a small **countdown** `rem_b[r]` of `clog2(LMAX+1)` bits (3
+bits for `LMAX` = 5), not as an absolute cycle number — no global cycle
+counter, no comparator:
+
+- loaded at issue with `latency − BYPASS_DEPTH` for the destination;
+- decremented every cycle while non-zero, **including during a global
+  stall** — countdowns belong to the *back* of the machine, which drains
+  (§5), not to the frozen front;
+- `rem_b[r] == 0` ⇔ the value is readable or forwardable this cycle.
+
+`busy` is unchanged and still governs WAW and the write port: two writes to
+one register may never be in flight together, since a single `busy` bit
+cannot distinguish which of them a reader would get (§4).
+
+### 7.3 Issue check with early issue
+
+Only the RAW rule of §4 changes:
+
+- **RAW stall** if `busy_bank[reg] && rem_bank[reg] != 0` — that is, a write
+  is in flight *and* its value cannot be delivered this cycle.
+- **WAW** and the `wbres` structural check are untouched.
+
+With `BYPASS_DEPTH = 0` this is exactly §4 under a write-first register file.
+With `BYPASS_DEPTH = 1` a consumer may issue one cycle before the write
+retires, its operand arriving through the forwarding path instead of the
+register file.
+
+### 7.4 The bypass network
+
+Forwarding of depth 1 muxes each slot's write-back value into the operand
+paths at RR. Its size is the product of the two widths the register file
+already has:
+
+```
+5 write ports (ALU0, ALU1, LS-A, LS-B, CTRL) x 10 read operands
+  = 50 tag comparisons and 50 x 32-bit mux inputs
+```
+
+That crossbar — not the countdowns, which are a few hundred flip-flops — is
+the whole cost of the option, and it lands on the RR→EX1 path that already
+limits `fmax` (§6.5). Two consequences for implementation:
+
+- **Depth 1 only.** Forwarding from EX3/EX4/EX5 (shift, `MUL`, `INV_SQRT`)
+  would multiply the crossbar by the number of stages for a rapidly
+  diminishing return; long-latency results are better scheduled around.
+- **It is optional by construction.** `BYPASS_DEPTH = 0` removes the network
+  entirely and costs only the one cycle of effective latency; binaries do not
+  change, because latencies are advisory (§1).
+
+The payoff is the back-to-back dependent case: with `BYPASS_DEPTH = 1` an
+`ADD` or a load feeding the next bundle issues without a stall, so a
+software-pipelined kernel whose dependence distance is one bundle runs at one
+bundle per cycle.
+
+### 7.5 Interactions
+
+- **Squash (§6.5).** `rem` entries are cleared by the same registered flush
+  that clears `busy`; no rollback machinery is added.
+- **Masked writes.** A `CMOV` whose condition is false releases `busy` and
+  reaches `rem = 0` on schedule like any other op (§3) — readability never
+  depends on run-time data.
+- **Split memory accesses.** When a dual access conflicts, the LS unit
+  serializes it and lane 1 retires one cycle later (LOAD_STORE.md §10.4).
+  `conflict` is available combinationally in the issue cycle, so `d1`'s
+  countdown is simply loaded with `latency + 1` at issue — the reservation is
+  right the first time, with nothing to revise afterwards.
+- **Variable latency (§8).** A miss stalls globally; countdowns continue to
+  drain, which is what keeps all relative timings intact.
+
+### 7.6 Worked example: latency-blind versus latency-aware code
+
+The kernel is `dst[i] = src[i] + 1`, with `c1`/`c3` the source and
+destination pointers in the CTRL bank, `m*` in LS-A, `a*` in the ALU0 bank.
+Both versions use the hardware loop, so no branch occupies the control slot.
+Baseline latencies: a load and an `ADD` are both readable at `W + 2`
+(LOAD_STORE.md §5.1).
+
+**Latency-blind.** Each consumer sits directly behind its producer. The code
+is *correct* — that is the scoreboard's contract — but pays a stall at every
+dependence:
+
+```asm
+        LOOPI  N, blind_end
+blind:  LW    m0, 0(c1)   | ADDI c1, c1, 4    ; LS | CTRL
+    ;
+        ADD   a0, m0, 1                       ; ALU0   <- RAW on m0: 1 stall
+    ;
+        SW    a0, 0(c3)   | ADDI c3, c3, 4    ; LS | CTRL  <- RAW on a0: 1 stall
+    ;
+blind_end:
+```
+
+Three bundles, five cycles: the second bundle waits one cycle for `m0` and
+the third one cycle for `a0`.
+
+**Latency-aware.** Software-pipelined at an initiation interval of two
+bundles, with the destinations alternating between two registers so that a
+producer always retires before the next write to the same name (no WAW
+stall, §4). Each bundle's consumers read values produced two bundles
+earlier, which is exactly the machine latency:
+
+```asm
+        LOOPI  N/2, sw_end
+sw:     LW    m0, 0(c1)   | ADD  a1, m1, 1   | ADDI c1, c1, 4   ; load i,   add i-1
+    ;
+        SW    a0, 0(c3)                      | ADDI c3, c3, 4   ; store i-2
+    ;
+        LW    m1, 0(c1)   | ADD  a0, m0, 1   | ADDI c1, c1, 4   ; load i+1, add i
+    ;
+        SW    a1, 0(c3)                      | ADDI c3, c3, 4   ; store i-1
+    ;
+sw_end:
+```
+
+No bundle stalls: every source was written two bundles earlier, and every
+destination's previous write retired two bundles earlier. Four bundles now
+carry two elements — **two cycles per element against five**, and the
+scoreboard never intervenes.
+
+What remains is not a data hazard but a **structural** bound: two memory
+accesses per element and a single LS slot per bundle. Reaching one cycle per
+element requires the pair instructions, which move two elements per memory
+bundle (`LD2W` + `ST2`, LOAD_STORE.md §10.2) — with the same two-bundle
+pipeline and alternating registers, and `stride % 3 != 0` so the pair never
+serializes (LOAD_STORE.md §10.4).
+
+Note that the prologue and epilogue are omitted: `sw` reads `m1`/`a0`/`a1`
+before the loop has produced them, so a real emitter fills the pipeline with
+two warm-up bundles and drains it with two more.
+
+---
+
+## 8. Variable-Latency Extension
 
 The global-stall mechanism generalizes cleanly to **variable-latency**
 accesses (the NoC port B, or a future external-memory/cache variant —
@@ -250,12 +418,16 @@ DMEM is fixed-latency, so loads are deterministic in the base core.
 
 ---
 
-## 8. Cost
+## 9. Cost
 
-- **State:** 4 × 32 `busy` bits (+ optional `ready_at`) and 4 × (`LMAX`+1)
-  `wbres` bits — a few hundred flip-flops.
-- **Logic:** a muxed ~8-operand RAW comparison network (same fan-in as the RF
+- **State:** 5 × 32 `busy` bits and 5 × (`LMAX`+1) `wbres` bits — a few
+  hundred flip-flops; the optional `ready_at` countdowns (§7.2) add
+  5 × 32 × 3 bits.
+- **Logic:** a muxed 10-operand RAW comparison network (same fan-in as the RF
   read crossbar), per-bank WAW/structural checks, one global stall wire, and
   (registered-flush variant) a one-cycle-late clear.
+- **Optional:** the depth-1 bypass crossbar (§7.4), 5 × 10 forwarding paths —
+  larger than everything above put together, and the only part that touches
+  the critical RR→EX1 path.
 - No renaming, no ROB, no reservation stations — one to two orders of
   magnitude cheaper than an out-of-order core of the same width.
