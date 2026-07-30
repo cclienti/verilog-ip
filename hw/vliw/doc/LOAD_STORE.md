@@ -163,10 +163,12 @@ The field map and both opcode maps are held as tables in
 `hw/vliw/tools/ls_isa.py`, which validates them (field widths, layout
 coverage, rail consistency, opcode uniqueness, `NOP` = 0, encode/decode
 round trip) and generates these markdown tables, the assembler
-instruction reference and the RTL decode package:
+instruction reference and the RTL decode package. `--check-doc` reads
+this file back and compares its field map, opcode maps and reserved
+ranges against those tables, so the two cannot drift apart:
 
 ```sh
-tools/ls_isa.py --check | --md | --asm | --sv | --decode <word>
+tools/ls_isa.py --check | --check-doc | --md | --asm | --sv | --decode <word>
 ```
 
 **Opcode map** — the single authoritative list of LS-slot opcodes:

@@ -9,8 +9,8 @@ else -- the specification tables, the assembler reference listing and the
 RTL decode parameters -- is generated from them, so the doc, the RTL and
 the toolchain cannot drift apart.
 
-Run with --help for the available actions (--check, --test, --asm, --md,
---sv, --decode), and -o to write a generated view to a file.
+Run with --help for the available actions (--check, --check-doc, --test,
+--asm, --md, --sv, --decode), and -o to write a generated view to a file.
 
 Extending to the other slots (ALU, CTRL) means adding their FIELDS /
 FORMATS / INSTRUCTIONS tables; the checkers and emitters are generic.
@@ -19,6 +19,8 @@ FORMATS / INSTRUCTIONS tables; the checkers and emitters are generic.
 import argparse
 import contextlib
 import io
+import os
+import re
 import sys
 import unittest
 
@@ -313,6 +315,99 @@ def check():
     return 1 if err else 0
 
 
+# -------------------------------------------------------------- check doc
+DOC = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                   "..", "doc", "LOAD_STORE.md")
+
+
+def _parse_doc(text):
+    """Pull the field map and the opcode maps out of the specification.
+
+    Recognises the two markdown row shapes and ignores every other table:
+      | `name`   | `[msb:lsb]` | width | port | ...   -> field map
+      | `010110` | `XCHW`      | ...                  -> an opcode map
+    """
+    fields, opcodes = {}, {}
+    for line in text.splitlines():
+        if not line.startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) < 4:
+            continue
+        c0, c1 = cells[0].strip("`"), cells[1].strip("`")
+        if re.fullmatch(r"[01]+", c0) and re.fullmatch(r"\w+", c1):
+            opcodes[c1] = c0
+        elif re.fullmatch(r"\w+", c0) and c1[:1] in ("[", "{"):
+            port = cells[3].replace(" addr", "").strip()
+            fields.setdefault(c0, []).append(
+                (c1, cells[2], None if port in ("—", "-", "") else port))
+    return fields, opcodes
+
+
+def _doc_reserved(text, tier):
+    """The '<tier>-tier opcodes `lo`-`hi` (n entries)' claim, if present."""
+    m = re.search(r"%s-tier opcodes `([01]+)`[^`]*`([01]+)` \((\d+) entries"
+                  % tier, text)
+    return (m.group(1), m.group(2), int(m.group(3))) if m else None
+
+
+def check_doc(path=DOC):
+    """Compare the specification's tables with the tables in this file."""
+    err = []
+    try:
+        text = open(path).read()
+    except OSError as exc:
+        print("error: %s" % exc)
+        return 1
+    dfields, dops = _parse_doc(text)
+
+    for name in FIELDS:
+        doc_name = "opcode" if name.startswith("opcode") else name
+        want = (field_str(name), str(field_width(name)), FIELDS[name][1])
+        rows = dfields.get(doc_name, [])
+        if want not in rows:
+            err.append("field %s: tables say %s, doc field map has %s"
+                       % (name, want, rows or "no such row"))
+    for name in dfields:
+        if name != "opcode" and name not in FIELDS:
+            err.append("field %s: in the doc field map, not in the tables" % name)
+
+    for inst in INSTRUCTIONS:
+        want = format(inst["opcode"], "0%db" % TIERS[inst["tier"]][1])
+        got = dops.get(inst["mnemonic"])
+        if got is None:
+            err.append("%s: missing from the doc opcode maps" % inst["mnemonic"])
+        elif got != want:
+            err.append("%s: doc opcode %s, tables say %s"
+                       % (inst["mnemonic"], got, want))
+    known = {i["mnemonic"] for i in INSTRUCTIONS}
+    for m in dops:
+        if m not in known:
+            err.append("%s: in a doc opcode map, not in the tables" % m)
+
+    for tier, (_, width, lo, hi) in TIERS.items():
+        used = {i["opcode"] for i in INSTRUCTIONS if i["tier"] == tier}
+        free = sorted(c for c in range(lo, hi + 1) if c not in used)
+        claim = _doc_reserved(text, tier)
+        if claim is None:
+            err.append("%s tier: doc states no reserved range" % tier)
+        elif not free:
+            err.append("%s tier: doc claims a reserved range, none is free" % tier)
+        else:
+            want = (format(free[0], "0%db" % width),
+                    format(free[-1], "0%db" % width), len(free))
+            if claim != want:
+                err.append("%s tier reserved: doc says %s, tables say %s"
+                           % (tier, claim, want))
+
+    for e in err:
+        print("error: " + e)
+    print("doc %s: %d fields, %d opcodes: %s"
+          % (os.path.relpath(path), sum(len(v) for v in dfields.values()),
+             len(dops), "OK" if not err else "%d ERROR(S)" % len(err)))
+    return 1 if err else 0
+
+
 # -------------------------------------------------------------- emit: asm
 def bit_diagram(inst):
     """'[31:26]=000011 rd[25:21] rs_base[20:14] imm14[13:0]'"""
@@ -575,6 +670,46 @@ class _Tests(unittest.TestCase):
         finally:
             FORMATS["L"] = saved
 
+    def test_check_doc_passes_on_the_shipped_specification(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(check_doc(), 0)
+
+    def test_check_doc_catches_the_drift_classes(self):
+        """Each mutation stands for one kind of drift seen in review."""
+        good = open(DOC).read()
+        mutations = (
+            # a stale opcode value in the map
+            ("| `010110` | `XCHW`", "| `010111` | `XCHW`", "doc opcode"),
+            # a field moved off its rail
+            ("| `rs_base`   | `[20:14]`", "| `rs_base`   | `[18:12]`", "field rs_base"),
+            # a stale reserved-range count
+            ("(9 entries)", "(11 entries)", "classic tier reserved"),
+            # an instruction dropped from the doc
+            ("| `010101` | `SBX`", "| `010101` | `SBXX`", "SBX"),
+        )
+        for old, new, needle in mutations:
+            self.assertIn(old, good, old)
+            path = os.path.join(os.path.dirname(DOC), ".ls_isa_selftest.md")
+            with open(path, "w") as fh:
+                fh.write(good.replace(old, new, 1))
+            try:
+                with contextlib.redirect_stdout(io.StringIO()) as out:
+                    rc = check_doc(path)
+                self.assertEqual(rc, 1, old)
+                self.assertIn(needle, out.getvalue(), old)
+            finally:
+                os.remove(path)
+
+    def test_doc_parser_ignores_unrelated_tables(self):
+        fields, ops = _parse_doc(
+            "| `LB` | `SB`  | byte (8-bit) | sign-extended to 32 |\n"
+            "| -9   | `LOOP_ACTIVE` | 1 | RW | flag |\n"
+            "| [31:26] | [25:21] | [20:14] | [13:0] |\n"
+            "| `rd` | `[25:21]` | 5 | write A addr | loads |\n"
+            "| `000011` | `LW` | `rd, imm(rs_base)` | load word | x |\n")
+        self.assertEqual(list(fields), ["rd"])
+        self.assertEqual(ops, {"LW": "000011"})
+
     def test_emitters_produce_expected_content(self):
         for emit, needles in ((emit_asm, ("LD2HU", "reserved", "[31:28]")),
                               (emit_md, ("| `rs_base` |", "opcode map")),
@@ -620,6 +755,9 @@ def main():
                      help="validate the encoding tables (default action)")
     act.add_argument("--test", action="store_true",
                      help="run the unit tests for the helpers and emitters")
+    act.add_argument("--check-doc", metavar="FILE", nargs="?", const=DOC,
+                     help="check LOAD_STORE.md's tables against these "
+                          "(default: ../doc/LOAD_STORE.md)")
     act.add_argument("--asm", action="store_true",
                      help="instruction reference, assembly-manual style")
     act.add_argument("--md", action="store_true",
@@ -634,6 +772,9 @@ def main():
 
     if args.test:
         return run_tests()
+
+    if args.check_doc:
+        return check() or check_doc(args.check_doc)
 
     if check():                       # never emit from a broken table
         return 1
