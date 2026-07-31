@@ -71,9 +71,9 @@ head of the register-read path:
 Consequences:
 
 - An instruction that does not use a rail leaves those bits as an
-  immediate field or reserved; the corresponding port still
-  issues a (harmless) read, so **decode supplies a per-port valid bit** —
-  the scoreboard must not see an unused rail as a dependency (§5.2).
+  immediate field or reserved; the corresponding port still issues a read,
+  which is simply discarded — with no interlock to mislead, an unused rail
+  needs no valid bit at all.
 - Rail 3 overlaps opcode bits in the classic tier, so `s0` exists only in
   the dual tier — which is exactly the set of instructions needing four
   reads (the dual stores). Rail 4 is reachable from both tiers.
@@ -88,9 +88,11 @@ Consequences:
   path, which is the timing-critical one (the RR→EX1 path,
   ARCHITECTURE.md §Pipeline).
 
-Source-register hazards (a load/store whose sources are still in flight)
-are covered by the hardware scoreboard (ARCHITECTURE.md §Scoreboard);
-memory-address hazards are covered by the single in-order port (§6).
+Source-register hazards are the **compiler's responsibility**: the core
+ships without an interlock, so a source read before its producer's latency
+has elapsed returns a stale value silently (SCOREBOARD.md, status note).
+Memory-address hazards, by contrast, are covered by construction — a single
+in-order port (§6).
 
 ---
 
@@ -417,31 +419,37 @@ scalar-ISA convention borrowed from RV32IM.
 | `LB`…`LHU`, `L*X` | `rd` at **W + 2**                   | `BRAM_OUT_REG = 0` baseline   |
 | `SB`…`SW`, `S*X`  | — (no register result)              | commits in program order (§6) |
 | `XCHW`      | `rd` at **W + 2**                         | pre-write word (§3.8)         |
-| `LD2*`      | `d0` **and** `d1` at **W + 2**            | conflicting pair: `d1` at `W + 3`, +1 cycle (§10.4) |
+| `LD2*`      | `d0` **and** `d1` at **W + 2**            | conflicting pair: +1 cycle, same latency (§10.4) |
 | `ST2*`      | — (no register result)                    | conflicting pair: +1 cycle (§10.4) |
 
 Address calculation happens in EX1; the registered bank read returns data at
 EX2, so a load result retires at `W + 2` — the same distance as an ALU `ADD`
-(ARCHITECTURE.md §Compiler latency model). These latencies are a **scheduling
-guide**, not a correctness contract: the scoreboard enforces correctness
-regardless (§5.2).
+(ARCHITECTURE.md §Compiler latency model). With no interlock these latencies
+are **architectural**, not advisory: they are part of the contract the
+compiler must satisfy (§5.2).
 
-### 5.2 Scoreboard interaction (load-use)
+### 5.2 Compiler obligations (load-use)
 
-- A load reserves `rd`'s `busy` / `wbres` entry at issue and clears it at its
-  scheduled write-back (EX2). A dependent instruction that reads `rd` **before**
-  `W + 2` is **stalled** by the scoreboard, never fed stale data — a
-  mis-scheduled load-use costs a cycle, never correctness.
-- A load/store whose sources (`rs_base`, `rs_data`, `rs_index`, `rs_stride`,
-  `s0`, `s1`) are still in flight stalls at issue until they are ready —
-  ordinary RAW handling. Only the rails an instruction actually uses are
-  checked, per the decode valid bits of §2.1.
-- A store produces no register result, so it makes no reservation; `XCHW`
-  does make one, exactly like a load.
-- A dual load reserves **both** destinations, `d0` in LS-A and `d1` in LS-B.
-  When the pair conflicts (§10.4) the access is split and `d1`'s write-back
-  slips one cycle; the scoreboard covers that like any other latency, so the
-  extra cycle costs performance, never correctness.
+There is no interlock: the rules below are contractual, and violating one
+produces a wrong result, not a stall.
+
+- A consumer of a load must issue at least `1 + ADRREG + OUTREGA` bundles
+  after it (`W + 2` in the baseline). Scheduled earlier, it reads whatever
+  the destination register held before — silently.
+- The same applies to every source of a load or store (`rs_base`,
+  `rs_data`, `rs_index`, `rs_stride`, `s0`, `s1`): each must have settled
+  before the access issues.
+- A register may be rewritten as soon as its previous value has been
+  consumed — the register file may be used as a dataflow buffer, a value
+  occupying a name for a single cycle (SCOREBOARD.md §7.6). The write
+  ordering to one register is the compiler's to keep: with non-uniform
+  latencies (EX2…EX5) a shorter operation issued later can land *before*
+  a longer one issued earlier.
+- A store produces no register result; `XCHW` produces one exactly like a
+  load.
+- A dual load writes `d0` in LS-A and `d1` in LS-B **at the same latency**,
+  conflicting or not (§10.4) — a conflict costs one cycle of execution
+  time, not a change of schedule.
 
 ### 5.3 BRAM output register (`fmax`)
 
@@ -449,8 +457,9 @@ The banks may enable the hardened **output register** (`BRAM_OUT_REG`, mapped
 to `parmem3_2`'s `OUTREGA`/`OUTREGB` — §10.1), adding **one** read-latency
 cycle for higher `fmax` (the synthesizer absorbs a datapath register into the
 BRAM macro). This
-shifts the load result to `W + 3`; the scoreboard covers the actual latency
-whatever it is, so no binary changes — only cycle counts move.
+shifts the load result to `W + 3`. Without an interlock this is an
+**ISA-visible** choice: changing `BRAM_OUT_REG` (or `ADRREG`, §10.1)
+invalidates compiled code and requires a rebuild.
 
 ---
 
@@ -462,8 +471,7 @@ accesses execute in **program order**. Consequences:
 - **A load observes every prior store from this core** to the same address, with
   no store buffer and no store-to-load forwarding network: the earlier store's
   bank write precedes the later load's read by construction. Memory RAW/WAW/WAR
-  ordering is therefore free — the register scoreboard does **not** need to track
-  addresses.
+  ordering is therefore free — nothing needs to track memory addresses.
 - **Port B (NoC / NI) is not coherent with Port A.** Port B is `parmem3_2`'s
   side B (§10.1) — a single linear-addressed port on its own clock; the two
   sides carry no arbitration and no snooping (ARCHITECTURE.md §Data Memory and
@@ -517,9 +525,9 @@ in lock-step with the ALU slots):
     ADDI  r20, r20, 4      ; ALU slot: bump byte pointer
 ```
 
-The scoreboard stalls the `MUL` if it is scheduled within 2 words of the `LW`;
-the compiler spaces them (here by pipelining across iterations of the hardware
-loop) to avoid the stall.
+The `MUL` **must** be scheduled at least 2 words after the `LW`: nothing
+stalls it, so scheduling it earlier reads a stale `r10`. The compiler spaces
+them by pipelining across iterations (§9, SCOREBOARD.md §7.6).
 
 **Reading a control register** (poll the hardware-loop iteration count):
 
@@ -691,24 +699,35 @@ function of the stride residue and the lane mask, available **in the
 issue cycle** (by construction, even with `ADRREG`). It is not a trap
 and not an illegal encoding — the hardware **serializes**:
 
-1. The LS unit splits the pair into two single-lane accesses (lane 0
-   first, then lane 1 — a one-bit sequencer re-presents the access
+1. The LS unit splits the pair into two single-lane bank accesses
+   (lane 0 then lane 1 — a one-bit sequencer re-presents the access
    with the complementary lane mask).
-2. The pipeline inserts **one dynamic NOP**: IF/ID freeze for one
-   cycle, bubble downstream. The conflicting bundle occupies the
-   memory stage for two cycles; total cost is **+1 cycle**, nothing
-   else.
-3. Lane 1's load result writes back one cycle after lane 0's, into
-   the write slot freed by the bubble — no write-port arbitration.
-   Latency guide: conflicting dual load returns `d0` at `W + 2` and
-   `d1` at `W + 3` (baseline §5.1 numbering); the scoreboard covers
-   the actual latency as always (§5.2).
-4. **Split atomicity**: once the first half has executed, the bundle
-   is committed — the second half is non-interruptible. IRQ
-   acceptance is delayed by at most one cycle; a flush/squash cannot
-   separate the halves (consistent with the EX1 commit point,
-   CONTROL_UNIT.md §5). This rule is what makes a conflicting dual
-   **store** safe.
+2. The whole machine is **frozen for one cycle** while the second
+   access is performed: every stage holds its state, in-flight
+   operations included. This is a **total freeze**, not a front-end
+   freeze with a bubble travelling downstream, and the distinction is
+   a correctness requirement, not a preference — see below.
+3. Because nothing advanced during the frozen cycle, **both lanes
+   retire together**: a conflicting pair has exactly the same latency
+   as a conflict-free one (`1 + ADRREG + OUTREGA` cycles, §5.1). The
+   only observable effect is that the program took one extra cycle.
+4. **Atomicity comes for free.** The pair executes as one indivisible
+   operation spanning two cycles: with the machine frozen, no flush,
+   trap or interrupt can insert itself between the halves, so a
+   conflicting dual **store** cannot be left half-committed.
+
+**Why a total freeze.** Without an interlock the code is cycle-exact:
+a consumer is scheduled at the precise cycle its producer's value
+reaches the register file (SCOREBOARD.md, status note). A freeze that
+stopped only the front end while in-flight operations drained would
+delay that consumer by one cycle while its producer landed on time —
+the consumer would read whatever the register holds one cycle later,
+silently. Freezing everything delays producer and consumer equally, so
+every latency is unchanged in pipeline-relative terms and the
+compiler's schedule survives a bubble it could not have predicted:
+`conflict` depends on a **register** value, so no static schedule can
+anticipate it. This is the property that lets a stride multiple of 3
+stay a performance matter instead of a correctness one.
 
 Consequently, strides that are multiples of 3 are **legal but slow**.
 The compiler's layout rules (pad pitches whose digit sum is divisible

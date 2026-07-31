@@ -1,5 +1,38 @@
 # VLIW Scoreboard Specification
 
+> **Status: not implemented — retained as design rationale.**
+>
+> The core ships **without** a hardware interlock. The target workload is
+> small compute kernels, not general-purpose code: the compiler owns the
+> schedule, the sources are always available for recompilation, and a
+> latency change is a rebuild rather than a binary-compatibility event.
+> The scoreboard's cost — the ~10-operand comparison network on the
+> RR→EX1 path — buys a guarantee this workload does not need.
+>
+> **What this changes for software.** Instruction latencies stop being
+> advisory scheduling guides and become **architectural**: a consumer
+> scheduled closer than its producer's latency reads a stale value, with
+> no stall and no diagnostic. `BRAM_OUT_REG` and `ADRREG` (LOAD_STORE.md
+> §10.1) become ISA-visible — changing either invalidates compiled code.
+> In exchange the register file can be used as a dataflow buffer: a value
+> may be consumed in the single cycle it occupies a register, so a
+> streaming kernel needs one name where an interlocked machine needs
+> `ceil(L / II)` (§7.6).
+>
+> **The one dynamic mechanism kept** is the conflict serialization of a
+> strided pair (LOAD_STORE.md §10.4) — and precisely because code is now
+> cycle-exact, it is implemented as a **total pipeline freeze**, not as
+> the front-end freeze described in §5 below. A freeze that stopped only
+> the front while in-flight operations drained would shift every consumer
+> one cycle relative to its producer.
+>
+> This document is kept in full: it specifies what an interlocked variant
+> would be, and every section below describes that variant, not the
+> shipping core. Sections §4 (issue check), §5 (stall rules) and §7
+> (`ready_at`, bypass) are the ones that no longer apply; §7.6's worked
+> example remains the clearest statement of what the compiler must now
+> guarantee on its own.
+
 ## 1. Overview
 
 The scoreboard is the hardware **interlock** that guarantees data-hazard
