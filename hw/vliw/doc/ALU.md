@@ -27,7 +27,7 @@ Each ALU slot sees:
 
 | Port        | Count | Width                               | Purpose            |
 |-------------|-------|-------------------------------------|--------------------|
-| Read ports  | **2** | 7-bit addr (3-bit bank + 5-bit reg) | `rs1`, `rs2`       |
+| Read ports  | **2** | 8-bit addr (3-bit bank + 5-bit reg) | `rs1`, `rs2`       |
 | Write port  | **1** | 5-bit addr, bank implicit from slot | `rd`               |
 
 Rationale for **2 read / 1 write**:
@@ -51,19 +51,19 @@ convention).
 
 ## 3. Instruction Set
 
-ALU instructions are encoded in a **32-bit slot** with a single flat 6-bit
+ALU instructions are encoded in a **36-bit slot** with a single flat 6-bit
 opcode, in the ALU slots' own opcode space (both slots decode the same space):
 
 ```
-[31:26]    [25:0]
-opcode(6)  payload(26)
+[35:30]    [29:0]
+opcode(6)  payload(30)
 ```
 
 There is no format bit: register and immediate forms of an operation (e.g.
 `ADD` / `ADDI`) are **distinct opcodes**.
 
 **NOP** is `opcode = 000000` (the canonical empty-slot encoding; the assembler
-emits the all-zero word `0x00000000`).
+emits the all-zero word `0x000000000`).
 
 ### 3.1 Encoding reference card
 
@@ -71,13 +71,18 @@ emits the all-zero word `0x00000000`).
 
 | Field    | Bits    | Width | Notes                                    |
 |----------|---------|-------|------------------------------------------|
-| `opcode` | [31:26] | 6     | instruction selector                     |
-| `rd`     | [25:21] | 5     | dest register, bank implicit from slot   |
-| `rs1`    | [20:14] | 7     | source 1 (R-type and I-type)             |
-| `rs2`    | [13:7]  | 7     | source 2 (R-type only)                   |
-| `funct`  | [6:0]   | 7     | R-type extension field (assembler emits 0) |
-| `imm14`  | [13:0]  | 14    | signed immediate (I-type)                |
-| `imm20`  | [20:1]  | 20    | upper immediate (`LUI` only)             |
+| `opcode` | [35:30] | 6     | instruction selector                     |
+| `rd`     | [29:25] | 5     | dest register, bank implicit from slot   |
+| `rs1`    | [7:0]   | 8     | source 1 (R-type and I-type) — read rail 1 |
+| `rs2`    | [15:8]  | 8     | source 2 (R-type only) — read rail 2     |
+| `funct`  | [24:16] | 9     | R-type extension field (assembler emits 0) |
+| `imm17`  | [24:8]  | 17    | signed immediate (I-type)                |
+| `imm20`  | [19:0]  | 20    | upper immediate (`LUI` only)             |
+
+Both sources sit on fixed **rails** — the two low bytes — so each read port
+takes its address from one constant slice with no per-opcode multiplexer,
+the same discipline as the LS slot (LOAD_STORE.md §2.1). Every immediate
+is contiguous.
 
 **Opcode map** — the single authoritative list of ALU-slot opcodes:
 
@@ -85,18 +90,18 @@ emits the all-zero word `0x00000000`).
 |----------|------------|-------------------|--------------------------------------------------|--------|
 | `000000` | `NOP`      | —                 | no operation                                     | §3     |
 | `000001` | `ADD`      | `rd, rs1, rs2`    | `rd <- rs1 + rs2`                                | §3.2   |
-| `000010` | `ADDI`     | `rd, rs1, imm14`  | `rd <- rs1 + sign_ext(imm14)`                    | §3.3   |
+| `000010` | `ADDI`     | `rd, rs1, imm17`  | `rd <- rs1 + sign_ext(imm17)`                    | §3.3   |
 | `000011` | `SUB`      | `rd, rs1, rs2`    | `rd <- rs1 - rs2`                                | §3.2   |
 | `000100` | `AND`      | `rd, rs1, rs2`    | `rd <- rs1 & rs2`                                | §3.2   |
-| `000101` | `ANDI`     | `rd, rs1, imm14`  | `rd <- rs1 & sign_ext(imm14)`                    | §3.3   |
+| `000101` | `ANDI`     | `rd, rs1, imm17`  | `rd <- rs1 & sign_ext(imm17)`                    | §3.3   |
 | `000110` | `OR`       | `rd, rs1, rs2`    | `rd <- rs1 \| rs2`                               | §3.2   |
-| `000111` | `ORI`      | `rd, rs1, imm14`  | `rd <- rs1 \| sign_ext(imm14)`                   | §3.3   |
+| `000111` | `ORI`      | `rd, rs1, imm17`  | `rd <- rs1 \| sign_ext(imm17)`                   | §3.3   |
 | `001000` | `XOR`      | `rd, rs1, rs2`    | `rd <- rs1 ^ rs2`                                | §3.2   |
-| `001001` | `XORI`     | `rd, rs1, imm14`  | `rd <- rs1 ^ sign_ext(imm14)`                    | §3.3   |
+| `001001` | `XORI`     | `rd, rs1, imm17`  | `rd <- rs1 ^ sign_ext(imm17)`                    | §3.3   |
 | `001010` | `SLT`      | `rd, rs1, rs2`    | `rd <- (rs1 <  rs2) signed ? 1 : 0`              | §3.2   |
-| `001011` | `SLTI`     | `rd, rs1, imm14`  | `rd <- (rs1 < sign_ext(imm14)) signed ? 1 : 0`   | §3.3   |
+| `001011` | `SLTI`     | `rd, rs1, imm17`  | `rd <- (rs1 < sign_ext(imm17)) signed ? 1 : 0`   | §3.3   |
 | `001100` | `SLTU`     | `rd, rs1, rs2`    | `rd <- (rs1 <  rs2) unsigned ? 1 : 0`            | §3.2   |
-| `001101` | `SLTIU`    | `rd, rs1, imm14`  | `rd <- (rs1 < sign_ext(imm14)) unsigned ? 1 : 0` | §3.3   |
+| `001101` | `SLTIU`    | `rd, rs1, imm17`  | `rd <- (rs1 < sign_ext(imm17)) unsigned ? 1 : 0` | §3.3   |
 | `001110` | `SLL`      | `rd, rs1, rs2`    | `rd <- rs1 << rs2[4:0]`                          | §3.2   |
 | `001111` | `SLLI`     | `rd, rs1, shamt`  | `rd <- rs1 << shamt`                             | §3.3   |
 | `010000` | `SRL`      | `rd, rs1, rs2`    | `rd <- rs1 >> rs2[4:0]` (logical)                | §3.2   |
@@ -109,51 +114,57 @@ emits the all-zero word `0x00000000`).
 | `010111` | `LUI`      | `rd, imm20`       | `rd <- imm20 << 12`                              | §3.4   |
 
 Reserved: opcodes `011000`–`111111` (40 entries). Executing a reserved opcode
-raises an **illegal-instruction trap** (same entry path as `TRAP`; `trap_code`
-in `ABI.md`) — the assembler must never emit one. This reserved space is the
+**halts the core** with cause `ILLEGAL` (ARCHITECTURE.md §Faults and Host
+Control) — the assembler must never emit one. This reserved space is the
 landing zone for the proposed DSP extensions in §7 (non-normative).
 
 **Notes:**
-- `rs1`, `rs2` are **7-bit** global register addresses
+- `rs1`, `rs2` are **8-bit** global register addresses
   (`bank[2:0]` + `reg[4:0]`); `rd` is **5-bit** (bank implicit from the slot).
-- `imm14` is signed, sign-extended to 32 bits → range **±8191**. All I-type
+- `imm17` is signed, sign-extended to 32 bits → range **±65535**. All I-type
   immediates (including the logic ops) sign-extend.
-- `shamt` in `SLLI`/`SRLI`/`SRAI` is `imm14[4:0]` (0–31); the assembler must
-  emit 0 in `imm14[13:5]`.
+- `shamt` in `SLLI`/`SRLI`/`SRAI` is `imm17[4:0]` (0–31); the assembler must
+  emit 0 in `imm17[16:5]`.
 - Register and immediate forms are **distinct opcodes** (no format bit).
 - `SUB`, `MUL`, `MULH`, `INV_SQRT` have **no immediate form**
   (`SUBI x` = `ADDI -x`).
 
 ### 3.2 R-type format (register–register)
 
-| [31:26]   | [25:21] | [20:14] | [13:7] | [6:0]    |
-|-----------|---------|---------|--------|----------|
-| opcode(6) | rd(5)   | rs1(7)  | rs2(7) | funct(7) |
+| [35:30]   | [29:25] | [24:16]  | [15:8] | [7:0]  |
+|-----------|---------|----------|--------|--------|
+| opcode(6) | rd(5)   | funct(9) | rs2(8) | rs1(8) |
 
 - `funct(7)` refines the operation / reserves room for future 3-operand forms;
   the base ops are fully selected by `opcode`, so the assembler emits `0`.
 
 ### 3.3 I-type format (register–immediate)
 
-| [31:26]   | [25:21] | [20:14] | [13:0]    |
-|-----------|---------|---------|-----------|
-| opcode(6) | rd(5)   | rs1(7)  | imm14(14) |
+| [35:30]   | [29:25] | [24:8]    | [7:0]  |
+|-----------|---------|-----------|--------|
+| opcode(6) | rd(5)   | imm17(17) | rs1(8) |
 
-- `imm14` is signed, sign-extended to 32 bits → range **±8191**.
+- `imm17` is signed, sign-extended to 32 bits → range **±65535**. The
+  36-bit slot widens it from the 14 bits a 32-bit slot allowed, so every
+  constant up to ±64 K is now a single instruction.
 
 ### 3.4 LUI format (U-type)
 
-| [31:26]  | [25:21] | [20:1]    | [0]       |
+| [35:30]  | [29:25] | [24:20]   | [19:0]    |
 |----------|---------|-----------|-----------|
-| `010111` | rd(5)   | imm20(20) | unused(1) |
+| `010111` | rd(5)   | unused(5) | imm20(20) |
 
 - `rd <- imm20 << 12` (low 12 bits zero).
+- The `LUI` + `ADDI` pair still synthesises any 32-bit constant, and the
+  usual carry fix-up is **gone**: the low 12 bits now travel in a 17-bit
+  signed field, so they are always representable as a positive value and
+  never borrow from the upper half.
 
 ### 3.5 INV_SQRT
 
-| [31:26]  | [25:21] | [20:14] | [13:0]      |
-|----------|---------|---------|-------------|
-| `010110` | rd(5)   | rs1(7)  | unused(14)  |
+| [35:30]  | [29:25] | [24:8]      | [7:0]  |
+|----------|---------|-------------|--------|
+| `010110` | rd(5)   | unused(17)  | rs1(8) |
 
 - `rd <- ≈ 1/sqrt(rs1)`; latency 5 — the deepest operation, and therefore
   the widest gap the compiler must leave before a consumer.
@@ -202,21 +213,28 @@ differ, so a `MUL` (W+4) issued before an `ADD` (W+2) lands *after* it.
 | Pseudo        | Real instruction      | Meaning                    |
 |---------------|-----------------------|----------------------------|
 | `NOP`         | opcode `000000`       | empty slot (dedicated NOP) |
-| `MOV rd, rs`  | `ADD rd, r0, rs`      | register copy              |
+| `MOV rd, rs`  | `ADD rd, r0, rs`      | register copy (`XOR rd, rs, r0` is equivalent) |
 | `NEG rd, rs`  | `SUB rd, r0, rs`      | negate                     |
 | `NOT rd, rs`  | `XOR rd, rs, -1`      | bitwise not                |
-| `LI rd, imm`  | `ADDI rd, r0, imm14`  | load small immediate (±8191) |
+| `LI rd, imm`  | `ADDI rd, r0, imm17`  | load small immediate (±65535) |
+
+A dedicated `MOV` opcode would buy nothing here: the slot owns a full ALU, so
+the copy costs one instruction either way. The **LS slot** is the exception —
+it owns no ALU and therefore carries a real `MOV` (`LOAD_STORE.md` §3.9); the
+control slot dropped its own for the same reason this table exists
+(`CONTROL_UNIT.md` §3.7).
 
 **32-bit constant generation (2 VLIW words):**
 
 ```
 LUI  rd, imm20        # rd = imm20 << 12
-ADDI rd, rd, imm12    # rd = rd + low 12 bits
+ADDI rd, rd, lo12     # rd = rd + low 12 bits
 ```
 
-Because `ADDI` carries a **14-bit** immediate, the low 12 bits can always be
+Because `ADDI` carries a **17-bit** immediate, the low 12 bits can always be
 added as a *positive* value 0–4095 — no RISC-V-style `%hi` carry adjustment is
-needed when bit 11 of the low part is set.
+needed when bit 11 of the low part is set. Constants that fit in ±65535 need
+no pair at all: a single `ADDI rd, r0, imm17` covers them.
 
 ---
 

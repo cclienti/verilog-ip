@@ -2,6 +2,11 @@
 
 > **Status: not implemented — retained as design rationale.**
 >
+> It also predates the removal of interrupts and traps: its references to
+> `IRQ`, `ERET` and trap entry describe the design it was written against,
+> not the current core, where a fault simply halts (ARCHITECTURE.md §Faults
+> and Host Control).
+>
 > The core ships **without** a hardware interlock. The target workload is
 > small compute kernels, not general-purpose code: the compiler owns the
 > schedule, the sources are always available for recompilation, and a
@@ -201,7 +206,7 @@ pipeline (`BRANCH_SHADOW` = 3), bundle `B` resolving in EX1 at cycle `T`:
 Key properties:
 
 - **Flush kills strictly younger VLIW words.** The redirecting bundle's
-  **own** side effects commit: the co-issued ALU/LS slots of the same 128-bit
+  **own** side effects commit: the co-issued ALU/LS slots of the same 144-bit
   word retire normally (their reservations stand and clear on schedule), the
   `JAL`/`JALR` link write happens, and `TRAP` latches `IRQ_SAVED_PC`.
 - **Only bundle `B`+1 can have touched the scoreboard.** `B`+2 and `B`+3 are

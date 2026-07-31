@@ -25,54 +25,77 @@ import sys
 import textwrap
 import unittest
 
-SLOT_WIDTH = 32
+SLOT_WIDTH = 36
+
+# Register-file geometry: 5 banks of 32 registers, one write port and ten
+# read ports per bank (the read ports are LUTRAM replicas, so any read
+# reaches any bank). A source address is BANK_SEL_BITS + REG_SEL_BITS.
+NUM_BANKS      = 5
+REG_SEL_BITS   = 5
+BANK_SEL_BITS  = 3
+SRC_ADDR_BITS  = BANK_SEL_BITS + REG_SEL_BITS   # 8: any of the 160 names
+
+SLOT_MASK = (1 << SLOT_WIDTH) - 1
+SLOT_HEX  = (SLOT_WIDTH + 3) // 4               # hex digits in a slot word
+TIER_BIT  = SLOT_WIDTH - 1                      # 0 = classic tier, 1 = dual tier
 
 # ---------------------------------------------------------------- fields
 # name -> (bit ranges [(msb, lsb), ...], register-file port, description)
 # Ranges are listed most-significant chunk first; a field with several
 # chunks is split in the encoding but reassembled by fixed wiring.
+#
+# The four read rails are the four bytes of [31:0]: ST2 carries four 8-bit
+# sources and no destination, so it tiles the payload exactly. Every other
+# format keeps each port on its own byte, which leaves the classic tier a
+# contiguous immediate in the bits ST2 spends on s0/s1.
 FIELDS = {
-    "opcode6":   ([(31, 26)], None,      "classic-tier opcode (bit 31 = 0)"),
-    "opcode4":   ([(31, 28)], None,      "dual-tier opcode (bit 31 = 1)"),
-    "rs_base":   ([(20, 14)], "read 1",  "base address register"),
-    "rs_index":  ([(13, 7)],  "read 2",  "index register (indexed loads)"),
-    "rs_data":   ([(13, 7)],  "read 2",  "store data (classic stores)"),
-    "rs_stride": ([(13, 7)],  "read 2",  "signed word stride (dual ops)"),
-    "s0":        ([(27, 21)], "read 3",  "lane-0 store data (dual stores)"),
-    "s1":        ([(6, 0)],   "read 4",  "lane-1 store data (dual stores)"),
-    "rs_datax":  ([(6, 0)],   "read 4",  "store data (indexed stores)"),
-    "rd":        ([(25, 21)], "write A", "load destination (LS-A bank)"),
-    "d0":        ([(25, 21)], "write A", "lane-0 destination (LS-A bank)"),
-    "d1":        ([(6, 2)],   "write B", "lane-1 destination (LS-B bank)"),
-    "imm14":     ([(13, 0)],  None,      "signed byte offset"),
-    "imm12":     ([(25, 21), (6, 0)], None, "signed byte offset (split)"),
-    "imm7":      ([(6, 0)],   None,      "signed byte offset (exchange)"),
+    "opcode6":   ([(35, 30)], None,      "classic-tier opcode (bit 35 = 0)"),
+    "opcode4":   ([(35, 32)], None,      "dual-tier opcode (bit 35 = 1)"),
+    "rs_base":   ([(7, 0)],   "read 1",  "base address register"),
+    "rs_index":  ([(15, 8)],  "read 2",  "index register (indexed loads)"),
+    "rs_data":   ([(15, 8)],  "read 2",  "store data (classic stores)"),
+    "rs_stride": ([(15, 8)],  "read 2",  "signed word stride (dual ops)"),
+    "s0":        ([(31, 24)], "read 3",  "lane-0 store data (dual stores)"),
+    "s1":        ([(23, 16)], "read 4",  "lane-1 store data (dual stores)"),
+    "rs_datax":  ([(23, 16)], "read 4",  "store data (indexed stores)"),
+    "rs_mov":    ([(7, 0)],   "read 1",  "move source (lane 0 for MOV2)"),
+    "rs_mov1":   ([(15, 8)],  "read 2",  "move source, lane 1 (MOV2)"),
+    "rd":        ([(29, 25)], "write A", "load destination (LS-A bank)"),
+    "d0":        ([(29, 25)], "write A", "lane-0 destination (LS-A bank)"),
+    "d1":        ([(20, 16)], "write B", "lane-1 destination (LS-B bank)"),
+    "imm17":     ([(24, 8)],  None,      "signed byte offset"),
+    "imm14":     ([(29, 16)], None,      "signed byte offset"),
+    "imm9":      ([(24, 16)], None,      "signed byte offset (exchange)"),
 }
 
 # Immediates are two's complement; every other field is unsigned.
-SIGNED = {"imm14", "imm12", "imm7"}
+SIGNED = {"imm17", "imm14", "imm9"}
 
 # Field name shown to the reader where it differs from the table key
 # (rs_datax is the port-4 rail; the assembler operand is still rs_data).
-DISPLAY = {"rs_datax": "rs_data"}
+DISPLAY = {"rs_datax": "rs_data", "rs_mov": "rs", "rs_mov1": "rs1"}
 
 
 # ---------------------------------------------------------------- formats
 # name -> (field list, reserved bit list, layout note)
 FORMATS = {
-    "N":     (["opcode6"], list(range(0, 26)), "no operand payload"),
-    "L":     (["opcode6", "rd", "rs_base", "imm14"], [], "base + immediate load"),
-    "S":     (["opcode6", "imm12", "rs_base", "rs_data"], [], "base + immediate store"),
-    "LX":    (["opcode6", "rd", "rs_base", "rs_index"], list(range(0, 7)),
+    "N":     (["opcode6"], list(range(0, 30)), "no operand payload"),
+    "L":     (["opcode6", "rd", "rs_base", "imm17"], [], "base + immediate load"),
+    "S":     (["opcode6", "imm14", "rs_base", "rs_data"], [], "base + immediate store"),
+    "LX":    (["opcode6", "rd", "rs_base", "rs_index"], list(range(16, 25)),
               "base + index load"),
     "SX":    (["opcode6", "rs_base", "rs_index", "rs_datax"],
-              list(range(21, 26)), "base + index store"),
-    "X":     (["opcode6", "rd", "rs_base", "rs_data", "imm7"], [],
+              list(range(24, 30)), "base + index store"),
+    "X":     (["opcode6", "rd", "rs_base", "rs_data", "imm9"], [],
               "exchange: store and return the pre-write word"),
-    "L2":    (["opcode6", "d0", "rs_base", "rs_stride", "d1"], [0, 1],
+    "L2":    (["opcode6", "d0", "rs_base", "rs_stride", "d1"], list(range(21, 25)),
               "dual strided load"),
     "ST2":   (["opcode4", "s0", "rs_base", "rs_stride", "s1"], [],
               "dual store, width in opcode"),
+    "M":     (["opcode6", "rd", "rs_mov"], list(range(8, 25)),
+              "register move into LS-A"),
+    "M2":    (["opcode6", "d0", "rs_mov", "rs_mov1", "d1"], list(range(21, 25)),
+              "dual register move into LS-A and LS-B"),
 }
 
 TIERS = {  # tier -> (opcode field, opcode width, first code, last code)
@@ -118,7 +141,7 @@ INSTRUCTIONS = [
     I("LHUX",  "classic", 0b001101, "LX", {}, "rd, (rs_base, rs_index)",
       "rd <- zero_ext(mem16[rs_base + rs_index])"),
 
-    # dual strided loads: only 24 payload bits, so they live in the
+    # dual strided loads: only 26 payload bits, so they live in the
     # classic tier with width and sign folded into the opcode
     I("LD2B",  "classic", 0b001110, "L2", {}, "d0, d1, (rs_base, rs_stride)",
       "d0 <- sign_ext(mem8[EA0]); d1 <- sign_ext(mem8[EA1])"),
@@ -141,6 +164,13 @@ INSTRUCTIONS = [
     I("XCHW",  "classic", 0b010110, "X",  {}, "rd, rs_data, imm(rs_base)",
       "rd <- mem32[EA]; mem32[EA] <- rs_data   (EA = rs_base + imm)"),
 
+    # register moves: the LS slot has no ALU, so a copy into its own banks
+    # cannot be synthesised the way the ALU slots do it with ADD/XOR
+    I("MOV",   "classic", 0b010111, "M",  {}, "rd, rs",
+      "rd <- rs   (any bank -> LS-A)"),
+    I("MOV2",  "classic", 0b011000, "M2", {}, "d0, d1, (rs, rs1)",
+      "d0 <- rs; d1 <- rs1   (any banks -> LS-A, LS-B)"),
+
     # dual tier: the four-source stores, the only ops needing 28 payload bits
     I("ST2",   "dual", 0b1000, "ST2", {}, "(rs_base, rs_stride), s0, s1",
       "mem32[EA0] <- s0; mem32[EA1] <- s1"),
@@ -152,12 +182,14 @@ INSTRUCTIONS = [
 
 # EA_i = rs_base + i * rs_stride (words) for the dual tier; EA = rs_base +
 # sign_ext(imm) (bytes) for the classic tier -- LOAD_STORE.md 3.5 / 10.
-LATENCY = ("Load results retire at W + 2 in the baseline configuration, and "
-           "one cycle later for each of the memory's BRAM_OUT_REG and ADRREG "
-           "options. A conflicting dual access (stride divisible by 3) is "
-           "split by the hardware: it costs one extra cycle and returns d1 "
-           "one cycle after d0. Stores produce no register result. See "
-           "LOAD_STORE.md sections 5.1 and 10.4.")
+LATENCY = ("Every LS result retires at W + 2 in the baseline configuration, "
+           "and one cycle later for each of the memory's BRAM_OUT_REG and "
+           "ADRREG options -- MOV and MOV2 included, even though they never "
+           "reach the memory, so that the one write port per bank sees at "
+           "most one result per cycle. A conflicting dual access (stride "
+           "divisible by 3) is split by the hardware: it costs one extra "
+           "cycle and returns d1 one cycle after d0. Stores produce no "
+           "register result. See LOAD_STORE.md sections 5.1 and 10.4.")
 
 
 def common_prefix(names):
@@ -311,9 +343,10 @@ def check():
                 err.append("%s: subfield %s value %d too wide"
                            % (inst["mnemonic"], f, v))
 
-    # tier prefixes must be disjoint (bit 31 discriminates)
-    if TIERS["classic"][3] >> 5 != 0 or TIERS["dual"][2] >> 3 != 1:
-        err.append("tier prefixes overlap on bit 31")
+    # tier prefixes must be disjoint (the top slot bit discriminates)
+    if (TIERS["classic"][3] >> (TIERS["classic"][1] - 1) != 0
+            or TIERS["dual"][2] >> (TIERS["dual"][1] - 1) != 1):
+        err.append("tier prefixes overlap on bit %d" % TIER_BIT)
 
     # NOP must be the all-zero word
     nop = [i for i in INSTRUCTIONS if i["mnemonic"] == "NOP"]
@@ -331,7 +364,7 @@ def check():
             lo, hi = field_limits(f)
             ops[f] = lo + ((k + 1) * 0x2B) % (hi - lo + 1)
         word = encode(inst, ops)
-        tier = "dual" if (word >> 31) & 1 else "classic"
+        tier = "dual" if (word >> TIER_BIT) & 1 else "classic"
         if tier != inst["tier"]:
             err.append("%s: encodes into the %s tier" % (inst["mnemonic"], tier))
             continue
@@ -462,10 +495,10 @@ def _runs(bits):
 
 
 def bit_diagram(inst):
-    """'[31:26]=000011  rd[25:21]  rs_base[20:14]  imm14[13:0]'
+    """'[35:30]=000011  rd[29:25]  imm17[24:8]  rs_base[7:0]'
 
     Lists every field and every reserved run in descending bit order, so
-    the diagram accounts for all 32 bits of the slot.
+    the diagram accounts for all SLOT_WIDTH bits of the slot.
     """
     fields, reserved, _ = FORMATS[inst["format"]]
     parts = []
@@ -488,10 +521,13 @@ def bit_diagram(inst):
 def emit_asm():
     print("VLIW Load/Store slot -- instruction reference")
     print("=" * 76)
-    print("\nEvery instruction is one 32-bit slot of the 128-bit VLIW word.")
-    print("Sources are 7-bit global register addresses (3-bit bank + 5-bit")
-    print("register, any bank); destinations are 5-bit with the bank implicit")
-    print("(rd/d0 -> LS-A, d1 -> LS-B).\n")
+    print("\nEvery instruction is one %d-bit slot of the %d-bit VLIW word."
+          % (SLOT_WIDTH, 4 * SLOT_WIDTH))
+    print("Sources are %d-bit global register addresses (%d-bit bank + %d-bit"
+          % (SRC_ADDR_BITS, BANK_SEL_BITS, REG_SEL_BITS))
+    print("register, any of the %d banks); destinations are %d-bit with the"
+          % (NUM_BANKS, REG_SEL_BITS))
+    print("bank implicit (rd/d0 -> LS-A, d1 -> LS-B).\n")
     print(textwrap.fill(LATENCY, 76) + "\n")
 
     for tier in TIERS:
@@ -571,7 +607,8 @@ def emit_sv():
                            for m, l in FIELDS[n][0])
         body = chunks if len(FIELDS[n][0]) == 1 else "{%s}" % chunks
         print("   function automatic logic [%d:0] ls_%s"
-              "(input logic [31:0] inst);" % (field_width(n) - 1, n))
+              "(input logic [%d:0] inst);"
+              % (field_width(n) - 1, n, SLOT_WIDTH - 1))
         print("      return %s;" % body)
         print("   endfunction\n")
     print("   /* verilator lint_on UNUSEDSIGNAL */")
@@ -585,18 +622,18 @@ def emit_decode(text):
         word = (int(text, 0) if text.startswith(("0x", "0b", "0o"))
                 else int(text, 16))
     except ValueError:
-        print("error: %r is not a 32-bit word (use 0x..., 0b... or bare hex)"
-              % text)
+        print("error: %r is not a %d-bit word (use 0x..., 0b... or bare hex)"
+              % (text, SLOT_WIDTH))
         return
-    word &= 0xFFFFFFFF
-    tier = "dual" if (word >> 31) & 1 else "classic"
+    word &= SLOT_MASK
+    tier = "dual" if (word >> TIER_BIT) & 1 else "classic"
     opf, width, _, _ = TIERS[tier]
     op = extract(opf, word)
     hits = [i for i in INSTRUCTIONS
             if i["tier"] == tier and i["opcode"] == op
             and all(extract(f, word) == v for f, v in i["sub"].items())]
-    print("word     0x%08X  (%s tier, opcode %s)"
-          % (word, tier, format(op, "0%db" % width)))
+    print("word     0x%0*X  (%s tier, opcode %s)"
+          % (SLOT_HEX, word, tier, format(op, "0%db" % width)))
     if not hits:
         print("         reserved opcode -> illegal-instruction trap")
         return
@@ -608,7 +645,8 @@ def emit_decode(text):
         v = value(f, word)
         note = ""
         if FIELDS[f][1] in ("read 1", "read 2", "read 3", "read 4"):
-            note = "  (bank %d, reg %d)" % (v >> 5, v & 0x1F)
+            note = "  (bank %d, reg %d)" % (v >> REG_SEL_BITS,
+                                            v & ((1 << REG_SEL_BITS) - 1))
         print("  %-9s %-18s = %d%s" % (display(f), field_str(f), v, note))
 
 
@@ -625,10 +663,29 @@ class _Tests(unittest.TestCase):
         for name in FIELDS:
             self.assertEqual(field_width(name), len(field_bits(name)), name)
 
-    def test_split_field_round_trip(self):
-        lo, hi = field_limits("imm12")                   # all 4096 values
-        for v in range(lo, hi + 1):
-            self.assertEqual(value("imm12", place("imm12", v)), v)
+    def test_every_field_round_trips(self):
+        for name in FIELDS:
+            lo, hi = field_limits(name)
+            vals = (range(lo, hi + 1) if hi - lo < 4096
+                    else (lo, lo + 1, -1, 0, 1, hi - 1, hi))
+            for v in vals:
+                self.assertEqual(value(name, place(name, v)), v, (name, v))
+
+    def test_split_field_machinery(self):
+        # No field is split in the 36-bit map (every immediate is
+        # contiguous). Keep the reassembly path covered so a future split
+        # encoding cannot regress silently.
+        FIELDS["_probe"] = ([(29, 25), (7, 0)], None, "test-only split field")
+        SIGNED.add("_probe")
+        try:
+            lo, hi = field_limits("_probe")              # 13 bits, signed
+            self.assertEqual((lo, hi), (-4096, 4095))
+            for v in range(lo, hi + 1):
+                self.assertEqual(value("_probe", place("_probe", v)), v)
+            self.assertEqual(field_str("_probe"), "{[29:25], [7:0]}")
+        finally:
+            del FIELDS["_probe"]
+            SIGNED.discard("_probe")
 
     def test_place_lands_only_in_own_bits(self):
         for name in FIELDS:
@@ -638,32 +695,34 @@ class _Tests(unittest.TestCase):
                              field_bits(name), name)
 
     def test_field_str_formats(self):
-        self.assertEqual(field_str("rs_base"), "[20:14]")
-        self.assertEqual(field_str("imm12"), "{[25:21], [6:0]}")
+        self.assertEqual(field_str("rs_base"), "[7:0]")
+        self.assertEqual(field_str("imm17"), "[24:8]")
 
     def test_nop_is_all_zero_word(self):
         self.assertEqual(encode(_inst("NOP")), 0)
 
     def test_golden_lw(self):
-        # LW rd=3, rs_base=bank0:reg20, imm14=64
+        # LW rd=3, rs_base=bank0:reg20, imm17=64
+        # op6=000011 [35:30] | rd=3 [29:25] | imm=64 [24:8] | base=20 [7:0]
         self.assertEqual(
-            encode(_inst("LW"), {"rd": 3, "rs_base": 20, "imm14": 64}),
-            0x0C650040)
+            encode(_inst("LW"), {"rd": 3, "rs_base": 20, "imm17": 64}),
+            0xC6004014)
 
-    def test_golden_sw_split_immediate(self):
-        # SW rs_data=bank0:reg5, rs_base=bank0:reg20, imm12=-1348 (0xABC)
+    def test_golden_sw(self):
+        # SW rs_data=bank0:reg5, rs_base=bank0:reg20, imm14=-1348 (0x3ABC)
+        # op6=001000 [35:30] | imm [29:16] | data=5 [15:8] | base=20 [7:0]
         self.assertEqual(
             encode(_inst("SW"),
-                   {"rs_data": 5, "rs_base": 20, "imm12": -1348}),
-            0x22A502BC)
+                   {"rs_data": 5, "rs_base": 20, "imm14": -1348}),
+            0x23ABC0514)
 
     def test_golden_st2(self):
         # ST2 s0=bank1:reg3, base=bank0:reg20, stride=bank0:reg1, s1=bank2:reg7
-        # (re-blessed when ST2 moved to dual opcode 1000)
+        # op4=1000 [35:32] | s0 [31:24] | s1 [23:16] | stride [15:8] | base [7:0]
         self.assertEqual(
             encode(_inst("ST2"), {"s0": (1 << 5) | 3, "rs_base": 20,
                                   "rs_stride": 1, "s1": (2 << 5) | 7}),
-            0x846500C7)
+            0x823470114)
 
     def test_ld2_variants_are_distinct_classic_opcodes(self):
         names = ("LD2B", "LD2BU", "LD2H", "LD2HU", "LD2W")
@@ -672,15 +731,16 @@ class _Tests(unittest.TestCase):
         self.assertEqual(len(set(words.values())), len(words))
         for m, w in words.items():
             self.assertEqual(_inst(m)["tier"], "classic")
-            self.assertFalse(w >> 31, m)          # classic tier
+            self.assertFalse(w >> TIER_BIT, m)    # classic tier
             self.assertEqual(extract("opcode6", w), _inst(m)["opcode"])
 
     def test_golden_ld2w(self):
         # LD2W d0=3, d1=7, rs_base=bank0:reg20, rs_stride=bank0:reg1
+        # op6=010010 [35:30] | d0 [29:25] | d1 [20:16] | stride [15:8] | base
         self.assertEqual(
             encode(_inst("LD2W"), {"d0": 3, "d1": 7, "rs_base": 20,
                                    "rs_stride": 1}),
-            0x4865009C)
+            0x486070114)
 
     def test_only_four_source_ops_use_the_dual_tier(self):
         for inst in INSTRUCTIONS:
@@ -689,10 +749,10 @@ class _Tests(unittest.TestCase):
             self.assertEqual(inst["tier"] == "dual", len(reads) == 4,
                              inst["mnemonic"])
 
-    def test_tier_selected_by_bit31(self):
+    def test_tier_selected_by_top_slot_bit(self):
         for inst in INSTRUCTIONS:
             word = encode(inst)
-            self.assertEqual(bool(word >> 31), inst["tier"] == "dual",
+            self.assertEqual(bool(word >> TIER_BIT), inst["tier"] == "dual",
                              inst["mnemonic"])
 
     def test_every_instruction_round_trips(self):
@@ -701,7 +761,7 @@ class _Tests(unittest.TestCase):
             ops = {f: 1 for f in fields
                    if not f.startswith("opcode") and f not in inst["sub"]}
             word = encode(inst, ops)
-            tier = "dual" if word >> 31 else "classic"
+            tier = "dual" if word >> TIER_BIT else "classic"
             hits = [c["mnemonic"] for c in INSTRUCTIONS
                     if c["tier"] == tier
                     and c["opcode"] == extract(TIERS[tier][0], word)
@@ -715,16 +775,17 @@ class _Tests(unittest.TestCase):
                 encode(_inst("LW"), {"rd": bad})
 
     def test_encode_rejects_out_of_range_immediate(self):
-        lo, hi = field_limits("imm7")             # XCHW offset: -64..63
-        self.assertEqual((lo, hi), (-64, 63))
-        encode(_inst("XCHW"), {"imm7": lo})       # bounds are accepted
-        encode(_inst("XCHW"), {"imm7": hi})
+        lo, hi = field_limits("imm9")             # XCHW offset: -256..255
+        self.assertEqual((lo, hi), (-256, 255))
+        encode(_inst("XCHW"), {"imm9": lo})       # bounds are accepted
+        encode(_inst("XCHW"), {"imm9": hi})
         for bad in (hi + 1, lo - 1):
             with self.assertRaises(ValueError, msg=bad):
-                encode(_inst("XCHW"), {"imm7": bad})
+                encode(_inst("XCHW"), {"imm9": bad})
 
     def test_negative_immediates_round_trip(self):
-        for name, mnemonic in (("imm14", "LW"), ("imm7", "XCHW")):
+        for name, mnemonic in (("imm17", "LW"), ("imm14", "SW"),
+                               ("imm9", "XCHW")):
             lo, hi = field_limits(name)
             for v in (lo, -4, -1, 0, 1, hi):
                 word = encode(_inst(mnemonic), {name: v})
@@ -732,10 +793,19 @@ class _Tests(unittest.TestCase):
                 self.assertGreaterEqual(extract(name, word), 0)   # raw bits
 
     def test_unsigned_fields_are_not_sign_extended(self):
-        word = encode(_inst("LW"), {"rs_base": 0x7F})
-        self.assertEqual(value("rs_base", word), 0x7F)
+        word = encode(_inst("LW"), {"rs_base": 0xFF})    # bank 7, reg 31
+        self.assertEqual(value("rs_base", word), 0xFF)
 
-    def test_bit_diagram_accounts_for_all_32_bits(self):
+    def test_source_field_addresses_every_bank(self):
+        # 8-bit sources: 3 bits of bank select over 5 populated banks
+        self.assertEqual(field_width("rs_base"), SRC_ADDR_BITS)
+        for bank in range(NUM_BANKS):
+            for reg in (0, (1 << REG_SEL_BITS) - 1):
+                addr = (bank << REG_SEL_BITS) | reg
+                word = encode(_inst("LW"), {"rs_base": addr})
+                self.assertEqual(value("rs_base", word), addr)
+
+    def test_bit_diagram_accounts_for_all_slot_bits(self):
         for inst in INSTRUCTIONS:
             diagram = bit_diagram(inst)
             covered = set()
@@ -758,18 +828,18 @@ class _Tests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as out:
             emit_asm()
         text = out.getvalue()
-        self.assertIn("rs_data[6:0]", text)       # not the rs_datax rail name
+        self.assertIn("rs_data[23:16]", text)     # not the rs_datax rail name
         self.assertNotIn("rs_datax", text)
 
     def test_decode_reports_a_bad_argument_without_a_traceback(self):
         with contextlib.redirect_stdout(io.StringIO()) as out:
             emit_decode("not-a-word")
-        self.assertIn("is not a 32-bit word", out.getvalue())
+        self.assertIn("is not a 36-bit word", out.getvalue())
 
     def test_decode_shows_signed_immediates(self):
-        word = encode(_inst("LW"), {"rd": 1, "rs_base": 2, "imm14": -4})
+        word = encode(_inst("LW"), {"rd": 1, "rs_base": 2, "imm17": -4})
         with contextlib.redirect_stdout(io.StringIO()) as out:
-            emit_decode("0x%08X" % word)
+            emit_decode("0x%0*X" % (SLOT_HEX, word))
         self.assertIn("= -4", out.getvalue())
 
     def test_encode_rejects_field_absent_from_format(self):
@@ -778,7 +848,7 @@ class _Tests(unittest.TestCase):
 
     def test_rails_are_shared_not_moved(self):
         rail2 = {"rs_index", "rs_data", "rs_stride"}
-        self.assertEqual({field_str(f) for f in rail2}, {"[13:7]"})
+        self.assertEqual({field_str(f) for f in rail2}, {"[15:8]"})
         self.assertEqual(field_str("rd"), field_str("d0"))
 
     def test_common_prefix(self):
@@ -795,7 +865,7 @@ class _Tests(unittest.TestCase):
         try:
             with contextlib.redirect_stderr(io.StringIO()) as err:
                 self.assertEqual(check(), 1)
-            self.assertIn("covers 18 bits", err.getvalue())
+            self.assertIn("covers 19 bits", err.getvalue())
         finally:
             FORMATS["L"] = saved
 
@@ -810,9 +880,9 @@ class _Tests(unittest.TestCase):
             # a stale opcode value in the map
             ("| `010110` | `XCHW`", "| `010111` | `XCHW`", "doc opcode"),
             # a field moved off its rail
-            ("| `rs_base`   | `[20:14]`", "| `rs_base`   | `[18:12]`", "field rs_base"),
+            ("| `rs_base`   | `[7:0]`", "| `rs_base`   | `[9:2]`", "field rs_base"),
             # a stale reserved-range count
-            ("(9 entries)", "(11 entries)", "classic tier reserved"),
+            ("(7 entries)", "(11 entries)", "classic tier reserved"),
             # an instruction dropped from the doc
             ("| `010101` | `SBX`", "| `010101` | `SBXX`", "SBX"),
         )
@@ -833,14 +903,14 @@ class _Tests(unittest.TestCase):
         fields, ops = _parse_doc(
             "| `LB` | `SB`  | byte (8-bit) | sign-extended to 32 |\n"
             "| -9   | `LOOP_ACTIVE` | 1 | RW | flag |\n"
-            "| [31:26] | [25:21] | [20:14] | [13:0] |\n"
-            "| `rd` | `[25:21]` | 5 | write A addr | loads |\n"
+            "| [35:30] | [29:25] | [24:8] | [7:0] |\n"
+            "| `rd` | `[29:25]` | 5 | write A addr | loads |\n"
             "| `000011` | `LW` | `rd, imm(rs_base)` | load word | x |\n")
         self.assertEqual(list(fields), ["rd"])
         self.assertEqual(ops, {"LW": "000011"})
 
     def test_emitters_produce_expected_content(self):
-        for emit, needles in ((emit_asm, ("LD2HU", "reserved", "[31:28]")),
+        for emit, needles in ((emit_asm, ("LD2HU", "reserved", "[35:32]")),
                               (emit_md, ("| `rs_base` |", "opcode map")),
                               (emit_sv, ("package ls_isa_pkg;",
                                          "LS_OP_LD2", "endpackage"))):
@@ -851,12 +921,12 @@ class _Tests(unittest.TestCase):
 
     def test_decode_reports_reserved_opcode(self):
         with contextlib.redirect_stdout(io.StringIO()) as out:
-            emit_decode("0xF0000000")
+            emit_decode("0xF00000000")
         self.assertIn("illegal-instruction trap", out.getvalue())
 
     def test_decode_reports_banks_and_registers(self):
         with contextlib.redirect_stdout(io.StringIO()) as out:
-            emit_decode("0x946500C7")
+            emit_decode("0x923470114")
         text = out.getvalue()
         self.assertIn("ST2", text)
         self.assertIn("bank 2, reg 7", text)          # s1

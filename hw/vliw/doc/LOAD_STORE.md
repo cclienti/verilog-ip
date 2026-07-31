@@ -18,9 +18,9 @@ load/store reordering — the data path is a directly-addressed scratchpad
 (ARCHITECTURE.md §Memory Model), and the single in-order port makes memory
 accesses program-ordered by construction (§6).
 
-The core adds no dedicated hardware for interrupt context save: the handler
-spills and fills registers through this slot with ordinary `store`/`load`
-(ARCHITECTURE.md §Interrupts and Exceptions).
+There are no interrupts and no trap handlers, so this slot carries no
+context-save duty: a fault halts the core and the host inspects the register
+file over the NI port (ARCHITECTURE.md §Faults and Host Control).
 
 ---
 
@@ -32,13 +32,26 @@ results); destinations are 5-bit with the bank implicit from the lane.
 
 | Port        | Count | Width                               | Purpose                                   |
 |-------------|-------|-------------------------------------|-------------------------------------------|
-| Read ports  | **4** | 7-bit addr (3-bit bank + 5-bit reg) | `rs_base`; `rs_index`/`rs_stride`/`rs_data`; `s0`; `s1` |
+| Read ports  | **4** | 8-bit addr (3-bit bank + 5-bit reg) | `rs_base`; `rs_index`/`rs_stride`/`rs_data`; `s0`; `s1` |
 | Write ports | **2** | 5-bit addr, bank implicit from lane | `rd`/`d0` (LS-A); `d1` (LS-B)             |
+
+The register file holds **5 banks of 32 registers** (160 architectural
+names). Each bank has **one write port and ten read ports**, the read
+ports being LUTRAM replicas of the same content, so every one of the
+bundle's ten reads addresses any bank independently — there is no
+per-bank read limit. The partitioning is on the **write** side: one bank
+per slot, and two for the LS slot (LS-A, LS-B).
+
+A source address is therefore 8 bits — `bank[2:0]` selects one of the five
+populated banks and `reg[4:0]` the register within it. Depth 32 is not a
+free parameter: Xilinx distributed RAM has a minimum primitive depth of 32
+words, so a shallower bank would occupy exactly the same LUTs while halving
+the name space.
 
 Maximum simultaneous demand is set by the dual store (§10.2): `rs_base` +
 `rs_stride` + `s0` + `s1` = **4 reads**; the dual load writes `d0` + `d1` =
 **2 writes**. No instruction does both: reads 3/4 carry store data and
-write B carries a load result, so the two never coexist. All sources are full 7-bit **global** addresses (any bank, any
+write B carries a load result, so the two never coexist. All sources are full 8-bit **global** addresses (any bank, any
 slot's results); destinations are 5-bit.
 
 | Instruction class          | Writes    | Reads                                  |
@@ -50,6 +63,8 @@ slot's results); destinations are 5-bit.
 | `XCHW` (exchange)          | `rd`      | `rs_base`, `rs_data`                   |
 | `LD2*` (dual load)         | `d0`,`d1` | `rs_base`, `rs_stride`                 |
 | `ST2*` (dual store)        | —         | `rs_base`, `rs_stride`, `s0`, `s1`     |
+| `MOV` (register move)      | `rd`      | `rs`                                   |
+| `MOV2` (dual move)         | `d0`,`d1` | `rs`, `rs1`                            |
 
 ### 2.1 Operand rails (encoding constraint)
 
@@ -61,12 +76,18 @@ head of the register-read path:
 
 | Port          | Rail      | Roles carried                                        |
 |---------------|-----------|------------------------------------------------------|
-| read 1        | `[20:14]` | `rs_base` (every memory instruction)                 |
-| read 2        | `[13:7]`  | `rs_index`, `rs_stride`, `rs_data` (classic store)   |
-| read 3        | `[27:21]` | `s0` (dual stores — dual tier only)                  |
-| read 4        | `[6:0]`   | `s1` (dual stores), `rs_datax` (indexed stores)      |
-| write A addr  | `[25:21]` | `rd`, `d0`                                           |
-| write B addr  | `[6:2]`   | `d1`                                                 |
+| read 1        | `[7:0]`   | `rs_base` (every memory instruction), `rs_mov`       |
+| read 2        | `[15:8]`  | `rs_index`, `rs_stride`, `rs_data` (classic store), `rs_mov1` |
+| read 3        | `[31:24]` | `s0` (dual stores — dual tier only)                  |
+| read 4        | `[23:16]` | `s1` (dual stores), `rs_datax` (indexed stores)      |
+| write A addr  | `[29:25]` | `rd`, `d0`                                           |
+| write B addr  | `[20:16]` | `d1`                                                 |
+
+The four read rails are the four **bytes** of `[31:0]`. That alignment is
+forced by the dual store, which carries four 8-bit sources and no
+destination and therefore tiles the payload exactly; every other format
+inherits it, which is what leaves each classic-tier immediate in one
+contiguous run.
 
 Consequences:
 
@@ -74,19 +95,21 @@ Consequences:
   immediate field or reserved; the corresponding port still issues a read,
   which is simply discarded — with no interlock to mislead, an unused rail
   needs no valid bit at all.
-- Rail 3 overlaps opcode bits in the classic tier, so `s0` exists only in
-  the dual tier — which is exactly the set of instructions needing four
-  reads (the dual stores). Rail 4 is reachable from both tiers.
+- Rail 3 `[31:24]` overlaps the classic-tier opcode `[35:30]` on its two
+  top bits, so `s0` exists only in the dual tier — which is exactly the
+  set of instructions needing four reads (the dual stores). Rail 4 is
+  reachable from both tiers.
 - An indexed **store** reads three registers, and puts its data on rail 4
   (`rs_datax`) rather than rail 2: that keeps `rs_index` on rail 2 with
   the indexed loads, so the effective-address adder's second operand is
   always read port 2 and the **address** path needs no multiplexer. The
   cost lands on the store-data multiplexer instead — the shorter path.
-- The residual multiplexing is on the **data** side (lane-0 write data
-  comes from rail 2 for a classic store, rail 3 for a dual store) and on
-  the immediate reassembly path — both off the register-read address
-  path, which is the timing-critical one (the RR→EX1 path,
-  ARCHITECTURE.md §Pipeline).
+- The residual multiplexing is on the **data** side only: lane-0 write
+  data comes from rail 2 for a classic store and from rail 3 for a dual
+  store. That path is off the register-read address path, which is the
+  timing-critical one (the RR→EX1 path, ARCHITECTURE.md §Pipeline). No
+  immediate is split in the 36-bit map, so there is no reassembly path
+  left at all.
 
 Source-register hazards are the **compiler's responsibility**: the core
 ships without an interlock, so a source read before its producer's latency
@@ -98,27 +121,31 @@ in-order port (§6).
 
 ## 3. Instruction Set
 
-Memory instructions are encoded in a **32-bit slot** with a **two-tier
-opcode**, split by bit 31:
+Memory instructions are encoded in a **36-bit slot** with a **two-tier
+opcode**, split by bit 35:
 
 ```
-[31] = 0:   [31:26]    [25:0]           classic tier: flat 6-bit opcode
-            opcode(6)  payload(26)      (values 000000–011111, 32 codes)
+[35] = 0:   [35:30]    [29:0]           classic tier: flat 6-bit opcode
+            opcode(6)  payload(30)      (values 000000–011111, 32 codes)
 
-[31] = 1:   [31:28]    [27:0]           dual-access tier: 4-bit opcode
-            opcode(4)  payload(28)      (values 1000–1111, 8 codes — §10.2)
+[35] = 1:   [35:32]    [31:0]           dual-access tier: 4-bit opcode
+            opcode(4)  payload(32)      (values 1000–1111, 8 codes — §10.2)
 ```
 
-The **dual stores** (§10.2) read four 7-bit registers — `rs_base`,
-`rs_stride`, `s0`, `s1` = 28 payload bits — which a 6-bit opcode cannot
+The slot is 36 bits and the bundle 4 × 36 = **144 bits**, which is one
+Xilinx BRAM36 per slot in 36-bit mode: the instruction memory needs no
+word splitting and wastes no parity bits.
+
+The **dual stores** (§10.2) read four 8-bit registers — `rs_base`,
+`rs_stride`, `s0`, `s1` = 32 payload bits — which a 6-bit opcode cannot
 leave room for; the 4-bit tier trades opcode space for payload exactly
 there, and nothing else needs it. Dual *loads* read two registers and
-write two 5-bit destinations (24 bits), so they stay in the classic
+write two 5-bit destinations (26 bits), so they stay in the classic
 tier. By Kraft's budget the split costs the classic tier half its code
 points (32 remain — 23 used today).
 
 **NOP** is classic-tier `opcode = 000000` (the canonical empty-slot
-encoding; the assembler emits the all-zero word `0x00000000`).
+encoding; the assembler emits the all-zero word `0x000000000`).
 
 ### 3.1 Encoding reference card
 
@@ -134,32 +161,36 @@ use that role:
 
 | Field       | Bits                    | Width | Port / rail  | Used by                                  |
 |-------------|-------------------------|-------|--------------|------------------------------------------|
-| `opcode`    | `[31:26]`               | 6     | —            | classic tier (`[31] = 0`)                |
-| `opcode`    | `[31:28]`               | 4     | —            | dual tier (`[31] = 1`)                   |
-| `rs_base`   | `[20:14]`               | 7     | read 1       | **all** loads, stores, dual ops          |
-| `rs_index`  | `[13:7]`                | 7     | read 2       | indexed loads and stores (`L*X`, `S*X`)  |
-| `rs_data`   | `[13:7]`                | 7     | read 2       | classic stores (`SB`/`SH`/`SW`)          |
-| `rs_stride` | `[13:7]`                | 7     | read 2       | dual loads and stores                    |
-| `s0`        | `[27:21]`               | 7     | read 3       | `ST2*` (lane-0 store data)               |
-| `s1`        | `[6:0]`                 | 7     | read 4       | `ST2*` (lane-1 store data)               |
-| `rs_datax`  | `[6:0]`                 | 7     | read 4       | indexed stores (`SWX`/`SHX`/`SBX`)       |
-| `rd`        | `[25:21]`               | 5     | write A addr | all classic loads                        |
-| `d0`        | `[25:21]`               | 5     | write A addr | `LD2*` (lane-0 result → LS-A)            |
-| `d1`        | `[6:2]`                 | 5     | write B addr | `LD2*` (lane-1 result → LS-B)            |
-| `imm14`     | `[13:0]`                | 14    | —            | base+immediate loads                     |
-| `imm12`     | `{[25:21], [6:0]}`      | 12    | —            | classic stores (split, §3.3)             |
-| `imm7`      | `[6:0]`                 | 7     | —            | `XCHW` (§3.8)                            |
+| `opcode`    | `[35:30]`               | 6     | —            | classic tier (`[35] = 0`)                |
+| `opcode`    | `[35:32]`               | 4     | —            | dual tier (`[35] = 1`)                   |
+| `rs_base`   | `[7:0]`                 | 8     | read 1       | **all** loads, stores, dual ops          |
+| `rs_index`  | `[15:8]`                | 8     | read 2       | indexed loads and stores (`L*X`, `S*X`)  |
+| `rs_data`   | `[15:8]`                | 8     | read 2       | classic stores (`SB`/`SH`/`SW`)          |
+| `rs_stride` | `[15:8]`                | 8     | read 2       | dual loads and stores                    |
+| `s0`        | `[31:24]`               | 8     | read 3       | `ST2*` (lane-0 store data)               |
+| `s1`        | `[23:16]`               | 8     | read 4       | `ST2*` (lane-1 store data)               |
+| `rs_datax`  | `[23:16]`               | 8     | read 4       | indexed stores (`SWX`/`SHX`/`SBX`)       |
+| `rs_mov`    | `[7:0]`                 | 8     | read 1       | `MOV` source, `MOV2` lane 0 (§3.9)       |
+| `rs_mov1`   | `[15:8]`                | 8     | read 2       | `MOV2` lane 1 (§3.10)                    |
+| `rd`        | `[29:25]`               | 5     | write A addr | all classic loads                        |
+| `d0`        | `[29:25]`               | 5     | write A addr | `LD2*` (lane-0 result → LS-A)            |
+| `d1`        | `[20:16]`               | 5     | write B addr | `LD2*` (lane-1 result → LS-B)            |
+| `imm17`     | `[24:8]`                | 17    | —            | base+immediate loads                     |
+| `imm14`     | `[29:16]`               | 14    | —            | classic stores (§3.3)                    |
+| `imm9`      | `[24:16]`               | 9     | —            | `XCHW` (§3.8)                            |
 
 Notes on the map:
 
-- Rails may **overlap** between roles that never coexist: `s0` `[27:21]`
-  covers `d0` `[25:21]` (no instruction has both), and `s1` `[6:0]`
-  covers `d1` `[6:2]`. Each port still reads a constant slice.
+- Rails may **overlap** between roles that never coexist: `s0` `[31:24]`
+  covers `d0` `[29:25]` (no instruction has both), and `s1` `[23:16]`
+  covers `d1` `[20:16]`. Each port still reads a constant slice.
 - A port whose rail carries something else in the current instruction
   (an immediate, reserved bits, opcode bits) performs a harmless read or
   is write-disabled; decode provides the per-port valid bit (§2.1).
+- **No field is split.** Every immediate occupies one contiguous run, in
+  the bits the dual store spends on `s0`/`s1`.
 - All layouts (§3.2, §3.3, §3.6, §3.7, §3.8 and the two pair forms of
-  §10.2) account for exactly 32 bits.
+  §10.2) account for exactly 36 bits.
 
 The field map and both opcode maps are held as tables in
 `hw/vliw/tools/ls_isa.py`, which validates them (field widths, layout
@@ -200,21 +231,23 @@ tools/ls_isa.py --check | --check-doc | --md | --asm | --sv | --decode <word>
 | `010100` | `SHX`    | `rs_data, (rs_base, rs_index)` | store half indexed       | §3.7   |
 | `010101` | `SBX`    | `rs_data, (rs_base, rs_index)` | store byte indexed       | §3.7   |
 | `010110` | `XCHW`   | `rd, rs_data, imm(rs_base)`    | exchange word            | §3.8   |
+| `010111` | `MOV`    | `rd, rs`                       | register move to LS-A    | §3.9   |
+| `011000` | `MOV2`   | `d0, d1, (rs, rs1)`            | dual register move       | §3.10  |
 
-Reserved: classic-tier opcodes `010111`–`011111` (9 entries) and
+Reserved: classic-tier opcodes `011001`–`011111` (7 entries) and
 dual-tier opcodes `1011`–`1111` (5 entries, §10.2). Executing a reserved
-opcode raises an **illegal-instruction trap** (same entry path as `TRAP`;
-`trap_code` in `ABI.md`) — the assembler must never emit one.
+opcode **halts the core** with cause `ILLEGAL` (ARCHITECTURE.md §Faults and
+Host Control) — the assembler must never emit one.
 
 **Notes:**
-- `rs_base`, `rs_data` are **7-bit** global register addresses
+- `rs_base`, `rs_data` are **8-bit** global register addresses
   (`bank[2:0]` + `reg[4:0]`).
 - `rd`, `d0` and `d1` are **5-bit** with the bank implicit: `rd`/`d0`
   write LS-A, `d1` writes LS-B (§2).
 - The immediate is a **signed byte offset** (§3.5).
-- Load offset is `imm14` (**±8 KB**); store offset is `imm12` (**±2 KB**) — the
-  store spends 7 extra encoding bits on its second source register (§3.3);
-  `XCHW`'s offset is `imm7` (**±63 B**, §3.8).
+- Load offset is `imm17` (**±64 KB**); store offset is `imm14` (**±8 KB**) — the
+  store spends 8 extra encoding bits on its second source register (§3.3);
+  `XCHW`'s offset is `imm9` (**±255 B**, §3.8).
 - Register-**indexed** loads (`LBX`…`LHUX`, §3.6) and stores
   (`SWX`/`SHX`/`SBX`, §3.7) replace the immediate with a second source
   register `rs_index` (`EA = rs_base + rs_index`); the indexed store reads
@@ -222,29 +255,29 @@ opcode raises an **illegal-instruction trap** (same entry path as `TRAP`;
 
 ### 3.2 Load format
 
-| [31:26]   | [25:21] | [20:14]    | [13:0]    |
-|-----------|---------|------------|-----------|
-| opcode(6) | rd(5)   | rs_base(7) | imm14(14) |
+| [35:30]   | [29:25] | [24:8]    | [7:0]      |
+|-----------|---------|-----------|------------|
+| opcode(6) | rd(5)   | imm17(17) | rs_base(8) |
 
-- Effective address `EA = rs_base + sign_ext(imm14)` (byte address).
-- `imm14` signed → offset range **±8191 bytes (±8 KB)**.
+- Effective address `EA = rs_base + sign_ext(imm17)` (byte address).
+- `imm17` signed → offset range **±65535 bytes (±64 KB)**.
 - `rd <- extend(mem[EA])`, sign- or zero-extended per opcode (§3.4).
 
 ### 3.3 Store format
 
-| [31:26]   | [25:21]     | [20:14]    | [13:7]     | [6:0]      |
-|-----------|-------------|------------|------------|------------|
-| opcode(6) | imm[11:7]   | rs_base(7) | rs_data(7) | imm[6:0]   |
+| [35:30]   | [29:16]   | [15:8]     | [7:0]      |
+|-----------|-----------|------------|------------|
+| opcode(6) | imm14(14) | rs_data(8) | rs_base(8) |
 
-- Effective address `EA = rs_base + sign_ext(imm12)` (byte address), with
-  `imm12 = {inst[25:21], inst[6:0]}`.
-- `imm12` signed → offset range **±2047 bytes (±2 KB)**.
+- Effective address `EA = rs_base + sign_ext(imm14)` (byte address).
+- `imm14` signed → offset range **±8191 bytes (±8 KB)**.
 - `mem[EA] <- rs_data` over the addressed byte lane(s) only (§3.4).
-- A store reads **two** registers (`rs_data` + `rs_base`, both 7-bit), which is
-  why only 12 immediate bits remain versus the load's 14.
-- The immediate is **split** so that `rs_base` and `rs_data` stay on rails 1
-  and 2 (§2.1) — the same reason RISC-V splits its S-type immediate.
-  Reassembly is fixed wiring; the split costs nothing at run time.
+- A store reads **two** registers (`rs_data` + `rs_base`, both 8-bit), which is
+  why only 14 immediate bits remain versus the load's 17.
+- The immediate is **contiguous**: `rs_base` and `rs_data` sit on rails 1
+  and 2 (§2.1), which are the two low bytes, so the immediate takes the
+  bits above them in one run. The 36-bit slot removes the split that a
+  32-bit slot forced here (the same split RISC-V carries in its S-type).
 
 ### 3.4 Access widths and extension
 
@@ -271,8 +304,8 @@ opcode raises an **illegal-instruction trap** (same entry path as `TRAP`;
   addressing mode: half-word accesses (`LH/LHU/SH/SHX/LD2H/LD2HU/ST2H`) need
   `EA[0] = 0`; word accesses (`LW/SW/SWX/LD2W/ST2/XCHW`) need `EA[1:0] = 00`;
   byte accesses have no constraint. Each lane of a pair is checked
-  independently. A misaligned access raises an **alignment trap**
-  (synchronous, via the `TRAP` path; `trap_code` in `ABI.md`). The hardware
+  independently. A misaligned access **halts the core** with cause
+  `MISALIGN` (ARCHITECTURE.md §Faults and Host Control). The hardware
   does not split misaligned accesses.
 - Addressing modes are **base + immediate** (§3.2/§3.3/§3.8), **base + index
   register** (§3.6/§3.7) and **base + lane × stride register** (the pairs of
@@ -287,9 +320,9 @@ opcode raises an **illegal-instruction trap** (same entry path as `TRAP`;
 Register-indexed loads compute the effective address from **two registers**
 instead of base + immediate:
 
-| [31:26]   | [25:21] | [20:14]    | [13:7]      | [6:0]     |
-|-----------|---------|------------|-------------|-----------|
-| opcode(6) | rd(5)   | rs_base(7) | rs_index(7) | unused(7) |
+| [35:30]   | [29:25] | [24:16]   | [15:8]      | [7:0]      |
+|-----------|---------|-----------|-------------|------------|
+| opcode(6) | rd(5)   | unused(9) | rs_index(8) | rs_base(8) |
 
 - `EA = rs_base + rs_index` (byte address); the same width/extension (§3.4) and
   alignment (§3.5) rules apply. Available for all five load widths
@@ -304,9 +337,9 @@ instead of base + immediate:
 The store counterpart of §3.6, reading **three** registers — possible
 because the register file provides four read ports (§2):
 
-| [31:26]   | [25:21]   | [20:14]    | [13:7]      | [6:0]        |
-|-----------|-----------|------------|-------------|--------------|
-| opcode(6) | unused(5) | rs_base(7) | rs_index(7) | rs_datax(7)  |
+| [35:30]   | [29:24]   | [23:16]     | [15:8]      | [7:0]      |
+|-----------|-----------|-------------|-------------|------------|
+| opcode(6) | unused(6) | rs_datax(8) | rs_index(8) | rs_base(8) |
 
 - `EA = rs_base + rs_index` (byte address); `mem[EA] <- rs_data` over the
   addressed byte lane(s) only, with the same width (§3.4) and alignment
@@ -325,14 +358,14 @@ because the register file provides four read ports (§2):
 
 Writes a register to memory and returns the **pre-write** word:
 
-| [31:26]   | [25:21] | [20:14]    | [13:7]     | [6:0]     |
-|-----------|---------|------------|------------|-----------|
-| opcode(6) | rd(5)   | rs_base(7) | rs_data(7) | imm7(7)   |
+| [35:30]   | [29:25] | [24:16]  | [15:8]     | [7:0]      |
+|-----------|---------|----------|------------|------------|
+| opcode(6) | rd(5)   | imm9(9)  | rs_data(8) | rs_base(8) |
 
-- `EA = rs_base + sign_ext(imm7)` (byte address, word-aligned);
+- `EA = rs_base + sign_ext(imm9)` (byte address, word-aligned);
   `rd <- mem32[EA]` **and** `mem32[EA] <- rs_data` in one access.
-- The immediate is 7 bits (**±63 bytes**) because `rd` occupies the
-  field an immediate-offset store uses for `imm[11:7]` (§3.3).
+- The immediate is 9 bits (**±255 bytes**) because `rd` occupies five of
+  the bits an immediate-offset store spends on `imm14` (§3.3).
 - **Word only**: there are no `XCHB`/`XCHH` forms in this revision.
 - No memory support is required: the banks are READ_FIRST, so a write
   already presents the pre-write cell content on the read port (§10.3)
@@ -344,6 +377,61 @@ Writes a register to memory and returns the **pre-write** word:
   sample in `rd`, one access per tap step; flag or semaphore swap with
   the NoC interface (post a state and learn the previous one — §6);
   free-list pop.
+
+### 3.9 Register move (`MOV`)
+
+| [35:30]  | [29:25] | [24:8]      | [7:0] |
+|----------|---------|-------------|-------|
+| `010111` | rd(5)   | unused(17)  | rs(8) |
+
+- `rd <- rs`: copy any of the 160 global names into this slot's LS-A bank.
+  No memory access, no address computation.
+- **Why this slot needs a real opcode.** The register file is
+  write-local / read-global (§2): reads reach every bank, so a move is never
+  needed to *consume* a value — it is needed only to *place* one. The two ALU
+  slots and the control slot each own an ALU and synthesise the move as a
+  pseudo-instruction (`ADD rd, r0, rs`, or equally `XOR rd, rs, r0`); the LS
+  slot owns no ALU at all, only an address adder and the sub-word steering, so
+  it cannot. Adding a logic unit here to reach the same result would cost far
+  more than this opcode: `MOV` is a wire from read port 1 to the write port,
+  reusing the write-data multiplexer that already selects between load data
+  and the `XCHW` pre-write word.
+- **What it buys.** Without it, the only way to write LS-A / LS-B is a load, so
+  a kernel whose pressure sits in banks 0–1 cannot use the 64 free names in
+  banks 2–3 except through memory:
+
+```asm
+; without MOV — spill and refill through the scratchpad
+        SW     b0r5, 0(b4r1)        ; LS slot
+        LW     b2r1, 0(b4r1)        ; LS slot, plus load latency and traffic
+
+; with MOV
+        MOV    b2r1, b0r5           ; one LS slot, no memory access
+```
+
+- Retires at `W + 2` like every other LS result (§5.1) — see §3.10 for why it
+  is not made faster.
+
+### 3.10 Dual register move (`MOV2`)
+
+| [35:30]  | [29:25] | [24:21]   | [20:16] | [15:8]  | [7:0] |
+|----------|---------|-----------|---------|---------|-------|
+| `011000` | d0(5)   | unused(4) | d1(5)   | rs1(8)  | rs(8) |
+
+- `d0 <- rs` and `d1 <- rs1` in one issue: fills both LS banks in a single
+  cycle, the move counterpart of `LD2*` and on the same rails (§2.1).
+- Its four operands cost 26 payload bits, so it stays in the classic tier.
+
+**Latency is uniform across the slot, deliberately.** `MOV` and `MOV2` never
+reach the memory and could in principle retire earlier than a load, but each
+bank has exactly **one write port**. A `MOV` issued at `T` retiring at `T + 1`
+would collide with a load issued at `T - 1` retiring at the same cycle. Tying
+every LS result to the same retire distance — `W + 2`, plus one cycle per
+`BRAM_OUT_REG` / `ADRREG` option — makes LS results retire strictly in issue
+order, one per cycle, so the single write port can never be double-driven. The
+moves ride the pipeline registers alongside the load data; the cost is latency
+they do not need, and the gain is that the slot has one latency rule instead
+of two.
 
 ---
 
@@ -388,8 +476,8 @@ map; the loop registers are used by CONTROL_UNIT.md §4.8.
 - The `LOOP_*` registers access the **committed** loop state
   (CONTROL_UNIT.md §4.4). All reset to `0`.
 - MMIO registers are accessed with **word** operations (`LW`/`SW`) and must be
-  word-aligned; a sub-word or misaligned MMIO access raises an alignment trap,
-  which halts the core (ARCHITECTURE.md §Faults and Host Control).
+  word-aligned; a sub-word or misaligned MMIO access halts the core with
+  cause `MISALIGN` (ARCHITECTURE.md §Faults and Host Control).
 - Writes to **RO** registers have no effect; reads of narrow registers
   zero-extend to 32 bits.
 - Offsets are word offsets from the top of the backed region; e.g. `-1` is
@@ -418,6 +506,8 @@ scalar-ISA convention borrowed from RV32IM.
 | `XCHW`      | `rd` at **W + 2**                         | pre-write word (§3.8)         |
 | `LD2*`      | `d0` **and** `d1` at **W + 2**            | conflicting pair: +1 cycle, same latency (§10.4) |
 | `ST2*`      | — (no register result)                    | conflicting pair: +1 cycle (§10.4) |
+| `MOV`       | `rd` at **W + 2**                         | never reaches memory (§3.9)   |
+| `MOV2`      | `d0` **and** `d1` at **W + 2**            | never reaches memory (§3.10)  |
 
 Address calculation happens in EX1; the registered bank read returns data at
 EX2, so a load result retires at `W + 2` — the same distance as an ALU `ADD`
@@ -645,18 +735,18 @@ the classic tier's rails unchanged (`d0` shares the `rd` rail, `rs_base`
 rail 1, `rs_stride` rail 2):
 
 ```
-common:  [20:14] rs_base(7)  [13:7] rs_stride(7)          (rails 1, 2)
+common:  [7:0] rs_base(8)   [15:8] rs_stride(8)           (rails 1, 2)
 
-LD2*:    [31:26] opcode(6)  [25:21] d0(5)   [6:2] d1(5)   [1:0] rsvd
-ST2*:    [31:28] opcode(4)  [27:21] s0(7)   [6:0] s1(7)
+LD2*:    [35:30] opcode(6)  [29:25] d0(5)  [24:21] rsvd  [20:16] d1(5)
+ST2*:    [35:32] opcode(4)  [31:24] s0(8)  [23:16] s1(8)
 ```
 
 - `LD2B/LD2BU/LD2H/LD2HU/LD2W` are five classic opcodes, one per
   width and extension — the same convention as `LB/LBU/LH/LHU/LW`.
-- `ST2/ST2H/ST2B` fill their 28-bit payload with four 7-bit sources, so
-  the width goes in the opcode as well. Sources are **full 7-bit global
-  addresses** (any bank — the 10-read-port register file removes any
-  lane-implicit restriction).
+- `ST2/ST2H/ST2B` fill their 32-bit payload with four 8-bit sources, so
+  the width goes in the opcode as well. Sources are **full 8-bit global
+  addresses** (any bank — the read-replicated register file of §2 imposes
+  no restriction on which banks the four sources name).
 - Load destinations are 5-bit, bank-implicit per lane (`d0` → LS-A,
   `d1` → LS-B). Addresses are **word** EAs (the pair is word-aligned
   by construction; sub-word dual accesses select within the word —
@@ -694,7 +784,7 @@ memory change at all.
 
 `conflict` (`stride ≡ 0 (mod 3)` with both lanes enabled) is a pure
 function of the stride residue and the lane mask, available **in the
-issue cycle** (by construction, even with `ADRREG`). It is not a trap
+issue cycle** (by construction, even with `ADRREG`). It is not a fault
 and not an illegal encoding — the hardware **serializes**:
 
 1. The LS unit splits the pair into two single-lane bank accesses
@@ -710,9 +800,10 @@ and not an illegal encoding — the hardware **serializes**:
    as a conflict-free one (`1 + ADRREG + OUTREGA` cycles, §5.1). The
    only observable effect is that the program took one extra cycle.
 4. **Atomicity comes for free.** The pair executes as one indivisible
-   operation spanning two cycles: with the machine frozen, no flush,
-   trap or interrupt can insert itself between the halves, so a
-   conflicting dual **store** cannot be left half-committed.
+   operation spanning two cycles: with the machine frozen, no flush
+   can insert itself between the halves, so a conflicting dual **store**
+   cannot be left half-committed. Nothing else could: there are no
+   interrupts, and a fault stops the core outright.
 
 **Why a total freeze.** Without an interlock the code is cycle-exact:
 a consumer is scheduled at the precise cycle its producer's value
@@ -730,8 +821,9 @@ stay a performance matter instead of a correctness one.
 Consequently, strides that are multiples of 3 are **legal but slow**.
 The compiler's layout rules (pad pitches whose digit sum is divisible
 by 3) are **performance hints, not correctness requirements**. `oob`
-is unchanged: per-lane trap, offending lane suppressed, and the trap
-takes precedence over `conflict` when both assert.
+is unchanged: checked per lane, the offending lane is suppressed and the
+core halts with cause `OOB`, which takes precedence over `conflict` when
+both assert.
 
 ### 10.5 Open items
 

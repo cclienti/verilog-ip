@@ -26,17 +26,21 @@ cannot decide statically (§No Interlock, §Faults and Host Control).
 
 ## VLIW Word
 
-- **Total width**: 128 bits = 4 × 32 bits
+- **Total width**: 144 bits = 4 × 36 bits
 - **Slots**: 2× ALU, 1× Load/Store, 1× Control
 - **PC unit**: 1 VLIW word per cycle (not byte-addressed)
-- **Slot instruction width**: each slot is a self-contained **32-bit**
-  instruction (same width as the scalar ISA). There is no dedicated `valid`
-  bit — an unused slot is encoded as the slot's **`NOP` opcode** (`opcode =
-  000000`), so an empty bundle is four `NOP`s (an all-zero 128-bit word).
-- **BRAM mapping**: 128-bit-wide × 2^IMEM_DEPTH_LOG2 deep. Because slots no
-  longer use a BRAM parity bit as a `valid` flag (validity is now the per-slot
-  `NOP` opcode), the BRAM parity bits are **free** and may be used for optional
-  ECC.
+- **Slot instruction width**: each slot is a self-contained **36-bit**
+  instruction. There is no dedicated `valid` bit — an unused slot is encoded
+  as the slot's **`NOP` opcode** (`opcode = 000000`), so an empty bundle is
+  four `NOP`s (an all-zero 144-bit word).
+- **BRAM mapping**: 144-bit-wide × 2^IMEM_DEPTH_LOG2 deep, which is **one
+  BRAM36 per slot** in its 36-bit-wide mode. The four extra bits per slot
+  over a 32-bit encoding are therefore free: they come from the BRAM parity
+  bits, which the `NOP`-opcode validity scheme had already released. Nothing
+  is split across BRAMs and nothing is wasted.
+- **What the 4 extra bits buy**: 8-bit global source addresses (5 banks × 32
+  registers = 160 names, up from the 7-bit / 128-name limit) and materially
+  wider constants in every slot — see the per-slot specifications.
 
 ---
 
@@ -47,7 +51,7 @@ cannot decide statically (§No Interlock, §Faults and Host Control).
 - **Banks**: 5 banks of 32 registers (one per write port: ALU0, ALU1,
   LS-A, LS-B, CTRL — the LS slot owns one bank per lane of a dual load,
   LOAD_STORE.md §2)
-- **Read**: any slot can read any bank (full 7-bit source address: bank[2:0] + reg[4:0])
+- **Read**: any slot can read any bank (full 8-bit source address: bank[2:0] + reg[4:0])
 - **Write**: each slot writes only its own bank (5-bit destination, bank implicit from slot)
 - **Hazard model**: this write-local / read-global split keeps every write
   port private to one slot, so write-port arbitration does not exist in
@@ -71,8 +75,9 @@ cannot decide statically (§No Interlock, §Faults and Host Control).
 |-------------|------------|-----------|
 | ALU 0       | port 0     | `000`     |
 | ALU 1       | port 1     | `001`     |
-| Load/Store  | port 2     | `010`     |
-| Control     | port 3     | `011`     |
+| Load/Store (LS-A, lane 0) | port 2 | `010` |
+| Load/Store (LS-B, lane 1) | port 3 | `011` |
+| Control     | port 4     | `100`     |
 
 
 ### Implementation of `r0`
@@ -141,7 +146,7 @@ correctness).
 The other banks need **no special handling**: their local "address 0" is a
 normal R/W register usable as scratch by the slot that owns the bank.
 
-Compiler convention: emit `r0` as the global 7-bit address `0000000` whenever a
+Compiler convention: emit `r0` as the global 8-bit address `00000000` whenever a
 zero source operand is needed (e.g. `ADD rd, r0, rs` for `MOV`, `JAL r0, target`
 for `J`).
 ---
@@ -155,7 +160,7 @@ in every slot:
 
 | Bit     | Field    | Description                                            |
 |---------|----------|--------------------------------------------------------|
-| [31:26] | `opcode` | 6-bit instruction selector (per-slot opcode space)     |
+| [35:30] | `opcode` | 6-bit instruction selector (per-slot opcode space)     |
 
 There is no `fmt` bit: register and immediate forms are **distinct opcodes**
 within each slot's flat 6-bit space (e.g. `ADD`/`ADDI`, `MOV`/`MOVI`). On the
@@ -163,7 +168,7 @@ LUT6 fabric a 6-bit field costs the same to decode as 5, and the per-slot opcode
 namespaces make opcodes plentiful, so a flat encoding is free.
 
 `opcode = 000000` is **`NOP`** in every slot (the canonical empty-slot encoding);
-there is no dedicated `valid` bit. Source registers are **7-bit** global
+there is no dedicated `valid` bit. Source registers are **8-bit** global
 addresses (`bank[2:0]` + `reg[4:0]`, any bank); the destination is **5-bit**
 (bank implicit from the slot).
 
@@ -171,10 +176,10 @@ addresses (`bank[2:0]` + `reg[4:0]`, any bank); the destination is **5-bit**
 
 ### ALU Slot (×2)
 
-Two identical ALU slots (writing banks 0 and 1). Each is a full **32-bit**
-instruction using the common header (flat `opcode[31:26]`, `NOP = 000000`),
-with **R-type** (reg–reg, plus a `funct(7)` extension field), **I-type**
-(reg–`imm14`, signed **±8191**; register and immediate forms are distinct
+Two identical ALU slots (writing banks 0 and 1). Each is a full **36-bit**
+instruction using the common header (flat `opcode[35:30]`, `NOP = 000000`),
+with **R-type** (reg–reg, plus a `funct(9)` extension field), **I-type**
+(reg–`imm17`, signed **±65535**; register and immediate forms are distinct
 opcodes) and **U-type** (`LUI`, `imm20`) formats. Operations:
 `ADD SUB AND OR XOR SLT SLTU SLL SRL SRA MUL MULH INV_SQRT LUI`, with advisory
 latencies of 2–5 cycles (see §Compiler latency model).
@@ -189,12 +194,12 @@ to avoid drift.
 ### Load/Store Slot (×1)
 
 The Load/Store slot is a full **32-bit** instruction using the common header
-(flat `opcode[31:26]`, `NOP = 000000`). It is the core's single memory port —
+(flat `opcode[35:30]`, `NOP = 000000`). It is the core's single memory port —
 loads and stores to the on-chip data scratchpad and to the memory-mapped control
 registers at the top of the data address space. Access width and sign/zero
 extension are folded into the opcode (`LB LH LW LBU LHU` / `SB SH SW`); the
 address is `rs_base + sign_ext(imm)` (byte-addressed, little-endian). Loads carry
-a 14-bit offset (**±8 KB**); stores an `imm12` (**±2 KB**), since a store spends a
+a 17-bit offset (**±64 KB**); stores an `imm14` (**±8 KB**), since a store spends a
 second source register on `rs_data`. Load latency is **2 cycles** at the
 `BRAM_OUT_REG = 0` baseline (see §Memory Model); load-use RAW hazards are covered
 by the compiler (§Latency model, §No Interlock).
@@ -209,8 +214,8 @@ reference; they are not duplicated here to avoid drift.
 ### Control Slot (×1)
 
 The Control slot is a full **32-bit** instruction using the common header
-(flat `opcode[31:26]`, `NOP = 000000`). It owns PC sequencing, branches,
-jumps, traps, and the single-context hardware loop, and also carries a
+(flat `opcode[35:30]`, `NOP = 000000`). It owns PC sequencing, branches,
+jumps, halts, and the single-context hardware loop, and also carries a
 **lightweight integer ALU** (`ADD/SUB/ADDI`, `AND/OR/XOR/ANDI`, `SLT*` — no
 multiply/shift, result at W+1) so pointer/loop-counter/condition arithmetic can
 run in the otherwise-idle control slot instead of stealing an ALU slot. Its
@@ -221,17 +226,16 @@ here to avoid drift.
 
 Field conventions (see `CONTROL_UNIT.md` §3 for exact bit layouts):
 
-- 7-bit global source addresses (`rs1`, `rs2`); 5-bit destination (`rd`).
-- Signed `target` / `imm` fields sit at `[11:0]` and share one sign-extend
-  circuit.
-- `JAL` uses a 21-bit target (**±1 M VLIW words**); conditional branches a
-  12-bit target (**±2048 VLIW words**); `JALR` a 12-bit offset.
-- Branch shadow = `BRANCH_SHADOW` VLIW words, **hardware-squashed** on a taken
-  redirect (CONTROL_UNIT.md §5.1): the compiler fills it for performance only,
-  never for correctness, and emits no `NOP` padding. This is a **control**
-  hazard: the shadow words are **architectural delay slots**, executed
-  whether or not the branch is taken, and the compiler fills them
-  (§Latency model).
+- 8-bit global source addresses (`rs1`, `rs2`); 5-bit destination (`rd`).
+- Signed `target` / `imm` fields share one sign-extend alignment at bit 8;
+  the branch target sits higher, at `[29:16]` (CONTROL_UNIT.md §3.1).
+- `JAL` uses a 25-bit target (**±16 M VLIW words**); conditional branches a
+  14-bit target (**±8191 VLIW words**); `JALR` a 17-bit offset.
+- Branch shadow = `BRANCH_SHADOW` VLIW words of **architectural delay slots**
+  (CONTROL_UNIT.md §5.1): they execute whether or not the branch is taken, and
+  the compiler must fill them — with `NOP`s when it has nothing to hoist. This
+  is a **control** hazard the compiler owns, exactly as it owns the data
+  hazards (§Latency model).
 
 #### Control pseudo-instructions
 
@@ -259,7 +263,7 @@ Cycle:  1     2     3     4     5     6     7     8
 
 | Stage | Name      | Description                                       | Implementation        |
 |-------|-----------|---------------------------------------------------|-----------------------|
-| IF    | Fetch     | Read 128-bit VLIW word from IMEM                  | BRAM registered output|
+| IF    | Fetch     | Read 144-bit VLIW word from IMEM                  | BRAM registered output|
 | ID    | Decode    | Split slots, decode opcodes, compute RF addresses | Combinational         |
 | RR    | Reg Read  | Read register file                                | BRAM registered output|
 | EX1   | Execute 1 | ALU first stage, LS address calc, branch resolve  | Registered            |
@@ -525,7 +529,7 @@ without rewriting IMEM.
 
 | Memory          | Width    | Depth                | BRAMs (36Kb) |
 |-----------------|----------|----------------------|--------------|
-| Instruction     | 128 bits | 2^`IMEM_DEPTH_LOG2`  | 1–2          |
+| Instruction     | 144 bits | 2^`IMEM_DEPTH_LOG2`  | 1–2          |
 | Data            | 32 bits  | 2^`DMEM_DEPTH_LOG2`  | 1–4          |
 | Register file   | 32 bits  | 6×32                 | ~1           |
 | **Total (typ)** |          |                      | **~4**       |
@@ -546,21 +550,21 @@ and is **not** a RISC-V implementation.
 | ALU mnemonics & semantics | `ADD SUB AND OR XOR SLT SLTU SLL SRL SRA MUL MULH LUI`     |
 | Load/store mnemonics      | `LB LH LW LBU LHU / SB SH SW` — names and width/sign semantics (encoding is a custom flat per-slot opcode) |
 | Branches                  | `BEQ BNE BLT BGE BLTU BGEU` — same conditions              |
-| Jumps                     | `JAL` (link = next PC), `JALR` (`rs1 + imm12`)             |
+| Jumps                     | `JAL` (link = next PC), `JALR` (`rs1 + imm17`)             |
 | Type taxonomy             | R / I / U / B / J terminology                              |
 | Hardwired zero register   | `r0` convention (`x0` in RV)                               |
 | 32-bit constant idiom     | `LUI` + `ADDI` (20-bit + 12-bit immediates)                |
 | Pseudo-instructions       | `NOP MOV NEG NOT LI J CALL RET BEQZ BNEZ`                  |
-| Trap / return model       | Conceptually similar to `ECALL` / `MRET`                   |
+| Trap / return model       | None — `TRAP` halts, there is no handler and no return     |
 
 ### Differences from RISC-V
 
 | Aspect                | This VLIW                                       | RISC-V                                |
 |-----------------------|-------------------------------------------------|---------------------------------------|
-| Word format           | 128-bit VLIW, 4 × 32-bit slots                  | 32-bit (or 16-bit `C`) scalar         |
-| Bit-level encoding    | Custom (flat `opcode[31:26]` per slot)          | 7-bit major opcode in `[6:0]`         |
+| Word format           | 144-bit VLIW, 4 × 36-bit slots                  | 32-bit (or 16-bit `C`) scalar         |
+| Bit-level encoding    | Custom (flat `opcode[35:30]` per slot)          | 7-bit major opcode in `[6:0]`         |
 | Opcode width          | Flat 6-bit opcode per slot (no `fmt` bit)       | 7-bit op + `funct3` + `funct7`        |
-| Register file         | 5 banks × 32 regs, 7-bit global read address    | Flat 32 regs, 5-bit address           |
+| Register file         | 5 banks × 32 regs, 8-bit global read address    | Flat 32 regs, 5-bit address           |
 | PC unit               | VLIW-word addressed                             | Byte addressed                        |
 | Branch range          | ±2048 VLIW words (12-bit field)                 | ±4 KiB bytes                          |
 | `JAL` range           | ±1 M VLIW words (21-bit field)                  | ±1 MiB bytes (20-bit field)           |

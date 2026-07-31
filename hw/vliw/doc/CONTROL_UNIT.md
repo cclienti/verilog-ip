@@ -1,15 +1,16 @@
 # VLIW Control Unit Specification
 
-> **Status note — interrupts removed.** The core has no interrupt mechanism
-> (ARCHITECTURE.md §Faults and Host Control): work is dispatched by polling
-> between kernels, and a fault halts the core for the host to inspect. `ERET`
-> is gone and `TRAP` is now a deliberate halt. Passages below that describe
-> IRQ acceptance, saved-PC shadows or handler behaviour — notably the IRQ
-> timelines of §4.4 and the IRQ priority in the §5 flush order — describe a
-> mechanism that no longer exists; they are retained because the same
-> reasoning applies to the branch and loop cases they share, and are marked
-> for rewrite. The branch shadow is likewise **no longer squashed**: its
-> words are architectural delay slots the compiler must fill.
+> **Status note — interrupts and traps removed.** The core neither takes
+> interrupts nor traps (ARCHITECTURE.md §Faults and Host Control): work is
+> dispatched by polling between kernels, and a fault **halts** the core for
+> the host to inspect. `ERET` is gone, `TRAP` is a deliberate halt, and a
+> reserved opcode halts with cause `ILLEGAL`. Nothing preempts a running
+> kernel, so there is no saved PC, no handler and no resume — the only
+> flushes left are the loop skip and `LCLR`.
+>
+> **Branch shadow.** Its words are **architectural delay slots** the compiler
+> must fill (§5.1); they are not squashed. Inside a hardware loop this
+> constrains where a redirect may sit — see the placement rule in §4.4.
 
 ## 1. Overview
 
@@ -17,7 +18,6 @@ The Control Unit is responsible for:
 
 - Program Counter (PC) sequencing
 - Conditional branches, jumps, calls and returns
-- System / trap / interrupt return
 - **Single-context zero-overhead hardware loop** for the innermost loop of
   tensor / DSP kernels (see §4)
 - Writing the link register `rd` into the bank assigned to the Control slot
@@ -39,8 +39,8 @@ register file exposes:
 
 | Port           | Count | Width                               | Purpose                                    |
 |----------------|-------|-------------------------------------|--------------------------------------------|
-| Read ports     | **2** | 7-bit addr (3-bit bank + 5-bit reg) | `rs1`/`rs2` for branches, JALR, LOOP, CMOV, integer ALU |
-| Write port     | **1** | 5-bit addr, bank implicit from slot | `rd` for JAL/JALR/MOV/CMOV, integer ALU  |
+| Read ports     | **2** | 8-bit addr (3-bit bank + 5-bit reg) | `rs1`/`rs2` for branches, JALR, LOOP, CMOV, integer ALU |
+| Write port     | **1** | 5-bit addr, bank implicit from slot | `rd` for JAL/JALR/CMOV, integer ALU      |
 
 Rationale for **2 read / 1 write**:
 
@@ -50,8 +50,6 @@ Rationale for **2 read / 1 write**:
 | JAL               | yes | no  | no        |
 | JALR              | yes | yes | no        |
 | SYSTEM/LOOP       | no  | yes (LOOP only) | no  |
-| MOV               | yes | yes | no        |
-| MOVI              | yes | no  | no        |
 | CMOV              | yes | yes (rs_cond) | yes (rs_src) |
 | CMOVI             | yes | yes (rs_cond) | no  |
 | Integer ALU R     | yes | yes | yes       |
@@ -65,59 +63,66 @@ The two read ports of the control slot are **independent of** the read ports
 of the ALU/LS slots. The exact port count of the shared register file is not
 fixed by this document; the implementation lives in `../lib/vliwrf` and must
 provide at least the per-slot ports summarized above (2 read + 1 write for
-the Control slot, plus the per-slot ports the ALU/LS slots require). Interrupt
-context is spilled/filled in software through the Load/Store slot's existing
-ports (ARCHITECTURE.md §Interrupts and Exceptions) — there are no dedicated
-context-save ports.
+the Control slot, plus the per-slot ports the ALU/LS slots require). Nothing
+preempts a kernel, so no context-save path and no dedicated ports for one
+exist (ARCHITECTURE.md §Faults and Host Control).
 
 ---
 
 ## 3. Instruction Set
 
-Control instructions are encoded in a **32-bit slot** with a single flat 6-bit
+Control instructions are encoded in a **36-bit slot** with a single flat 6-bit
 opcode:
 
 ```
-[31:26]    [25:0]
-opcode(6)  payload(26)
+[35:30]    [29:0]
+opcode(6)  payload(30)
 ```
 
 | Field     | Bits    | Description                                              |
 |-----------|---------|----------------------------------------------------------|
-| `opcode`  | [31:26] | 6-bit instruction selector (control-slot local space)    |
-| `payload` | [25:0]  | 26 bits, layout is opcode-specific                       |
+| `opcode`  | [35:30] | 6-bit instruction selector (control-slot local space)    |
+| `payload` | [29:0]  | 30 bits, layout is opcode-specific                       |
 
 There is no format bit: register and immediate forms of an operation (e.g.
-`MOV` / `MOVI`) are **distinct opcodes**.
+`CMOV` / `CMOVI`) are **distinct opcodes**.
 
 **NOP** is encoded as `opcode = 000000`. It is the canonical no-operation and
 the preferred form for an empty control slot; the assembler emits the all-zero
-word `0x00000000` for unused control slots.
+word `0x000000000` for unused control slots.
 
 ### 3.1 Encoding reference card
 
-All instructions are 32 bits: `opcode[31:26] | payload[25:0]`.
+All instructions are 36 bits: `opcode[35:30] | payload[29:0]`.
 `x` = don't-care, assembler emits `0`. All targets are signed VLIW-word offsets.
 
 **Fixed field positions (where applicable):**
 
-| Field        | Bits    | Width | Notes                                          |
-|--------------|---------|-------|------------------------------------------------|
-| `opcode`     | [31:26] | 6     | instruction selector                           |
-| `rd`         | [25:21] | 5     | dest register, bank implicit from slot         |
-| `rs1`        | [25:19] | 7     | source 1 (branches only)                       |
-| `rs1`        | [20:14] | 7     | source 1 (JALR / LOOP / MOV / CMOV)            |
-| `rs2`        | [18:12] | 7     | source 2 (branches only)                       |
-| `rs_cond`    | [20:14] | 7     | condition register (CMOV / CMOVI)              |
-| `rs_src`     | [13:7]  | 7     | source register (CMOV only)                    |
-| `imm12`      | [11:0]  | 12    | signed immediate (JALR / MOVI / CMOVI)         |
-| `end_off`    | [11:0]  | 12    | signed loop body offset (LOOP / LOOPI)         |
-| `target(12)` | [11:0]  | 12    | signed branch offset                           |
-| `count`      | [25:12] | 14    | unsigned iteration count (LOOPI only)          |
-| `target(21)` | [20:0]  | 21    | signed jump offset (JAL only)                  |
+| Field        | Bits              | Width | Notes                                    |
+|--------------|-------------------|-------|------------------------------------------|
+| `opcode`     | [35:30]           | 6     | instruction selector                     |
+| `rd`         | [29:25]           | 5     | dest register, bank implicit from slot   |
+| `rs1`        | [7:0]             | 8     | source 1 — read rail 1 (all forms)       |
+| `rs_cond`    | [7:0]             | 8     | condition register (CMOV / CMOVI) — rail 1 |
+| `rs2`        | [15:8]            | 8     | source 2 (branches, R-type) — read rail 2 |
+| `rs_src`     | [15:8]            | 8     | source register (CMOV only) — rail 2     |
+| `imm17`      | [24:8]            | 17    | signed immediate (JALR / CMOVI / I-type) |
+| `end_off`    | [23:8]            | 16    | signed loop body offset (LOOP / LOOPI)   |
+| `target(14)` | [29:16]           | 14    | signed branch offset                     |
+| `count`      | {[29:24], [7:0]}  | 14    | unsigned iteration count (LOOPI only)    |
+| `target(25)` | [24:0]            | 25    | signed jump offset (JAL only)            |
+| `trap_code`  | [29:0]            | 30    | software trap payload (TRAP only)        |
 
-Note: `imm12`, `end_off`, and branch `target` all occupy `[11:0]` —
-a single sign-extend extraction circuit covers all three.
+Both sources now sit on fixed **rails** — the two low bytes — for *every*
+instruction including the branches, which a 32-bit slot could not afford
+(they used to carry `rs1`/`rs2` at `[25:19]`/`[18:12]`, off the rails used
+by `JALR`/`LOOP`/`CMOV`). Each read port therefore takes its address from
+one constant slice, with no per-opcode multiplexer, the same discipline as
+the ALU and LS slots.
+
+Note: `imm17` and `end_off` both start at bit 8, so they share one
+extraction alignment and differ only in where the sign bit sits (24 vs 23);
+`count` is the only split field, reassembled by fixed wiring.
 
 **Opcode map** — the single authoritative list of control-slot opcodes
 (operands in source-to-destination order; full bit layouts in §3.2–§3.8):
@@ -132,48 +137,48 @@ a single sign-extend extraction circuit covers all three.
 | `000101` | `BLTU`   | `rs1, rs2, target`    | branch if `rs1 <  rs2` (unsigned)                | §3.2   |
 | `000110` | `BGEU`   | `rs1, rs2, target`    | branch if `rs1 >= rs2` (unsigned)                | §3.2   |
 | `000111` | `JAL`    | `rd, target`          | jump and link; `rd = PC + 1`                     | §3.3   |
-| `001000` | `JALR`   | `rd, rs1, imm12`      | jump to `rs1 + imm12`; `rd = PC + 1`             | §3.4   |
+| `001000` | `JALR`   | `rd, rs1, imm17`      | jump to `rs1 + imm17`; `rd = PC + 1`             | §3.4   |
 | `001001` | `TRAP`   | `trap_code`           | halt the core, cause `SOFTWARE`, `trap_code` latched for the host | §3.6   |
 | `001011` | `LOOP`   | `rs1, end_off`        | arm hardware loop, count from `rs1`              | §3.5   |
 | `001100` | `LCLR`   | —                     | abort the active hardware loop                   | §3.5   |
-| `001101` | `MOV`    | `rd, rs`              | `rd <- rs`                                       | §3.7   |
 | `001110` | `CMOV`   | `rd, rs_cond, rs_src` | if `rs_cond != 0`: `rd <- rs_src`                | §3.8   |
 | `001111` | `LOOPI`  | `count, end_off`      | arm hardware loop, immediate count               | §3.5   |
-| `010000` | `MOVI`   | `rd, imm12`           | `rd <- sign_ext(imm12)`                          | §3.7   |
-| `010001` | `CMOVI`  | `rd, rs_cond, imm12`  | if `rs_cond != 0`: `rd <- sign_ext(imm12)`       | §3.8   |
+| `010001` | `CMOVI`  | `rd, rs_cond, imm17`  | if `rs_cond != 0`: `rd <- sign_ext(imm17)`       | §3.8   |
 | `010010` | `ADD`    | `rd, rs1, rs2`        | `rd <- rs1 + rs2`                                | §3.9   |
 | `010011` | `SUB`    | `rd, rs1, rs2`        | `rd <- rs1 - rs2`                                | §3.9   |
-| `010100` | `ADDI`   | `rd, rs1, imm12`      | `rd <- rs1 + sign_ext(imm12)`                    | §3.9   |
+| `010100` | `ADDI`   | `rd, rs1, imm17`      | `rd <- rs1 + sign_ext(imm17)`                    | §3.9   |
 | `010101` | `AND`    | `rd, rs1, rs2`        | `rd <- rs1 & rs2`                                | §3.9   |
 | `010110` | `OR`     | `rd, rs1, rs2`        | `rd <- rs1 \| rs2`                               | §3.9   |
 | `010111` | `XOR`    | `rd, rs1, rs2`        | `rd <- rs1 ^ rs2`                                | §3.9   |
-| `011000` | `ANDI`   | `rd, rs1, imm12`      | `rd <- rs1 & sign_ext(imm12)`                    | §3.9   |
+| `011000` | `ANDI`   | `rd, rs1, imm17`      | `rd <- rs1 & sign_ext(imm17)`                    | §3.9   |
 | `011001` | `SLT`    | `rd, rs1, rs2`        | `rd <- (rs1 <  rs2) signed ? 1 : 0`              | §3.9   |
 | `011010` | `SLTU`   | `rd, rs1, rs2`        | `rd <- (rs1 <  rs2) unsigned ? 1 : 0`            | §3.9   |
-| `011011` | `SLTI`   | `rd, rs1, imm12`      | `rd <- (rs1 < sign_ext(imm12)) signed ? 1 : 0`   | §3.9   |
-| `011100` | `SLTIU`  | `rd, rs1, imm12`      | `rd <- (rs1 < sign_ext(imm12)) unsigned ? 1 : 0` | §3.9   |
+| `011011` | `SLTI`   | `rd, rs1, imm17`      | `rd <- (rs1 < sign_ext(imm17)) signed ? 1 : 0`   | §3.9   |
+| `011100` | `SLTIU`  | `rd, rs1, imm17`      | `rd <- (rs1 < sign_ext(imm17)) unsigned ? 1 : 0` | §3.9   |
 
-Reserved: opcode `001010` (formerly `ERET`) and `011101`–`111111` (36
+Reserved: opcodes `001010` (formerly `ERET`), `001101` and `010000` (formerly
+`MOV` and `MOVI`, now pseudo-instructions — §3.7), and `011101`–`111111` (38
 entries in total). Executing a reserved opcode
-raises an **illegal-instruction trap** (same entry path as `TRAP`; `trap_code`
-in `ABI.md`) — the assembler must never emit one.
+**halts the core** with cause `ILLEGAL` (ARCHITECTURE.md §Faults and Host
+Control) — the assembler must never emit one.
 
 **Notes:**
-- `rs1`, `rs2`, `rs`, `rs_cond`, `rs_src` are **7-bit** global register
+- `rs1`, `rs2`, `rs`, `rs_cond`, `rs_src` are **8-bit** global register
   addresses (`bank[2:0]` + `reg[4:0]`).
 - `rd` is **5-bit** (bank implicit from the slot).
-- `imm12`, `end_off`, and branch `target` are all at `[11:0]`, signed,
-  sign-extended to 32 bits by a single shared circuit.
+- `imm17` and `end_off` both start at bit 8, signed, sign-extended to 32
+  bits by one shared alignment; the branch `target` sits at `[29:16]`
+  because a branch spends both read rails on `rs1`/`rs2`.
 - `count(14)` in `LOOPI` is **unsigned**, range 0–16383 (0 = skip loop).
-- Branch `target(12)` → **±2048 VLIW words**.
-- JAL `target(21)` → **±1M VLIW words**.
-- JALR offset `imm12` → **±2047** words from `rs1`.
-- `end_off(12)` → loop body up to **2047 VLIW words**.
-- `trap_code(26)` allocation defined in `ABI.md`.
+- Branch `target(14)` → **±8191 VLIW words**.
+- JAL `target(25)` → **±16M VLIW words**.
+- JALR offset `imm17` → **±65535** words from `rs1`.
+- `end_off(16)` → loop body up to **32767 VLIW words**.
+- `trap_code(30)` allocation defined in `ABI.md`.
 - Register and immediate forms are **distinct opcodes** (no format bit):
-  `LOOP`/`LOOPI`, `MOV`/`MOVI`, `CMOV`/`CMOVI`.
+  `LOOP`/`LOOPI`, `CMOV`/`CMOVI`.
 - Branches have **no link register** — use `JAL` for branch-and-link.
-- All PC arithmetic (`PC + 1`, branch/jump targets, `rs1 + imm12`) is performed
+- All PC arithmetic (`PC + 1`, branch/jump targets, `rs1 + imm17`) is performed
   **modulo `2^IMEM_DEPTH_LOG2`** — targets are truncated to the PC width.
 - The control-slot **integer ALU** (`ADD`…`SLTIU`) writes `rd` into the control
   bank and reuses the 2-read/1-write ports; it is a simple fast unit (no
@@ -181,35 +186,35 @@ in `ABI.md`) — the assembler must never emit one.
 
 ### 3.2 Branch format
 
-| [31:26]   | [25:19] | [18:12] | [11:0]     |
-|-----------|---------|---------|------------|
-| opcode(6) | rs1(7)  | rs2(7)  | target(12) |
+| [35:30]   | [29:16]    | [15:8] | [7:0]  |
+|-----------|------------|--------|--------|
+| opcode(6) | target(14) | rs2(8) | rs1(8) |
 
-- `target`: signed 12-bit VLIW-word offset → range **±2048 VLIW words**
-- Shadow = `BRANCH_SHADOW` VLIW words, **hardware-squashed** — no `NOP` padding
-  is emitted; hoisting fall-through work into it is a performance optimization
-  only, never a correctness requirement (see §5.1). Its exact size is not yet
-  finalized (see §8).
+- `target`: signed 14-bit VLIW-word offset → range **±8191 VLIW words**
+- Shadow = `BRANCH_SHADOW` VLIW words of **architectural delay slots**: they
+  execute whether or not the branch is taken, and the compiler must fill them
+  — with `NOP`s if it has nothing to hoist (see §5.1). Its exact size is not
+  yet finalized (see §8), and fixing it is an ISA decision.
 - No link register. Use `JAL` for branch-and-link.
 - For longer-range conditional branches: load target into a register and use
   a conditional skip + `JAL` pattern (compiler responsibility).
 
 ### 3.3 JAL format
 
-| [31:26]   | [25:21] | [20:0]     |
+| [35:30]   | [29:25] | [24:0]     |
 |-----------|---------|------------|
-| `000111`  | rd(5)   | target(21) |
+| `000111`  | rd(5)   | target(25) |
 
-- `target`: signed 21-bit VLIW-word offset → **±1M VLIW words**
+- `target`: signed 25-bit VLIW-word offset → **±16M VLIW words**
 - `rd = PC + 1` (link register; use `r0` to discard)
 
 ### 3.4 JALR format
 
-| [31:26]   | [25:21] | [20:14] | [13:12]   | [11:0]    |
-|-----------|---------|---------|-----------|-----------|
-| `001000`  | rd(5)   | rs1(7)  | unused(2) | imm12(12) |
+| [35:30]   | [29:25] | [24:8]    | [7:0]  |
+|-----------|---------|-----------|--------|
+| `001000`  | rd(5)   | imm17(17) | rs1(8) |
 
-- `PC = rs1 + sign_ext(imm12)`
+- `PC = rs1 + sign_ext(imm17)`
 - `rd = PC + 1` (use `r0` to discard)
 
 
@@ -219,17 +224,20 @@ in `ABI.md`) — the assembler must never emit one.
 
 Register form (`LOOP`, opcode `001011`):
 
-| [31:26]   | [25:21]   | [20:14] | [13:12]   | [11:0]      |
-|-----------|-----------|---------|-----------|-------------|
-| `001011`  | unused(5) | rs1(7)  | unused(2) | end_off(12) |
+| [35:30]   | [29:24]   | [23:8]      | [7:0]  |
+|-----------|-----------|-------------|--------|
+| `001011`  | unused(6) | end_off(16) | rs1(8) |
 
 Immediate form (`LOOPI`, opcode `001111`):
 
-| [31:26]   | [25:12]   | [11:0]      |
-|-----------|-----------|-------------|
-| `001111`  | count(14) | end_off(12) |
+| [35:30]   | [29:24]      | [23:8]      | [7:0]       |
+|-----------|--------------|-------------|-------------|
+| `001111`  | count[13:8]  | end_off(16) | count[7:0]  |
 
-- `end_off` is a signed 12-bit VLIW-word offset from the `LOOP` instruction to the last instruction of the loop body (inclusive).
+- `end_off` sits at the same bits in both forms; `count` is split around it
+  so that the loop-body offset keeps a single extraction path. Reassembly
+  is fixed wiring and costs nothing at run time.
+- `end_off` is a signed 16-bit VLIW-word offset from the `LOOP` instruction to the last instruction of the loop body (inclusive).
 - `count(14)` in `LOOPI` is unsigned, range 0–16383; `count = 0` skips the loop body (0 iterations).
 - See §4 for full hardware loop semantics.
 
@@ -237,9 +245,9 @@ Immediate form (`LOOPI`, opcode `001111`):
 
 ### 3.6 TRAP format
 
-| [31:26]   | [25:0]        |
+| [35:30]   | [29:0]        |
 |-----------|---------------|
-| `001001`  | trap_code(26) |
+| `001001`  | trap_code(30) |
 
 - `trap_code` allocation defined in `ABI.md`.
 - **`TRAP` halts the core.** It is not a call: there is no handler and no
@@ -253,43 +261,48 @@ Immediate form (`LOOPI`, opcode `001111`):
 
 ---
 
-### 3.7 MOV / MOVI format
+### 3.7 Register move — pseudo-instructions
 
-Register form (`MOV`, opcode `001101`):
+The control slot has **no `MOV` / `MOVI` opcode**. Its integer ALU (§3.9)
+already produces both, exactly and at the same cost:
 
-| [31:26]   | [25:21] | [20:14] | [13:0]     |
-|-----------|---------|---------|------------|
-| `001101`  | rd(5)   | rs(7)   | unused(14) |
+| Pseudo          | Expansion             | Meaning                    |
+|-----------------|-----------------------|----------------------------|
+| `MOV  rd, rs`   | `ADD  rd, r0, rs`     | register copy              |
+| `MOVI rd, imm`  | `ADDI rd, r0, imm17`  | load immediate (±65535)    |
 
-Immediate form (`MOVI`, opcode `010000`):
+`XOR rd, rs, r0` is an equally valid expansion of the register form; the
+assembler emits the `ADD` variant for consistency with the ALU slots
+(`ALU.md` §6).
 
-| [31:26]   | [25:21] | [20:12]   | [11:0]    |
-|-----------|---------|-----------|-----------|
-| `010000`  | rd(5)   | unused(9) | imm12(12) |
+Earlier revisions did carry real `MOV` (`001101`) and `MOVI` (`010000`)
+opcodes. They predate the control-slot integer ALU and became redundant when
+it was added — and they were also **slower**, retiring at `W + 2` against the
+integer ALU's `W + 1`, so the pseudo-instruction strictly dominated the
+instruction it replaced. Both code points are now reserved.
 
-- `rd` is in the Control slot's own bank (bank implicit from slot)
-- `rs` is a full 7-bit global address (any bank)
-- `MOVI` sign-extends the 12-bit immediate to 32 bits
+Note that the LS slot keeps a **real** `MOV` (`LOAD_STORE.md` §3.9): it owns
+no ALU, so it has nothing to synthesise the move from.
 
 ### 3.8 CMOV / CMOVI format
 
 Register form (`CMOV`, opcode `001110`):
 
-| [31:26]   | [25:21] | [20:14]    | [13:7]    | [6:0]     |
-|-----------|---------|------------|-----------|-----------|
-| `001110`  | rd(5)   | rs_cond(7) | rs_src(7) | unused(7) |
+| [35:30]   | [29:25] | [24:16]    | [15:8]     | [7:0]      |
+|-----------|---------|------------|------------|------------|
+| `001110`  | rd(5)   | unused(9)  | rs_src(8)  | rs_cond(8) |
 
 Immediate form (`CMOVI`, opcode `010001`):
 
-| [31:26]   | [25:21] | [20:14]    | [13:12]   | [11:0]    |
-|-----------|---------|------------|-----------|-----------|
-| `010001`  | rd(5)   | rs_cond(7) | unused(2) | imm12(12) |
+| [35:30]   | [29:25] | [24:8]    | [7:0]       |
+|-----------|---------|-----------|-------------|
+| `010001`  | rd(5)   | imm17(17) | rs_cond(8)  |
 
-- if `rs_cond != 0`: `rd <- rs_src` (or `sign_ext(imm12)`)
+- if `rs_cond != 0`: `rd <- rs_src` (or `sign_ext(imm17)`)
 - if `rs_cond == 0`: `rd` is **not written** — retains its previous value
 - Condition is evaluated in EX1; write-enable to the register file is gated
   by the condition result — one AND gate, no extra pipeline stage
-- Latency: 2 cycles (same as MOV)
+- Latency: 2 cycles
 - `rd`, `rs_cond`, `rs_src` follow the same bank rules as MOV
 - **Scoreboard**: `rd`'s `busy` / `wbres` reservation is made at issue and
   released on its scheduled write-back cycle **whether or not** the condition
@@ -307,20 +320,20 @@ stay in the ALU slots, ARCHITECTURE.md §ALU Slot).
 
 Register form (`ADD`, `SUB`, `AND`, `OR`, `XOR`, `SLT`, `SLTU`):
 
-| [31:26]   | [25:21] | [20:14] | [13:7] | [6:0]     |
-|-----------|---------|---------|--------|-----------|
-| opcode(6) | rd(5)   | rs1(7)  | rs2(7) | unused(7) |
+| [35:30]   | [29:25] | [24:16]   | [15:8] | [7:0]  |
+|-----------|---------|-----------|--------|--------|
+| opcode(6) | rd(5)   | unused(9) | rs2(8) | rs1(8) |
 
 Immediate form (`ADDI`, `ANDI`, `SLTI`, `SLTIU`):
 
-| [31:26]   | [25:21] | [20:14] | [13:12]   | [11:0]    |
-|-----------|---------|---------|-----------|-----------|
-| opcode(6) | rd(5)   | rs1(7)  | unused(2) | imm12(12) |
+| [35:30]   | [29:25] | [24:8]    | [7:0]  |
+|-----------|---------|-----------|--------|
+| opcode(6) | rd(5)   | imm17(17) | rs1(8) |
 
-- `rd` is written into the **control bank** (bank 3, implicit); `rs1`/`rs2` are
-  7-bit global reads (any bank), so operands may come from any slot's bank.
-- `imm12` is signed and shares the `[11:0]` sign-extend circuit with the other
-  control-slot immediates (§3.1); range **±2047**.
+- `rd` is written into the **control bank** (bank 4, implicit); `rs1`/`rs2` are
+  8-bit global reads (any bank), so operands may come from any slot's bank.
+- `imm17` is signed and shares the bit-8 sign-extend alignment with the other
+  control-slot immediates (§3.1); range **±65535**.
 - `SLT*` write `1`/`0` and thus **materialize a condition for `CMOV`/`CMOVI`**
   without borrowing an ALU slot.
 - `ANDI`/`AND` give **power-of-2 circular addressing** for free:
@@ -425,10 +438,9 @@ if (fetch_pc > loop_end) {            // front end already fetched past the body
 }
 ```
 
-If a trap/IRQ is accepted in the **same cycle**, the arm still commits but the
-trap's flush reloads the speculative copies from the committed ones (§4.4),
-undoing the in-flight credit — the credited iteration is itself squashed. See
-the third illustration in §4.4 and ARCHITECTURE.md §Interrupts and Exceptions.
+Nothing can preempt the arm: there are no interrupts, and a fault halts the
+core outright rather than flushing and resuming (ARCHITECTURE.md §Faults and
+Host Control). The only flushes are the ones listed in the reload rule below.
 
 - Exactly **one** copy of the body is in flight at arm time (fetch was purely
   sequential), so the decrement is always by one.
@@ -439,8 +451,10 @@ the third illustration in §4.4 and ARCHITECTURE.md §Interrupts and Exceptions.
 - Rationale: the alternative — a minimum body length with assembler `NOP`
   padding — would make correctness depend on inserted NOPs and freeze the
   front-end depth (`BRAM_OUT_REG`, ARCHITECTURE.md §Memory Model) into
-  binaries, exactly what the hardware-squash model exists to avoid (§5.1).
-  Correctness stays in hardware; NOPs remain performance-only.
+  binaries. With the shadow exposed (§5.1) the compiler already emits explicit
+  padding after a branch; keeping the catch-up in hardware avoids extending
+  that obligation to the *loop body*, whose minimum length would otherwise be
+  a front-end parameter.
 
 ### 4.4 Implicit back-edge — end-of-loop
 
@@ -465,13 +479,43 @@ if (back_edge) {
 Because the test is performed on `next_pc` (one cycle ahead of fetch), the
 back-edge does **not** incur a branch shadow.
 
+**The comparator is an equality test (normative).** It compares `next_pc`
+against the single value `loop_end + 1`. It must **not** be a range test
+(`next_pc > loop_end`, or a membership test on `[loop_start, loop_end]`).
+The consequence is that the loop is oblivious to where the PC has been:
+control may leave the body and re-enter it freely, and the loop stays armed
+with its count untouched, because nothing fires until the program is about
+to step past `loop_end`.
+
+```asm
+        LOOPI  10, end_off        ; loop_start = S, loop_end = E
+S:      LW     r10, 0(r20)
+        BEQZ   r11, special       ; rare case handled out of line
+        ADD    r13, r13, r10      ; delay slots 1..3 (§5.1)
+        ADDI   r20, r20, 4
+        SW     r13, 0(r22)
+back:   ...                       ; re-entry point, still inside the body
+E:      ADDI   r21, r21, 4        ; loop_end
+        ; back-edge fires on next_pc == E + 1
+
+special:                          ; outside [loop_start, loop_end]
+        ...                       ; arbitrary work, may itself branch
+        JAL    r0, back           ; return into the body — loop still armed
+```
+
+A range comparator would break this twice over: it would fire the moment the
+PC left `[loop_start, loop_end]`, and it would fire again on re-entry. With
+the equality test, `special` may sit anywhere in IMEM and be of any length.
+
 #### Committed vs. speculative loop state
 
 The back-edge mutates the count and active flag at **fetch time** — before the
-fetched iteration has executed. Fetch is speculative with respect to squash (a
-taken branch in the body, an IRQ): decrements made for iterations that are
-later squashed and refetched must not stick, or the loop silently runs short.
-The loop state is therefore split:
+fetched iteration has executed. Fetch is still speculative with respect to the
+remaining flushes — `LCLR` on an active loop (§4.5) and the short-body catch-up
+(§4.3): decrements made for iterations that are later discarded and refetched
+must not stick, or the loop silently runs short. A taken branch in the body is
+**no longer** one of those cases — its shadow words execute as delay slots
+(§5.1). The loop state is therefore split:
 
 | Copy                                          | Lives at  | Mutated by                                   | Read by                          |
 |-----------------------------------------------|-----------|----------------------------------------------|----------------------------------|
@@ -495,9 +539,10 @@ if (retires && bundle.pc == loop_end && loop_active && !redirect_taken) {
 // fires when the next PC is the sequential loop_end + 1.
 ```
 
-**Reload rule (any flush).** Every `flush` — taken branch / jump, `TRAP` /
-IRQ, loop-skip, catch-up-under-trap (§4.3), `LCLR` with an active loop (§4.5)
-— reloads the speculative copies from the committed ones:
+**Reload rule (any flush).** Every `flush` — taken branch / jump, loop-skip,
+`LCLR` with an active loop (§4.5) — reloads the speculative copies from the
+committed ones. A fault is not in this list: it stops the core, and the
+committed copies are what the host then reads.
 
 ```
 loop_count_spec  <- loop_count
@@ -507,59 +552,60 @@ loop_active_spec <- loop_active
 This is exact: at flush time nothing younger than EX1 survives, so the
 committed values are precisely the state at the resume point; refetched
 iterations then re-decrement the speculative copy legitimately. MMIO reads
-(`LOOP_COUNT`, `LOOP_ACTIVE`) return the **committed** copies, so an ISR
-always saves and restores values consistent with `IRQ_SAVED_PC`.
+(`LOOP_COUNT`, `LOOP_ACTIVE`) return the **committed** copies, so a host
+reading a halted core sees loop state consistent with `FAULT_PC`.
+
+#### Redirect placement near `loop_end` (normative)
+
+A PC-redirecting instruction — taken branch, `JAL`, `JALR` — must **not** be
+placed in the last `BRANCH_SHADOW` words of a loop body.
+
+The reason is that the back-edge is computed at fetch. By the time such a
+redirect resolves in EX1, the words sitting in IF/ID/RR are no longer the
+instructions that follow it in memory: they are the **first words of the next
+iteration**, already refetched from `loop_start`. Under §5.1 those words
+execute, so an exit branch at `loop_end` silently runs a partial extra
+iteration.
+
+This is a correctness matter, not a cost one. Below, the two `LW`s that become
+the delay slots would re-read with `r20` already advanced — past the end of the
+array on the final iteration, which raises `OOB` and halts the core:
+
+```asm
+        LOOPI  10, end_off
+S:      LW     r10, 0(r20)        ; ┐
+        LW     r11, 0(r21)        ; │ these three are the delay slots
+        MUL    r12, r10, r11      ; ┘ of a branch placed at E
+        ADD    r13, r13, r12
+        ADDI   r20, r20, 4
+E:      BNEZ   r14, exit          ; ILLEGAL — redirect at loop_end
+```
+
+The fix is to hoist the test so the delay slots are ordinary body work:
+
+```asm
+        LOOPI  10, end_off
+S:      LW     r10, 0(r20)
+        LW     r11, 0(r21)
+        MUL    r12, r10, r11
+        BNEZ   r14, exit          ; at loop_end - BRANCH_SHADOW
+        ADD    r13, r13, r12      ; delay slot 1 — real body work
+        ADDI   r20, r20, 4        ; delay slot 2 — real body work
+E:      ADDI   r21, r21, 4        ; delay slot 3 — real body work = loop_end
+exit:   SW     r13, 0(r22)
+```
+
+No `NOP`, no wasted cycle, and the exit is clean: the exiting iteration
+executes in full, exactly as a non-exiting one would. The obligation on the
+compiler is that the exit condition be available `BRANCH_SHADOW` words before
+`loop_end` — normally the case, since it comes from an `SLT*` or a counter
+computed earlier in the body.
+
+The rule constrains where a redirect **sits**, not where one may **land**: a
+jump back into the body may target any word, including the last ones (§4.4
+equality comparator, §4.7).
 
 #### Pipeline-state illustrations
-
-**IRQ in the middle of a 1-word-body loop** (`loop_start = loop_end = S`,
-`N = 10`; `S(k)` denotes iteration `k`):
-
-```
-             EX1     RR      ID      IF    | count_spec | count (committed)
-cycle T:     S(5)    S(6)    S(7)    S(8)  |     3      |   6     IRQ accepted
-  1. S(5) retires and commits:   count 6 -> 5
-  2. S(6), S(7), S(8) squashed   (same flush as a taken branch)
-  3. reload:  count_spec <- count = 5
-  4. IRQ_SAVED_PC <- loop_start  (back-edge next-PC of S(5))
-
-ISR reads LOOP_COUNT = 5         ; "iterations 6..10 remain" — consistent
-ERET -> refetch S ; iterations 6..10 run.
-
-Without the committed copy, count_spec = 3 would survive the flush: the
-refetched loop would back-edge only 3 more times and iterations 9 and 10
-would be silently lost.
-```
-
-**Taken early-exit branch at `loop_end`** (body `S..E`, `BNEZ` in the last
-body word, taken during iteration `k`):
-
-```
-             EX1     RR        ID          IF        | count_spec | count
-cycle T:     E(k)    S(k+1)    S+1(k+1)    S+2(k+1)  |   c - 1    |   c
-  1. BNEZ in E(k) resolves TAKEN — redirect wins over the back-edge (§4.10)
-  2. committed count NOT decremented (E retired with a taken redirect)
-  3. wrapped words of iteration k+1 squashed; reload: count_spec <- c
-  4. PC <- branch target (where the compiler placed LCLR, §4.7)
-```
-
-**IRQ in the same cycle `LOOPI` reaches EX1** (1-word body `S = W+1`,
-short-body catch-up, §4.3):
-
-```
-             EX1      RR      ID      IF   | count_spec | count
-cycle T:     LOOPI    S(1)    W+2     W+3  |     —      |   —
-  1. arm commits:      loop_active <- 1, start = end = S, count <- N
-  2. catch-up credit:  count_spec <- N - 1   (iteration 1 is in flight ...)
-  3. IRQ flush (priority 1) squashes S(1), W+2, W+3   (... and now it is dead)
-  4. reload:  count_spec <- count = N        — the credit is undone
-  5. IRQ_SAVED_PC <- loop_start = S
-
-ISR reads LOOP_COUNT = N ; ERET -> S ; all N iterations run.
-(An implementation MAY instead defer IRQ acceptance by one cycle when EX1
-holds a LOOP/LOOPI — the two behaviours are architecturally
-indistinguishable. See ARCHITECTURE.md §Interrupts and Exceptions.)
-```
 
 ### 4.5 LCLR — abort the active loop
 
@@ -602,31 +648,37 @@ generally not what is wanted.
 
 ### 4.7 Interaction with arbitrary control flow
 
-The loop comparator only fires when the program is about to step past
-`loop_end`. Therefore:
+The loop comparator is an equality test on `loop_end + 1` (§4.4) and fires only
+when the program is about to step past `loop_end`. It never inspects where the
+PC currently is, so leaving the body is not in itself an event. Therefore:
 
-- Calls (`JAL`/`JALR`) into a function and back: **safe** — the function
-  runs at unrelated addresses; on return, the body resumes normally.
 - Branches inside the body that stay within `[loop_start, loop_end]`: **safe**
   by construction.
-- Any control transfer **out of the body** that is not via the natural
-  back-edge: must be preceded by `LCLR`. The compiler is responsible.
+- Control transfer **out of the body that returns into it** — a call
+  (`JAL`/`JALR`) to a function, an out-of-line slow path, a jump to a patch
+  region: **safe, and needs no `LCLR`**. The loop stays armed with its count
+  untouched for as long as the excursion lasts, however long that is and
+  wherever it runs. This is the property the equality comparator exists to
+  provide.
+- Control transfer out of the body that **does not** return — abandoning the
+  loop — must be preceded by `LCLR` (§4.5). Otherwise the loop remains armed
+  and its comparator fires later, if and when the program happens to step onto
+  `loop_end + 1` from unrelated code.
+- Where a redirect may be **placed** is constrained near `loop_end` (§4.4,
+  redirect placement rule); where it may **land** is not.
 
-### 4.8 Interaction with interrupts
+### 4.8 Loop context and the host
 
-The loop context is **not auto-saved** on `TRAP`. Two cases:
-
-1. **ISR does not use the hardware loop** → no action required. `ERET`
-   returns to the body and the loop continues unaffected.
-2. **ISR wants to use the hardware loop** → it must save and restore the
-   context manually via the memory-mapped registers below, before issuing
-   any `LOOP`/`LOOPI`.
+There are no interrupts and no trap handlers, so nothing can preempt a
+running loop: the context needs no save/restore path and none is provided.
+It is exposed to software only through the memory-mapped registers below,
+for two uses — a kernel that wants to reprogram the loop explicitly, and a
+host reading the state of a **halted** core after a fault.
 
 #### Memory-mapped loop registers (top of DMEM address space)
 
-The loop-context subset is shown here for the save/restore sequence; the
-authoritative data-memory map (loop **and** IRQ registers) is `LOAD_STORE.md`
-§4.2.
+The loop-context subset is shown here; the authoritative data-memory map is
+`LOAD_STORE.md` §4.2.
 
 | Offset from top | Name           | Width             | Access | Description           |
 |-----------------|----------------|-------------------|--------|-----------------------|
@@ -635,22 +687,9 @@ authoritative data-memory map (loop **and** IRQ registers) is `LOAD_STORE.md`
 | -7              | `LOOP_END`     | `IMEM_DEPTH_LOG2` | RW     | `loop_end`            |
 | -6              | `LOOP_COUNT`   | 32                | RW     | `loop_count`          |
 
-Save/restore sequence in an ISR that wants to use the loop:
-
-```
-; save
-LW   r1, LOOP_ACTIVE
-LW   r2, LOOP_START
-LW   r3, LOOP_END
-LW   r4, LOOP_COUNT
-... ISR work, may use LOOP/LOOPI freely ...
-; restore
-SW   r4, LOOP_COUNT
-SW   r3, LOOP_END
-SW   r2, LOOP_START
-SW   r1, LOOP_ACTIVE         ; write last so back-edge re-arms cleanly
-ERET
-```
+These access the **committed** loop state (§4.4). When a kernel writes them
+to arm a loop by hand, `LOOP_ACTIVE` must be written **last**, so the
+back-edge re-arms only once the other three are in place.
 
 ### 4.9 Design choices dropped vs. earlier drafts
 
@@ -660,8 +699,8 @@ For reference, this single-context design **deliberately omits**:
 - Nesting level field (`lvl`)
 - `LEND` explicit marker; `BREAK`, `CONTINUE`, `LDROP` as primitive opcodes
 - `LOOP_DEPTH` parameter
-- Loop overflow / underflow / level-mismatch traps
-- Automatic save/restore of the loop context on TRAP
+- Loop overflow / underflow / level-mismatch faults
+- Automatic save/restore of the loop context (nothing preempts a loop)
 
 Outer loops use plain `BNEZ` and pay the standard `BRANCH_SHADOW` branch
 shadow. This overhead is amortized over the inner loop's iterations and is
@@ -709,96 +748,76 @@ negligible in practice.
         +------------------------+
               ^   ^   ^   ^   ^   ^
               |   |   |   |   |   |
-            seq  br  jal jalr loop_back  trap/eret
+            seq  br  jal jalr loop_back
                                  (or loop_skip on LOOP with count==0)
 ```
 
 Priority of next-PC selection (highest first):
 
-1. `TRAP` (synchronous or external IRQ)
-2. `ERET`
-3. Taken branch / `JAL` / `JALR`
-4. **Loop back-edge** (`loop_active && next_pc == loop_end + 1`)
-5. **Loop skip / short-body catch-up** (`LOOP`/`LOOPI` with `count == 0`, or
+1. Taken branch / `JAL` / `JALR`
+2. **Loop back-edge** (`loop_active && next_pc == loop_end + 1`)
+3. **Loop skip / short-body catch-up** (`LOOP`/`LOOPI` with `count == 0`, or
    armed with the front end already past `loop_end` — §4.3)
-6. Sequential `PC + 1`
+4. Sequential `PC + 1`
 
-On an **asynchronous IRQ**, the PC saved in `IRQ_SAVED_PC` is this same next-PC
-selection with the trap override (1–2) removed — priorities 3–6 — so a
-coincident taken branch, jump, or loop back-edge resumes at its resolved target,
-not the sequential PC. See ARCHITECTURE.md §Interrupts and Exceptions (Entry
-point and saved PC).
+There is no override above these: `TRAP` and a fault do not select a next PC,
+they **stop fetching** (ARCHITECTURE.md §Faults and Host Control).
 
 The back-edge is computed on `next_pc` one cycle ahead of fetch and therefore
-incurs **no shadow**. Branches, `JAL`, `JALR`, `TRAP`, `ERET`, the loop skip
-and the short-body catch-up (§4.3) all resolve in EX1; their `BRANCH_SHADOW`
-younger slots are **hardware-squashed** (§5.1), so the compiler fills the
-shadow only for performance.
+incurs **no shadow**. Branches, `JAL`, `JALR`, the loop skip
+and the short-body catch-up (§4.3) all resolve in EX1; the `BRANCH_SHADOW`
+words already fetched behind them are **architectural delay slots** that
+execute (§5.1), so the compiler must fill them.
 
-### 5.1 Branch shadow and hardware squash
+### 5.1 Branch shadow — architectural delay slots
 
 Any control instruction that redirects the PC resolves in **EX1**. By then the
-front end has already fetched the next `BRANCH_SHADOW` VLIW words (in IF/ID/RR);
-on a taken redirect those words are on the wrong path.
+front end has already fetched the next `BRANCH_SHADOW` VLIW words (in IF/ID/RR).
 
-The hardware **squashes** them. On a taken branch / `JAL` / `JALR` / `TRAP` /
-`ERET` / loop-skip / `LCLR` with an active loop (§4.5) — and, selectively, on
-the short-body loop catch-up (§4.3, which flushes only the words beyond
-`loop_end`) — EX1 asserts a `flush` that
+Those words are **architectural delay slots**: they execute, unconditionally,
+whether or not the redirect is taken. The hardware does not squash them and
+inserts no bubble — the redirect only changes what is fetched *after* them.
 
-- forces the `BRANCH_SHADOW` younger in-flight slots to `NOP`,
-- masks their register-file write-enables,
-- thereby suppresses their data-memory / MMIO accesses and any loop-context or
-  trap side effect — squashed slots reach EX1 as `NOP`s, so **no architectural
-  side effect of any kind survives**, not only register writes — and
-- reloads the speculative loop state from the committed copies (§4.4).
+Consequently the shadow is a **correctness obligation on the compiler**, not a
+cost-model number:
 
-Consequently the shadow needs **no compiler action for correctness** — and,
-unlike a delay-slot ISA, **no `NOP` padding either**. The hardware inserts the
-bubble automatically on a taken redirect; the assembler does not pad after a
-branch. `BRANCH_SHADOW` is therefore purely a **scheduler cost-model number**,
-not an architectural delay slot. The only thing the scheduler can do with it is
-*performance*:
+- The compiler must fill every shadow slot, with explicit `NOP`s when it has
+  no useful work to hoist. An unfilled shadow does not cost cycles, it
+  executes whatever the assembler happened to place next.
+- Work placed in the shadow of a **conditional** branch runs on both paths.
+  That is exploitable — the fall-through prologue and the target prologue
+  often share it — but it is the compiler's job to prove the work is safe on
+  both.
+- Work placed in the shadow of an **unconditional** transfer (`J`/`JAL`/
+  `JALR`) always runs, so those slots are free scheduling space rather than a
+  taken-branch penalty.
 
-- On a **not-taken** conditional branch the shadow slots are the real
-  fall-through path (never squashed), so hoisting independent fall-through work
-  into them hides the bubble for free.
-- On **unconditional** transfers (`J`/`JAL`/`JALR`/`TRAP`/`ERET`) and **taken**
-  branches the shadow is always squashed — nothing the compiler places there
-  survives, so those cycles are simply the taken-branch penalty. This is why hot
-  inner loops use the hardware loop (§4): no branch, no shadow.
+`BRANCH_SHADOW` is therefore **architectural**: it is baked into every binary,
+and it cannot be a synthesis-time consequence of front-end depth. Changing
+`BRAM_OUT_REG` (ARCHITECTURE.md §Memory Model) changes the fetch depth and so
+would change the number of delay slots — which means the ISA must **fix**
+`BRANCH_SHADOW` and the implementation must match it, not the reverse. Its
+value is not yet finalized (§8); freezing it is now an ISA decision, not a
+tuning knob.
 
-A mis-scheduled (or unfilled) shadow costs cycles, never correctness — mirroring
-the data-hazard scoreboard (see ARCHITECTURE.md §Scoreboard): NOPs are a
-performance concern only, for both data and control hazards.
+Hot inner loops avoid the question entirely by using the hardware loop (§4):
+the back-edge is computed at fetch and carries no shadow at all.
 
-**Scoreboard interaction.** Squashed slots must leave no stale scoreboard
-reservations observable by the correct path. The reservation-cancellation
-contract, the full redirect timeline, and its two admissible implementations —
-the **registered flush** (default, `fmax`-friendly: wrong-path entries cleared
-one cycle later, provably before the refetched path can reach RR) and the
-**same-cycle inhibit** (optional, at the cost of an EX1→RR combinational
-arc) — are specified in **`SCOREBOARD.md`** §6, the authoritative reference.
-Neither variant needs rollback / unreserve machinery.
+**No scoreboard interaction.** With the shadow executed rather than squashed
+there is no wrong path after a branch, and with no interlock there are no
+reservations to cancel. The squashed-reservation contract of `SCOREBOARD.md`
+§6 applies to neither mechanism and is retained there as design rationale
+only.
 
 **No squash needed for:** the **loop back-edge** (resolved one cycle ahead on
 `next_pc`, §4.4 — no shadow). `LCLR` *does* flush, but only when a loop is
 active (§4.5).
 
-**Cost.** A `flush` control signal plus per-slot NOP-force muxes and
-write-enable masks — a handful of gates, reusing the same front-end control as
-the lock-step stall (stall = *freeze* the front-end registers; flush = *force
-them to NOP*). Scoreboard-side cost of the two flush variants: `SCOREBOARD.md`
-§8.
-
-**Implementation shortcut (optional).** A first FPGA bring-up MAY skip the
-squash hardware entirely and instead require the assembler to pad
-`BRANCH_SHADOW` `NOP`s after every control transfer. This is an *implementation*
-restriction, not an ISA change: a later squashing core runs that padded code
-unchanged (the `NOP`s are simply redundant). The trade-off is that padding
-freezes `BRANCH_SHADOW` into the binary and makes not-taken branches pay the
-bubble too, so it is a temporary crutch — the architectural contract remains
-hardware squash.
+**Cost.** Nothing on the branch path: with the shadow executed there are no
+NOP-force muxes and no write-enable masks for a redirect. The `flush` signal
+survives only for the loop cases above, where it reuses the same front-end
+control as the lock-step stall (stall = *freeze* the front-end registers;
+flush = *force them to NOP*).
 
 ---
 
@@ -813,14 +832,14 @@ hardware squash.
 | `LOOP`/`LOOPI`, count = 0 (skip) | —                         | `BRANCH_SHADOW` |
 | Loop back-edge   | —                                         | 0           |
 | `LCLR`           | —                                         | 0 (no loop) / ≤ `BRANCH_SHADOW` (active loop, §4.5) |
-| `MOV`/`MOVI`     | `rd` at W + 2                             | 0           |
 | `CMOV`/`CMOVI`   | `rd` at W + 2 (if written)               | 0           |
 | Integer ALU (`ADD`…`SLTIU`) | `rd` at W + 1 (design intent, §3.9) | 0     |
-| `TRAP`/`ERET`    | —                                         | `BRANCH_SHADOW` |
+| `TRAP`           | — (halts; fetch stops)                    | n/a         |
 
-Every `BRANCH_SHADOW` entry above is **hardware-squashed** (§5.1): the compiler
-fills the shadow slots for performance, but an empty or mis-scheduled shadow
-costs cycles, never correctness.
+Every `BRANCH_SHADOW` entry above is a run of **architectural delay slots**
+(§5.1): those words execute, so the compiler must fill them — with `NOP`s if
+it has nothing to hoist. An unfilled shadow is a correctness bug, not a lost
+optimization.
 
 ---
 
@@ -828,6 +847,8 @@ costs cycles, never correctness.
 
 | Pseudo                       | Expansion                  | Notes                              |
 |------------------------------|----------------------------|------------------------------------|
+| `MOV  rd, rs`                | `ADD  rd, r0, rs`          | register copy (§3.7)               |
+| `MOVI rd, imm`               | `ADDI rd, r0, imm17`       | load immediate (§3.7)              |
 | `J target`                   | `JAL r0, target`           | unconditional jump                 |
 | `CALL target`                | `JAL ra, target`           | subroutine call                    |
 | `RET`                        | `JALR r0, ra, 0`           | return                             |
@@ -852,7 +873,7 @@ costs cycles, never correctness.
 | Parameter       | Default | Description                          |
 |-----------------|---------|--------------------------------------|
 | `LOOP_CNT_W`    | 32      | Iteration counter width              |
-| `BRANCH_SHADOW` | 3 (TBD) | VLIW words of taken-branch bubble, **hardware-squashed** (§5.1) — a scheduler cost-model number, not a delay slot; no `NOP` padding is emitted. Derived from pipeline depth (IF/ID/RR + branch resolves in EX1) and therefore from the BRAM fetch output-register choice (`BRAM_OUT_REG`, ARCHITECTURE.md §Memory Model) — a 2-cycle fetch grows the shadow by one; exact value **not yet finalized**. |
+| `BRANCH_SHADOW` | 3 (TBD) | VLIW words of **architectural delay slots** after any EX1-resolved redirect (§5.1) — they execute, and the compiler must fill them. Because it is architectural it is baked into binaries, so it cannot follow the fetch depth: the BRAM output-register choice (`BRAM_OUT_REG`, ARCHITECTURE.md §Memory Model) must be **fixed to match** the chosen value, not the reverse. Exact value **not yet finalized** — freezing it is an ISA decision. |
 
 ---
 
@@ -878,18 +899,21 @@ end_i:
     ; ---- end of inner body (back-edge fires here, zero overhead) ----
 
     ADDI  r2, r2, -1
-    BNEZ  r2, mid                  ; taken  -> 3-word shadow squashed (HW bubble)
-                                   ; !taken -> falls straight into the code below,
-                                   ;           which fills the shadow for free
-    ADDI  r1, r1, -1
-    BNEZ  r1, outer                ; same: no NOP padding — HW bubbles on the
-                                   ; taken back-edge, fall-through fills it
+    BNEZ  r2, mid                  ; 3 delay slots follow — they execute on
+    ADDI  r1, r1, -1               ;   BOTH paths (§5.1)
+    NOP                            ; delay slot 2 (nothing safe to hoist here)
+    NOP                            ; delay slot 3
+    BNEZ  r1, outer                ; same: 3 delay slots below
+    NOP
+    NOP
+    NOP
 ```
 
-Note there is **no `NOP` padding** after the branches: the shadow is
-hardware-squashed on a taken redirect (§5.1), so the assembler emits nothing for
-it. On the not-taken exit path the following instructions occupy the shadow and
-execute usefully.
+Note the explicit padding after each branch: the shadow words are
+**architectural delay slots** (§5.1) and execute whether or not the branch is
+taken, so the compiler must place something valid there. Here `ADDI r1, r1, -1`
+is hoisted into the first slot of the inner branch — it is correct on both
+paths — and the rest is padded.
 
 Zero overhead in the **innermost** body (no compare, no decrement, no branch
 shadow). The outer loops pay only the taken-branch bubble per iteration —
