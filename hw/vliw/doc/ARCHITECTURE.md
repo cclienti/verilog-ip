@@ -3,12 +3,14 @@
 ## Overview
 
 A 4-slot VLIW processor targeting FPGA implementation (Xilinx/AMD), designed for
-pure processing kernels. A lightweight **hardware scoreboard** (interlock)
-guarantees correctness; the compiler inserts NOPs only for performance, never
-for correctness (Hexagon-style). Per-instruction latencies are known and
-exposed to the compiler for **optimization**, but they are not welded into the
-ISA — pipeline depth and individual latencies can change without breaking
-binaries. See §Scoreboard.
+pure processing kernels. The pipeline is **fully exposed**: there is no
+interlock, no branch-shadow squash and no interrupt mechanism. Instruction
+latencies, the branch shadow and the write ordering are **architectural** —
+the compiler must satisfy them, and a scheduling mistake yields a wrong
+result rather than a stall. In exchange the machine has no hazard hardware
+on its critical path, and the register file may be used as a dataflow
+buffer. One dynamic mechanism remains, for the single hazard a compiler
+cannot decide statically (§No Interlock, §Faults and Host Control).
 
 ---
 
@@ -18,7 +20,6 @@ binaries. See §Scoreboard.
 |--------------------|---------|--------|------------------------------------------|
 | `IMEM_DEPTH_LOG2`  | 10      | 10–14  | Instruction memory depth (1K–16K words)  |
 | `DMEM_DEPTH_LOG2`  | 11      | 10–14  | Data memory depth (1K–16K 32-bit words)  |
-| `NB_IRQ`           | 1       | 1–32   | Number of IRQ lines                      |
 | `BRAM_OUT_REG`     | TBD     | 0–1    | Hardened BRAM/DPRAM output register, per memory; `1` = +1 read-latency cycle for higher `fmax` (see §Memory Model) |
 
 ---
@@ -43,12 +44,15 @@ binaries. See §Scoreboard.
 
 - **Physical**: shared register file (implementation in `../lib/vliwrf`),
   sized to provide the per-slot read/write ports listed below
-- **Banks**: 4 banks of 32 registers (one bank per slot)
+- **Banks**: 5 banks of 32 registers (one per write port: ALU0, ALU1,
+  LS-A, LS-B, CTRL — the LS slot owns one bank per lane of a dual load,
+  LOAD_STORE.md §2)
 - **Read**: any slot can read any bank (full 7-bit source address: bank[2:0] + reg[4:0])
 - **Write**: each slot writes only its own bank (5-bit destination, bank implicit from slot)
-- **Hazard model**: this write-local / read-global split is exactly what makes
-  the hardware scoreboard cheap — WAW hazards and write-port conflicts stay
-  inside a single bank, and only RAW hazards cross banks (see §Scoreboard)
+- **Hazard model**: this write-local / read-global split keeps every write
+  port private to one slot, so write-port arbitration does not exist in
+  hardware; ordering writes to one register is the compiler's obligation
+  (§No Interlock)
 - **Zero register (`r0`)**: a **single canonical zero** lives at one
   physical location, conventionally **bank 0, reg 0** (global read address
   `0000000`). Because every slot can read any bank, every slot reads `r0`
@@ -58,9 +62,10 @@ binaries. See §Scoreboard.
 - **Write ports**: exactly **one per slot** — four total. Each slot retires at
   most one result per cycle, so the write-port count is fixed by the slot count;
   there is nothing in the datapath that can drive a fifth concurrent write. This
-  is what keeps each bank a single-writer structure (see §Scoreboard).
-  Register state is spilled/filled to memory in software on interrupt entry/exit
-  (see §Interrupts and Exceptions) — there are no dedicated context-save ports.
+  is what keeps each bank a single-writer structure (see §No Interlock).
+  There is no interrupt entry, hence no context save at all — a fault halts
+  the core and the host inspects the register file as it stands
+  (§Faults and Host Control).
 
 | Slot        | Write port | Bank bits |
 |-------------|------------|-----------|
@@ -192,10 +197,10 @@ address is `rs_base + sign_ext(imm)` (byte-addressed, little-endian). Loads carr
 a 14-bit offset (**±8 KB**); stores an `imm12` (**±2 KB**), since a store spends a
 second source register on `rs_data`. Load latency is **2 cycles** at the
 `BRAM_OUT_REG = 0` baseline (see §Memory Model); load-use RAW hazards are covered
-by the scoreboard (§Scoreboard).
+by the compiler (§Latency model, §No Interlock).
 
 The complete encoding, addressing/alignment rules, the data-memory address map
-(including the memory-mapped `LOOP_*` and `IRQ_*` registers), and memory-ordering
+(including the memory-mapped `LOOP_*` registers), and memory-ordering
 semantics are specified in **`LOAD_STORE.md`**, which is the authoritative
 reference; they are not duplicated here to avoid drift.
 
@@ -209,7 +214,7 @@ jumps, traps, and the single-context hardware loop, and also carries a
 **lightweight integer ALU** (`ADD/SUB/ADDI`, `AND/OR/XOR/ANDI`, `SLT*` — no
 multiply/shift, result at W+1) so pointer/loop-counter/condition arithmetic can
 run in the otherwise-idle control slot instead of stealing an ALU slot. Its
-complete encoding — `BEQ…BGEU`, `JAL`, `JALR`, `TRAP`, `ERET`, `LOOP`/`LOOPI`,
+complete encoding — `BEQ…BGEU`, `JAL`, `JALR`, `TRAP`, `LOOP`/`LOOPI`,
 `LCLR`, `MOV`/`MOVI`, `CMOV`/`CMOVI`, and the integer ops — is specified in
 **`CONTROL_UNIT.md`**, which is the authoritative reference; it is not duplicated
 here to avoid drift.
@@ -224,8 +229,9 @@ Field conventions (see `CONTROL_UNIT.md` §3 for exact bit layouts):
 - Branch shadow = `BRANCH_SHADOW` VLIW words, **hardware-squashed** on a taken
   redirect (CONTROL_UNIT.md §5.1): the compiler fills it for performance only,
   never for correctness, and emits no `NOP` padding. This is a **control**
-  hazard, handled by the front-end flush and *not* by the data scoreboard (see
-  §Scoreboard).
+  hazard: the shadow words are **architectural delay slots**, executed
+  whether or not the branch is taken, and the compiler fills them
+  (§Latency model).
 
 #### Control pseudo-instructions
 
@@ -266,21 +272,20 @@ Cycle:  1     2     3     4     5     6     7     8
 > file). Each may enable the hardened **output register** (`BRAM_OUT_REG`),
 > adding one read-latency cycle for higher `fmax` — on Xilinx the synthesizer
 > *absorbs* a datapath register into the BRAM macro, so it costs no fabric flop.
-> This deepens the pipeline (and, for fetch, grows `BRANCH_SHADOW`) but changes
-> **no binaries**: the scoreboard covers the data latency and the hardware
-> squash covers the longer shadow. See §Memory Model. The stage list above is
-> the `BRAM_OUT_REG = 0` baseline.
+> This deepens the pipeline (and, for fetch, grows `BRANCH_SHADOW`) and is
+> therefore **ISA-visible**: both the data latencies and the number of delay
+> slots move, so the kernels must be rebuilt. See §Memory Model. The stage
+> list above is the `BRAM_OUT_REG = 0` baseline.
 
-### Compiler latency model (performance)
+### Latency model (architectural)
 
-These latencies are a **scheduling guide for the compiler**, not a correctness
-contract: the hardware scoreboard (§Scoreboard) enforces correctness regardless.
-The compiler spaces dependent instructions by the values below to **avoid
-stalls**; if it doesn't, the pipeline stalls and the result is still correct,
-only slower.
+These latencies are a **correctness contract**, not a scheduling hint: nothing
+interlocks. A dependent instruction scheduled earlier than the values below
+reads the destination register's *previous* content, silently and without
+diagnostic.
 
 For every register `rN` written by instruction `I` issued at VLIW word W, the
-earliest a dependent instruction can read `rN` **without stalling** is:
+earliest a dependent instruction may read `rN` is:
 
 | Operation         | Earliest next read (VLIW words after writer) |
 |-------------------|----------------------------------------------|
@@ -290,40 +295,54 @@ earliest a dependent instruction can read `rN` **without stalling** is:
 | MUL/MULH          | W + 4                                        |
 | INV_SQRT          | W + 5                                        |
 | JAL/JALR (rd)     | W + 1                                        |
-| Branch (shadow)   | 3-word shadow, HW-squashed — fill for perf    |
+| Branch (shadow)   | 3 **architectural delay slots** — always executed |
 
-> The branch row is a **control** hazard, not a data hazard, so the data
-> scoreboard does not cover it. The branch shadow is **hardware-squashed** on a
-> taken redirect (see `CONTROL_UNIT.md` §5.1), so branch NOPs are performance-
-> only just like data-hazard NOPs; the compiler fills the shadow to avoid
-> bubbles but never for correctness.
+> The branch shadow is **not squashed**: the `BRANCH_SHADOW` words following a
+> branch execute whether or not the branch is taken. They are delay slots in
+> the classical sense, and the compiler must fill them with useful work or
+> explicit `NOP`s — an unfilled shadow is a correctness fault, not a lost
+> cycle.
+
+> **Write ordering.** Latencies are not uniform (W+2 to W+5), so two writes to
+> the *same* register may land out of program order — a `MUL` at W+4 followed
+> by an `ADD` at W+2 leaves the multiply's value in place. The compiler owns
+> this ordering; a machine with an interlock got it for free from the WAW
+> check (SCOREBOARD.md §4).
 
 ---
 
-## Scoreboard (Hardware Interlock)
+## No Interlock (the exposed contract)
 
-The processor uses a lightweight hardware **scoreboard** to guarantee
-correctness. NOPs become a **performance** concern only (Hexagon-style): a
-compiler scheduling mistake produces a stall, never silent corruption. This
-also decouples the ISA from the pipeline — instruction latencies or pipeline
-depth can change without breaking existing binaries.
+The core ships **without** a hardware interlock. The workload is small compute
+kernels compiled from available sources, so a latency change is a rebuild
+rather than a binary-compatibility event, and the ~10-operand comparison
+network an interlock puts on the RR→EX1 path buys a guarantee this machine
+does not need.
 
-It is cheap because the register file is **write-local / read-global**
-(§Register File): WAW hazards and write-port conflicts stay inside a single
-bank (one writer slot per bank), and only RAW hazards cross banks. The state
-is a few hundred flip-flops — per-bank `busy` bits plus `wbres` write-back
-delay lines — with an all-or-nothing combinational issue check and a single
-**global lock-step stall** (*freeze the front, drain the back*). No renaming,
-no ROB, no CAM.
+What the compiler owns, in full:
 
-The scoreboard covers **data** hazards only; **control** hazards (the branch
-shadow) are handled by the front-end squash (`CONTROL_UNIT.md` §5.1), so the
-"NOPs never affect correctness" property holds for both. The complete
-specification — state, issue checks, stall rules, the interaction with
-branches (taken and not-taken), jumps, traps and interrupts, the
-squashed-reservation contract, and the variable-latency extension — is in
-**`SCOREBOARD.md`**, which is the authoritative reference; it is not
-duplicated here to avoid drift.
+- **Data latencies** (§Latency model) — read a value before it lands and you
+  get the previous one.
+- **Write ordering to one register**, because latencies differ per operation.
+- **The branch shadow** — three architectural delay slots, always executed.
+- **Restartability**, if wanted: a value in flight survives an arbitrary delay
+  only if nothing overwrites its register meanwhile. Dense code may reuse a
+  single register as a dataflow buffer (a value consumed in the one cycle it
+  occupies the name); code that must tolerate being interrupted mid-flight
+  needs `ceil(L / II)` names instead. Since this core has no interrupts
+  (§Faults and Host Control), the dense form is the normal one.
+
+What hardware still owns is exactly one thing: **the bank-conflict freeze**.
+A strided pair whose stride is a multiple of 3 needs two bank accesses
+(LOAD_STORE.md §10.4), and the stride is a *register* value — no static
+schedule can anticipate it. The whole pipeline therefore freezes for one
+cycle, in-flight operations included, so every pipeline-relative latency is
+preserved and the bubble is invisible except in the cycle count. That is the
+design rule: **hardware handles only what the compiler cannot decide.**
+
+`SCOREBOARD.md` is retained in full as the specification of an interlocked
+variant, with a status note marking what no longer applies; its §7.6 remains
+the clearest statement of the obligations above.
 
 ---
 
@@ -358,7 +377,7 @@ Handled **explicitly**, the accelerator way, not with a cache:
 - **Data > DMEM**: double-buffer / tile the scratchpad, orchestrated by the
   NoC/NI — the standard tiled-dataflow pattern.
 
-### On-chip read latency is an `fmax` knob, not an ISA property
+### On-chip read latency is an ISA property
 
 Each on-chip memory (IMEM, DMEM, register file) may be built **with or without
 the hardened BRAM output register** (`BRAM_OUT_REG`). Enabling it adds **one
@@ -366,23 +385,27 @@ cycle of read latency** in exchange for higher `fmax`: on Xilinx the synthesizer
 *absorbs* a datapath register placed after the memory into the BRAM's built-in
 output register, so it costs no fabric flop and shortens the clock-to-out path.
 
-This latency is a pure **timing / `fmax`** choice with **no binary impact**:
+Without an interlock this choice is **visible to software**, and changing it
+invalidates compiled code:
 
-- **Data reads** (register file, loads): the scoreboard enforces correctness at
-  whatever the latency is; a deeper read just shifts the advisory latency
-  numbers (§Compiler latency model) uniformly.
-- **Instruction fetch**: a deeper fetch grows the front end, hence grows
-  `BRANCH_SHADOW`. Because the shadow is **hardware-squashed** and
-  micro-architectural — not a delay slot (see `CONTROL_UNIT.md` §5.1) — the same
-  binaries run unchanged; only cycle counts move. This is precisely why the
-  shadow was kept squash-based rather than compiler-frozen.
+- **Data reads** (register file, loads): every latency in §Latency model
+  shifts by one, so every dependence distance the compiler emitted becomes
+  wrong by one.
+- **Instruction fetch**: a deeper fetch grows `BRANCH_SHADOW`, and the shadow
+  is now made of **architectural delay slots** — one more word to fill after
+  every branch.
+
+Both are compile-time constants (`BRAM_OUT_REG`, and `ADRREG` for the data
+memory, LOAD_STORE.md §10.1): pick them per build, then rebuild the kernels.
 
 ### Future external memory (out of scope)
 
-The scoreboard's global stall is already **variable-latency-ready** (see
-§Scoreboard): a future variant could attach external DRAM behind a cache or a
-DMA engine and assert the same stall on a miss, **without ISA changes**. That is
-explicitly out of scope for the base core, which is cacheless and deterministic.
+The bank-conflict freeze (§No Interlock) is a **total** pipeline freeze, so
+the same mechanism would serve a variable-latency memory: a miss would hold
+every stage until the data arrives, preserving all pipeline-relative timings
+and therefore the compiler's schedule. That is explicitly out of scope for
+the base core, which is cacheless and deterministic — but the mechanism it
+would need already exists.
 
 ---
 
@@ -413,107 +436,68 @@ No arbitration needed — ports never conflict by construction.
 
 ---
 
-## Interrupts and Exceptions
+## Faults and Host Control
 
-Interrupts and synchronous traps share one mechanism, driven entirely by the
-control slot's `TRAP` / `ERET` pair (encoding and shadow behaviour in
-CONTROL_UNIT.md §3.6 and §5). The core adds **no dedicated context-save
-hardware** — register state is memory, saved and restored in software like any
-RISC-style processor.
+The core has **no interrupts**. Masking them while writes are in flight would
+mask them permanently — a software-pipelined kernel always has a write in
+flight — so the dispatch model is **run to completion with polling**: the NI
+writes a work descriptor and a completion flag into the scratchpad through
+side B, and the core reads them between kernels (§NoC/NI handshake). This
+removes the entire interrupt subsystem: no vector, no mask, no cause-driven
+entry, no `ERET`, no saved-PC shadow, and no restartability requirement on
+kernel code.
 
-### Entry
+### Faults are fatal
 
-On a synchronous `TRAP` or an accepted external IRQ (enabled in `IRQ_MASK`),
-hardware:
+A synchronous fault **halts** the core. There is no handler and no resume:
 
-- saves the architectural resume PC to `IRQ_SAVED_PC` (the just-resolved
-  next-PC — see §Entry point and saved PC below),
-- records the cause in `IRQ_CAUSE` and sets the pending bit in `IRQ_STATUS`,
-- jumps to `IRQ_VECTOR`,
-- **squashes** the younger in-flight slots via the same EX1 `flush` used for
-  branches (details in §Entry point and saved PC), so entry incurs no software
-  NOP shadow,
-- **blocks acceptance of further external IRQs until `ERET`** (an internal
-  *in-handler* flag): new events are still latched in `IRQ_STATUS` but are not
-  taken — `IRQ_SAVED_PC` is single-depth, so hardware nesting is not
-  supported. A synchronous `TRAP` inside a handler is a software/ABI concern.
+| Cause | Raised by |
+|-------|-----------|
+| `MISALIGN` | an access violating §3.5 natural alignment (LOAD_STORE.md) |
+| `OOB`      | an effective address outside the backed scratchpad (`oob`, LOAD_STORE.md §10.4) |
+| `ILLEGAL`  | a reserved opcode in any slot |
+| `SOFTWARE` | the control slot's `TRAP` instruction — a deliberate halt, usable as an assertion or breakpoint |
 
-All of these live in the memory-mapped control-register region at the top of
-DMEM (map in `LOAD_STORE.md` §4.2); the
-handler reads and writes them with ordinary `load`/`store` — there are no
-architectural status registers.
+On a fault the core stops fetching, latches the cause and the faulting bundle
+PC, and raises `faulted` in its status word. Nothing is written back from the
+faulting bundle onward; earlier in-flight results land normally, which leaves
+the register file in a state the host can inspect.
 
-### Entry point and saved PC
+### Host control block (side B)
 
-An external IRQ is asynchronous — it can land on the same cycle a control
-transfer is resolving — so the hardware must capture the *right* resume PC. Two
-rules make the interrupt precise:
+The `parmem3_2` word address is `DMEM_DEPTH_LOG2 + 2` bits wide while only
+`3 × 2^DMEM_DEPTH_LOG2` words are backed, so a whole `2^DMEM_DEPTH_LOG2`-word
+region above the scratchpad is unbacked by construction (LOAD_STORE.md §4.1).
+The control block is decoded there, at the base of that region, and is
+reachable **from side B only** — the NI and the host own it; the core cannot
+alter its own run state.
 
-1. **Injection at EX1.** The IRQ is taken at the branch-resolution stage,
-   reusing the branch `flush`: the bundle in EX1 commits, the younger
-   `BRANCH_SHADOW` slots (RR/ID/IF) are squashed (with their scoreboard
-   reservations inhibited, see CONTROL_UNIT.md §5.1), and older bundles (EX2+)
-   drain and commit. Injecting at the resolution stage avoids the race in which
-   an unresolved branch *behind* the interrupt point would later reach EX1 and
-   hijack the ISR's fetch stream. Older long-latency writes (MUL, INV_SQRT)
-   drain under scoreboard control, so the handler's context spill reads settled
-   values.
+| Offset | Name          | Access | Description |
+|--------|---------------|--------|-------------|
+| +0     | `CTRL`        | W      | bit 0 `RUN` — writing 1 flushes the pipeline, clears `faulted`, sets PC to `START_PC` and runs; bit 1 `HALT` — stop fetching at the next bundle boundary |
+| +1     | `STATUS`      | R      | bit 0 `running`, bit 1 `halted`, bit 2 `faulted` |
+| +2     | `FAULT_CAUSE` | R      | cause code of the halting fault (table above) |
+| +3     | `FAULT_PC`    | R      | VLIW-word address of the faulting bundle |
+| +4     | `START_PC`    | RW     | PC loaded by `RUN`; resets to **0** |
 
-2. **Save the *architectural* next-PC, not the raw PC.** `IRQ_SAVED_PC` is the
-   next-PC selector output for the EX1 bundle **with the trap override removed**
-   (priorities 3–6 of CONTROL_UNIT.md §5) — i.e. whatever that bundle already
-   decided:
+The intended sequence is: poll `STATUS` until `halted`, load code and data
+through side B, then write `RUN`. A clean restart from zero is the reset
+default — `START_PC` exists so a host can also resume at a kernel entry point
+without rewriting IMEM.
 
-   | EX1 bundle at the interrupt instant | `IRQ_SAVED_PC`                           |
-   |-------------------------------------|------------------------------------------|
-   | taken branch                        | branch target                            |
-   | not-taken branch                    | `PC + 1`                                 |
-   | `JAL` / `JALR`                      | jump target                              |
-   | loop back-edge firing               | `loop_start` (count already decremented) |
-   | loop skip (`count == 0`)            | skip target                              |
-   | ordinary instruction                | `PC + 1`                                 |
+- **Reset** leaves the core halted with `START_PC = 0`; it never runs until
+  the host asks (§Reset and Clock).
+- `RUN` empties the pipeline before fetching, so no in-flight operation from a
+  previous kernel can land in the new one.
+- `HALT` stops at a bundle boundary and lets in-flight writes retire, so the
+  register file is coherent when the host inspects it.
+- The block is on side B's clock (the NI domain); the dual-clock banks are the
+  crossing, exactly as for the scratchpad.
 
-   So a coincident **taken** branch still squashes its own shadow and its target
-   becomes the resume PC; a **not-taken** branch resumes at `PC + 1`. The trap
-   input only steers the actual fetch to `IRQ_VECTOR` and latches this
-   already-computed value — there is no second PC-computation path.
-
-A synchronous `TRAP` is the degenerate case of the same rule: its bundle is in
-EX1 with nothing else resolving, so the saved value is `TRAP_PC + 1`
-(CONTROL_UNIT.md §3.6). If a synchronous `TRAP` and an async IRQ land on the
-same cycle, one is taken and the other stays pending in `IRQ_STATUS`.
-
-Two more corners are defined:
-
-- **EX1 holds a bubble** (global scoreboard stall, or the pipe draining after
-  a redirect): the IRQ is still accepted; `IRQ_SAVED_PC` is the PC of the
-  **oldest unexecuted bundle** — e.g. the bundle stalled at RR, which has made
-  no scoreboard reservations (SCOREBOARD.md §6.6) and is simply squashed and
-  refetched after `ERET`.
-- **EX1 holds a `LOOP`/`LOOPI`**: the arm **commits** (committed context
-  `{active, start, end, count = N}`) and the saved PC is `loop_start` — the
-  arm's sequential next-PC. The short-body catch-up's in-flight credit is
-  undone by the flush's speculative-state reload, since the credited iteration
-  is itself squashed, so all `N` iterations run after `ERET`
-  (CONTROL_UNIT.md §4.3/§4.4, third illustration). An implementation MAY
-  instead defer IRQ acceptance by one cycle in this case; the two behaviours
-  are architecturally indistinguishable.
-
-### Context save / restore (software)
-
-The handler spills whatever registers it clobbers to a stack in the **data
-memory address space** using ordinary `store` instructions through the
-Load/Store slot, and reloads them with `load` on the way out. This reuses the
-existing 4 write / 8 read ports — there are no extra register-file ports and no
-extra banks. The hardware-loop context is **not** auto-saved and has its own
-memory-mapped save/restore path (see CONTROL_UNIT.md §4.8).
-
-### Exit
-
-`ERET` restores the PC from `IRQ_SAVED_PC`, clears the pending bit in
-`IRQ_STATUS`, and **re-enables IRQ acceptance** (clears the *in-handler*
-flag); like `TRAP` it is hardware-squashed, so return incurs no shadow.
-(`trap_code` allocation and exact bit layouts are defined in `ABI.md`.)
+> **Open item — instruction memory.** Loading IMEM from the NI is not
+> specified here. A clean restart usually implies new code, so the NI needs a
+> write path to IMEM (a second port, or a boot-time DMA); it is the one piece
+> of the host interface still missing.
 
 ---
 
@@ -531,11 +515,8 @@ flag); like `TRAP` it is hardware-squashed, so return incurs no shadow.
 |---------------------------------------------|----------------------------------------------------------|
 | `PC`                                        | `0` — execution starts at IMEM word 0                    |
 | Pipeline                                    | empty (all slots `NOP`)                                  |
-| `IRQ_MASK`                                  | `0` — **all lines masked**; software programs `IRQ_VECTOR` before unmasking |
-| `IRQ_STATUS`, `IRQ_CAUSE`, `IRQ_VECTOR`, `IRQ_SAVED_PC` | `0`                                          |
-| *in-handler* flag                           | `0` (IRQ acceptance enabled, subject to `IRQ_MASK`)      |
 | `loop_active` (committed **and** speculative) | `0` (no armed loop)                                    |
-| Scoreboard (`busy`, `wbres`)                | `0` (no reservations)                                    |
+| Core run state                              | **halted**; `START_PC = 0`, `faulted = 0` (§Faults and Host Control) |
 | General-purpose registers                   | **not reset by `srst`** (BRAM contents persist); `0` after FPGA configuration (`initial`), `r0` permanently 0 (§Implementation of `r0`) |
 
 ---
@@ -579,14 +560,14 @@ and is **not** a RISC-V implementation.
 | Word format           | 128-bit VLIW, 4 × 32-bit slots                  | 32-bit (or 16-bit `C`) scalar         |
 | Bit-level encoding    | Custom (flat `opcode[31:26]` per slot)          | 7-bit major opcode in `[6:0]`         |
 | Opcode width          | Flat 6-bit opcode per slot (no `fmt` bit)       | 7-bit op + `funct3` + `funct7`        |
-| Register file         | 4 banks × 32 regs, 7-bit global read address    | Flat 32 regs, 5-bit address           |
+| Register file         | 5 banks × 32 regs, 7-bit global read address    | Flat 32 regs, 5-bit address           |
 | PC unit               | VLIW-word addressed                             | Byte addressed                        |
 | Branch range          | ±2048 VLIW words (12-bit field)                 | ±4 KiB bytes                          |
 | `JAL` range           | ±1 M VLIW words (21-bit field)                  | ±1 MiB bytes (20-bit field)           |
-| Hazard handling       | Hardware scoreboard interlock; latencies advisory (perf only) | Implementation-defined interlocks |
+| Hazard handling       | **None** — exposed pipeline, latencies and delay slots architectural | Implementation-defined interlocks |
 | Hardware loops        | `LOOP` / `LOOPI`, single-context (see CONTROL_UNIT) | Not present (custom extensions only)  |
 | `INV_SQRT`            | Native ALU op                                   | Not present                           |
-| IRQ control           | Memory-mapped registers                         | CSR-based (`csrrw`, etc.)             |
+| Exceptions            | Fatal: halt + cause, read by the host over the NI port | Trap handler, resumable               |
 | Missing               | `AUIPC FENCE ECALL EBREAK CSR* atomics F D C V` | Present in standard extensions        |
 
 ### One-line summary

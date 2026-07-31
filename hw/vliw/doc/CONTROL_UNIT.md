@@ -1,5 +1,16 @@
 # VLIW Control Unit Specification
 
+> **Status note — interrupts removed.** The core has no interrupt mechanism
+> (ARCHITECTURE.md §Faults and Host Control): work is dispatched by polling
+> between kernels, and a fault halts the core for the host to inspect. `ERET`
+> is gone and `TRAP` is now a deliberate halt. Passages below that describe
+> IRQ acceptance, saved-PC shadows or handler behaviour — notably the IRQ
+> timelines of §4.4 and the IRQ priority in the §5 flush order — describe a
+> mechanism that no longer exists; they are retained because the same
+> reasoning applies to the branch and loop cases they share, and are marked
+> for rewrite. The branch shadow is likewise **no longer squashed**: its
+> words are architectural delay slots the compiler must fill.
+
 ## 1. Overview
 
 The Control Unit is responsible for:
@@ -122,8 +133,7 @@ a single sign-extend extraction circuit covers all three.
 | `000110` | `BGEU`   | `rs1, rs2, target`    | branch if `rs1 >= rs2` (unsigned)                | §3.2   |
 | `000111` | `JAL`    | `rd, target`          | jump and link; `rd = PC + 1`                     | §3.3   |
 | `001000` | `JALR`   | `rd, rs1, imm12`      | jump to `rs1 + imm12`; `rd = PC + 1`             | §3.4   |
-| `001001` | `TRAP`   | `trap_code`           | software trap; save PC, jump to `IRQ_VECTOR`     | §3.6   |
-| `001010` | `ERET`   | —                     | return from trap; restore PC, clear `IRQ_STATUS` | §3.6   |
+| `001001` | `TRAP`   | `trap_code`           | halt the core, cause `SOFTWARE`, `trap_code` latched for the host | §3.6   |
 | `001011` | `LOOP`   | `rs1, end_off`        | arm hardware loop, count from `rs1`              | §3.5   |
 | `001100` | `LCLR`   | —                     | abort the active hardware loop                   | §3.5   |
 | `001101` | `MOV`    | `rd, rs`              | `rd <- rs`                                       | §3.7   |
@@ -143,7 +153,8 @@ a single sign-extend extraction circuit covers all three.
 | `011011` | `SLTI`   | `rd, rs1, imm12`      | `rd <- (rs1 < sign_ext(imm12)) signed ? 1 : 0`   | §3.9   |
 | `011100` | `SLTIU`  | `rd, rs1, imm12`      | `rd <- (rs1 < sign_ext(imm12)) unsigned ? 1 : 0` | §3.9   |
 
-Reserved: opcodes `011101`–`111111` (35 entries). Executing a reserved opcode
+Reserved: opcode `001010` (formerly `ERET`) and `011101`–`111111` (36
+entries in total). Executing a reserved opcode
 raises an **illegal-instruction trap** (same entry path as `TRAP`; `trap_code`
 in `ABI.md`) — the assembler must never emit one.
 
@@ -231,14 +242,14 @@ Immediate form (`LOOPI`, opcode `001111`):
 | `001001`  | trap_code(26) |
 
 - `trap_code` allocation defined in `ABI.md`.
-- **Saved-PC semantics.** `TRAP` records the resume PC in `IRQ_SAVED_PC` and
-  jumps to `IRQ_VECTOR`; `ERET` restores it. `IRQ_SAVED_PC` is always the PC to
-  resume at: for a synchronous `TRAP` that is the **following** bundle
-  (`TRAP_PC + 1`, so the handler is not re-entered); for an asynchronous IRQ it
-  is the **architectural next-PC** — the just-resolved next bundle, i.e. a
-  coincident taken branch's target rather than the sequential PC. Full rule and
-  injection point in ARCHITECTURE.md §Interrupts and Exceptions (Entry point and
-  saved PC).
+- **`TRAP` halts the core.** It is not a call: there is no handler and no
+  resume. The core stops fetching, latches cause `SOFTWARE` together with
+  `trap_code` and the bundle's PC, and raises `faulted` in the status word the
+  NI reads (ARCHITECTURE.md §Faults and Host Control). Its uses are assertions
+  and breakpoints — a kernel that reaches an impossible state stops where the
+  host can see it, rather than continuing silently.
+- Earlier in-flight results retire normally, so the register file the host
+  inspects is the one the faulting bundle saw.
 
 ---
 
@@ -318,7 +329,7 @@ Immediate form (`ADDI`, `ANDI`, `SLTI`, `SLTIU`):
   path as the `JAL`/`JALR` link, one cycle earlier than the ALU slots' `ADD`
   (W + 2). This keeps a loop-carried pointer/counter recurrence at **1
   cycle/iteration**. Like `BRANCH_SHADOW`, this latency is advisory (the
-  scoreboard enforces correctness); if timing closure forces W + 2, the
+  the compiler must respect the real latency); if timing closure forces W + 2, the
   recurrence is 2 and must be hidden by software pipelining.
 - Only one control instruction issues per VLIW word, so a bundle cannot both
   branch and do integer arithmetic in the control slot. Inner (hardware) loops

@@ -8,7 +8,7 @@ for:
 - Loads and stores to the on-chip **data scratchpad** (the `parmem3_2`
   prime-interleaved banked memory, side A — §10)
 - Access to the **memory-mapped control registers** at the top of the data
-  address space (hardware-loop context and IRQ control — see §4)
+  address space (hardware-loop context — see §4)
 - Address generation (`rs_base + sign_ext(imm)`), sub-word steering, and
   sign/zero extension
 
@@ -356,12 +356,12 @@ three banks of `2^DMEM_DEPTH_LOG2` words, so
 **`3 × 2^DMEM_DEPTH_LOG2` words** of 32 bits (byte size
 `3 × 2^(DMEM_DEPTH_LOG2+2)`). Side A is this LS slot; side B is the NoC /
 network interface (§6, ARCHITECTURE.md §Data Memory and NoC Interface).
-The **top 9 words** are not backed by memory: the LS unit decodes them as
-memory-mapped control registers (§4.2).
+The **top 4 words** are not backed by memory: the LS unit decodes them as
+memory-mapped loop registers (§4.2).
 
 ```
 byte 0                                              top of data space
-| general scratchpad (3 x 2^DMEM_DEPTH_LOG2 - 9)  | MMIO regs (9 words) |
+| general scratchpad (3 x 2^DMEM_DEPTH_LOG2 - 4)  | LOOP regs (4 words) |
 ```
 
 > Because the word address is `DMEM_DEPTH_LOG2 + 2` bits wide while only
@@ -376,32 +376,29 @@ byte 0                                              top of data space
 
 The LS unit routes accesses whose word address falls in the top region to the
 control registers below instead of the scratchpad banks. This is the single authoritative
-map; the loop registers are used by CONTROL_UNIT.md §4.8 and the IRQ registers
-by ARCHITECTURE.md §Interrupts and Exceptions.
+map; the loop registers are used by CONTROL_UNIT.md §4.8.
 
 | Offset from top | Name           | Width             | Access | Description                                  |
 |-----------------|----------------|-------------------|--------|----------------------------------------------|
-| -9              | `LOOP_ACTIVE`  | 1                 | RW     | Hardware-loop active flag                    |
-| -8              | `LOOP_START`   | `IMEM_DEPTH_LOG2` | RW     | Hardware-loop start PC                        |
-| -7              | `LOOP_END`     | `IMEM_DEPTH_LOG2` | RW     | Hardware-loop end PC                          |
-| -6              | `LOOP_COUNT`   | 32                | RW     | Hardware-loop remaining iterations            |
-| -5              | `IRQ_SAVED_PC` | 32                | RO     | Resume PC saved on trap / IRQ entry           |
-| -4              | `IRQ_VECTOR`   | 32                | RW     | VLIW-word address of the ISR                  |
-| -3              | `IRQ_MASK`     | `NB_IRQ`          | RW     | Per-line IRQ enable bits                       |
-| -2              | `IRQ_CAUSE`    | `NB_IRQ`          | RO     | Cause code written by hardware                 |
-| -1              | `IRQ_STATUS`   | `NB_IRQ`          | RO     | Pending IRQ bits, cleared on `ERET`            |
+| -4              | `LOOP_ACTIVE`  | 1                 | RW     | Hardware-loop active flag                    |
+| -3              | `LOOP_START`   | `IMEM_DEPTH_LOG2` | RW     | Hardware-loop start PC                        |
+| -2              | `LOOP_END`     | `IMEM_DEPTH_LOG2` | RW     | Hardware-loop end PC                          |
+| -1              | `LOOP_COUNT`   | 32                | RW     | Hardware-loop remaining iterations            |
 
 - The `LOOP_*` registers access the **committed** loop state
-  (CONTROL_UNIT.md §4.4), so a handler always reads values consistent with
-  `IRQ_SAVED_PC`. All control registers reset to `0`; `IRQ_MASK = 0` keeps
-  every line masked until software has programmed `IRQ_VECTOR`
-  (ARCHITECTURE.md §Reset and Clock).
+  (CONTROL_UNIT.md §4.4). All reset to `0`.
 - MMIO registers are accessed with **word** operations (`LW`/`SW`) and must be
-  word-aligned; a sub-word or misaligned MMIO access raises an alignment trap.
+  word-aligned; a sub-word or misaligned MMIO access raises an alignment trap,
+  which halts the core (ARCHITECTURE.md §Faults and Host Control).
 - Writes to **RO** registers have no effect; reads of narrow registers
   zero-extend to 32 bits.
 - Offsets are word offsets from the top of the backed region; e.g. `-1` is
   byte address `3 × 2^(DMEM_DEPTH_LOG2+2) - 4`.
+- **The host control block is not here.** Fault status and the run/halt
+  controls live in the *unbacked* region above the scratchpad and are
+  reachable from **side B only** (ARCHITECTURE.md §Faults and Host Control):
+  the core cannot alter its own run state, and the host does not have to
+  contend with it for scratchpad words.
 
 ### 4.3 Endianness
 
@@ -509,8 +506,6 @@ the base, then a `0` offset.
 | `BRAM_OUT_REG`     | TBD     | Bank output register (`OUTREGA`/`OUTREGB` of `parmem3_2`); `1` adds one load-latency cycle (§5.3) |
 | `ADRREG`           | 0       | Address-phase pipeline register in `parmem3_2` (§10.1); `1` adds one further load-latency cycle, `conflict`/`oob` stay combinational |
 
-`NB_IRQ` (ARCHITECTURE.md) sizes the `IRQ_*` MMIO registers in §4.2.
-
 ---
 
 ## 9. Examples
@@ -567,19 +562,22 @@ holding the oldest and returns the evicted one — §3.8):
                                 ; r20 walks the circular buffer
 ```
 
-**Register spill in an interrupt handler** (software context save — no dedicated
-hardware, ARCHITECTURE.md §Interrupts and Exceptions):
+**Polling for work between kernels** (there are no interrupts: the NI writes a
+descriptor and a completion flag through side B, the core reads them between
+blocks — ARCHITECTURE.md §Faults and Host Control):
 
 ```asm
-    ADDI  sp, sp, -8
-    SW    r1, 0(sp)
-    SW    r2, 4(sp)
-    ; ... handler body ...
-    LW    r2, 4(sp)
-    LW    r1, 0(sp)
-    ADDI  sp, sp, 8
-    ERET
+poll:
+    LW    r10, FLAG(c1)      ; flag written by the NI through side B
+    ; ... 2 bundles of other work or NOPs (load latency, section 5.1) ...
+    BEQ   r10, r0, poll      ; not ready: poll again
+    ; ... 3 delay-slot bundles, always executed ...
+    LW    r11, DESC(c1)      ; descriptor: base, length, kernel id
 ```
+
+Note the two exposed latencies in this fragment: `r10` may not be read before
+`W + 2`, and the three bundles after `BEQ` execute whether or not the branch
+is taken (ARCHITECTURE.md §Latency model).
 
 ---
 

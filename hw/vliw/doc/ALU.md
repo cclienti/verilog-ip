@@ -155,8 +155,8 @@ landing zone for the proposed DSP extensions in §7 (non-normative).
 |----------|---------|---------|-------------|
 | `010110` | rd(5)   | rs1(7)  | unused(14)  |
 
-- `rd <- ≈ 1/sqrt(rs1)`; latency 5 (deepest op, sets `LMAX` for the
-  scoreboard's `wbres` delay lines).
+- `rd <- ≈ 1/sqrt(rs1)`; latency 5 — the deepest operation, and therefore
+  the widest gap the compiler must leave before a consumer.
 - **Open item:** the operand domain and result number format (integer vs
   Q-format fixed point), the approximation precision, and the behaviour for
   `rs1 = 0` / negative inputs are **not yet specified**. They must be pinned
@@ -174,10 +174,11 @@ landing zone for the proposed DSP extensions in §7 (non-normative).
 | `MUL`/`MULH`             | `rd` at W + 4                              |
 | `INV_SQRT`               | `rd` at W + 5                              |
 
-These are the `BRAM_OUT_REG = 0` baseline values and are a **scheduling guide**,
-not a correctness contract: the scoreboard enforces correctness at whatever the
-real latency is (ARCHITECTURE.md §Compiler latency model, §Memory Model). A
-mis-scheduled consumer stalls; it never reads a stale value.
+These are the `BRAM_OUT_REG = 0` baseline values and they are a **correctness
+contract**: the core has no interlock (ARCHITECTURE.md §No Interlock), so a
+consumer scheduled earlier reads the destination's previous content, silently.
+Two writes to one register must also be ordered by the compiler — latencies
+differ, so a `MUL` (W+4) issued before an `ADD` (W+2) lands *after* it.
 
 ---
 
@@ -231,9 +232,9 @@ needed when bit 11 of the low part is set.
 - **P1 — Fused MAC (`MADD`/`MSUB`).** One-op multiply-accumulate; collapses
   the 2-op MAC inner loop and keeps 32×32→64 precision. **Blocking decision:**
   (a) hidden per-slot 64-bit accumulator (full precision, but new architectural
-  state needing save/restore on interrupt, like the loop context), or
-  (b) accumulate into an RF register `rd += rs1*rs2` (fits the scoreboard model
-  unchanged, but 32-bit accumulation or a register-pair convention). Decide
+  state the host would have to inspect on a fault), or
+  (b) accumulate into an RF register `rd += rs1*rs2` (no new state, but 32-bit
+  accumulation or a register-pair convention). Decide
   before anything else in this list.
 - **P2 — Post-accumulate scale/round shift (`SRAC*`-style).** Arithmetic
   right shift with rounding/clip of the (wide) accumulator back to 32 bits —
@@ -260,6 +261,6 @@ needed when bit 11 of the low part is set.
 ## 8. Parameters
 
 No slot-local parameters. Latencies derive from the pipeline structure
-(ARCHITECTURE.md §Pipeline) and are advisory (§4); the multiplier and
-`INV_SQRT` register depths may be retimed for `fmax` without ISA impact, since
-the scoreboard tracks the actual write-back cycle.
+(ARCHITECTURE.md §Pipeline) and are architectural (§4): retiming the
+multiplier or `INV_SQRT` register depth for `fmax` changes the contract and
+requires the kernels to be rebuilt.
