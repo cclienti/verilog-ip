@@ -300,13 +300,15 @@ Host Control) — the assembler must never emit one.
   32-bit memory word by `EA[DMEM_DEPTH_LOG2+3 : 2]` and a byte lane by
   `EA[1:0]`; the word address is `DMEM_DEPTH_LOG2 + 2` bits wide because the
   scratchpad holds `3 × 2^DMEM_DEPTH_LOG2` words (§10.1).
-- **Natural alignment is required**, by access width and independently of the
-  addressing mode: half-word accesses (`LH/LHU/SH/SHX/LD2H/LD2HU/ST2H`) need
-  `EA[0] = 0`; word accesses (`LW/SW/SWX/LD2W/ST2/XCHW`) need `EA[1:0] = 00`;
-  byte accesses have no constraint. Each lane of a pair is checked
-  independently. A misaligned access **halts the core** with cause
-  `MISALIGN` (ARCHITECTURE.md §Faults and Host Control). The hardware
-  does not split misaligned accesses.
+- **Unaligned addressing is not supported, and not checked either.** The
+  low address bits below the access width are **truncated**, not faulted:
+  a half-word access (`LH/LHU/SH/SHX/LD2H/LD2HU/ST2H`) ignores `EA[0]`, a
+  word access (`LW/SW/SWX/LD2W/ST2/XCHW`) ignores `EA[1:0]`, a byte access
+  ignores nothing. A dual access truncates its **base to a word** whatever
+  its width (§10.2). There is no alignment comparator and no alignment
+  fault: the access simply lands on the containing element. Emitting an
+  unaligned address is a compiler error that the hardware will not report,
+  in the same way it does not report a too-short latency.
 - Addressing modes are **base + immediate** (§3.2/§3.3/§3.8), **base + index
   register** (§3.6/§3.7) and **base + lane × stride register** (the pairs of
   §10.2). There is no PC-relative or auto-update
@@ -454,11 +456,11 @@ byte 0                                              top of data space
 
 > Because the word address is `DMEM_DEPTH_LOG2 + 2` bits wide while only
 > `3 × 2^DMEM_DEPTH_LOG2` words are backed, a further `2^DMEM_DEPTH_LOG2`
-> words at the top of the *encodable* range are unbacked by construction
-> (that region is what `parmem3_2` reports through `oob`). Relocating the
-> MMIO block there would return those 9 words to the scratchpad and make
-> the decode a plain range check — noted as an option in §10.5, not the
-> current map.
+> words at the top of the *encodable* range are unbacked by construction.
+> The MMIO block is relocated there (§10.5): those 9 words return to the
+> scratchpad and the decode becomes a plain range check on the high address
+> bits. There is no longer an out-of-bounds fault to reconcile it with —
+> see below.
 
 ### 4.2 Memory-mapped control registers
 
@@ -476,8 +478,9 @@ map; the loop registers are used by CONTROL_UNIT.md §4.8.
 - The `LOOP_*` registers access the **committed** loop state
   (CONTROL_UNIT.md §4.4). All reset to `0`.
 - MMIO registers are accessed with **word** operations (`LW`/`SW`) and must be
-  word-aligned; a sub-word or misaligned MMIO access halts the core with
-  cause `MISALIGN` (ARCHITECTURE.md §Faults and Host Control).
+  word-aligned; the low two address bits are truncated like everywhere else
+  (§3.5), so a sub-word MMIO access reads or writes the containing register
+  word rather than faulting.
 - Writes to **RO** registers have no effect; reads of narrow registers
   zero-extend to 32 bits.
 - Offsets are word offsets from the top of the backed region; e.g. `-1` is
@@ -594,7 +597,7 @@ the base, then a `0` offset.
 |--------------------|---------|-----------------------------------------------------------------|
 | `DMEM_DEPTH_LOG2`  | 11      | Words **per bank**; the scratchpad holds `3 × 2^DMEM_DEPTH_LOG2` 32-bit words (§10.1) |
 | `BRAM_OUT_REG`     | TBD     | Bank output register (`OUTREGA`/`OUTREGB` of `parmem3_2`); `1` adds one load-latency cycle (§5.3) |
-| `ADRREG`           | 0       | Address-phase pipeline register in `parmem3_2` (§10.1); `1` adds one further load-latency cycle, `conflict`/`oob` stay combinational |
+| `ADRREG`           | 0       | Address-phase pipeline register in `parmem3_2` (§10.1); `1` adds one further load-latency cycle, `conflict` stays combinational |
 
 ---
 
@@ -695,16 +698,47 @@ Why 3 banks (measured — `hw/lib/parmem/doc/RESULTS.md`):
 - Capacity is `3 × 2^DEPTH` words (the §8 `DMEM_DEPTH_LOG2` counts
   words per bank); `BRAM_OUT_REG` maps to `OUTREGA/OUTREGB` (§5.3),
   and the optional `ADRREG` address-phase register adds one cycle
-  while keeping `conflict`/`oob` combinational at issue.
+  while keeping `conflict` combinational at issue.
 
 ### 10.2 Dual strided access pair — encoding
 
 The LS slot's dual-op class accesses a **pair from one instruction**:
-lane `i` (`i = 0, 1`) at `EA_i = addr + i·stride` (`stride` signed, in
-words). Lane 0's result writes the LS-A bank, lane 1's the LS-B bank
+lane `i` (`i = 0, 1`) at `EA_i = rs_base + i·rs_stride`, both **in bytes**
+and `rs_stride` signed — the same units as every other addressing mode in
+this slot (§3.5). Lane 0's result writes the LS-A bank, lane 1's the LS-B bank
 (one write port each — §2 grows to the 5-bank, 10-read-port register
 file). The access direction and width (§10.3) are given by the opcode,
 never by a field.
+
+**Byte addressing, word banks.** The banks are 32 bits wide, so lane `i`
+addresses bank word `EA_i >> 2` and selects byte lane `EA_i[1:0]` inside it.
+Both are wire slices, not arithmetic. The base is **truncated to a word**
+(`rs_base[1:0]` dropped, §3.5) — by construction, not by a check, so nothing
+has to be verified and nothing can fault. The lane word addresses are then
+exactly
+
+```
+word_i = (rs_base >> 2) + i · (rs_stride >> 2)
+```
+
+so the stride's own low two bits are simply dropped: 4 bytes of stride is one
+word, 8 bytes is two. This buys two things at once.
+
+*Contiguous sub-word data works.* A stride smaller than 4 bytes puts both
+lanes **in the same word** — `int16` pairs, `int8` pairs — and one bank read
+serves them both, the sub-word steering extracting the two elements. That is
+one access, not two, and no conflict is possible:
+
+```asm
+; int16 array, word-aligned base, contiguous pair
+        LD2H   b2r1, b3r1, (b0r10, b0r11)   ; b0r11 = 2 bytes
+        ; -> h[0] and h[1], both out of the same 32-bit word, one bank access
+```
+
+*The conflict predicate stays a pure function of the stride.* With the base
+word-aligned, the lane-to-lane word distance is `rs_stride >> 2` and does not
+depend on the base at all — which is what keeps `conflict` computable before
+the address adder (§10.4).
 
 The pair instructions **split across the two encoding tiers by how many
 registers they name**, not by being "dual":
@@ -782,14 +816,43 @@ memory change at all.
 
 ### 10.4 Conflict auto-serialization (normative)
 
-`conflict` (`stride ≡ 0 (mod 3)` with both lanes enabled) is a pure
-function of the stride residue and the lane mask, available **in the
-issue cycle** (by construction, even with `ADRREG`). It is not a fault
-and not an illegal encoding — the hardware **serializes**:
+Let `Δ = rs_stride >> 2` be the lane-to-lane distance in bank words
+(§10.2; exact because the dual base is word-aligned). Two conditions
+follow from it, and they must not be confused:
 
-1. The LS unit splits the pair into two single-lane bank accesses
-   (lane 0 then lane 1 — a one-bit sequencer re-presents the access
-   with the complementary lane mask).
+```
+same_word = (Δ == 0)                    -- both lanes inside one 32-bit word
+conflict  = (Δ != 0) && (Δ % 3 == 0)    -- distinct words, same bank
+```
+
+`same_word` is **free**: one bank read serves both lanes and the sub-word
+steering splits it. It covers contiguous `int16`/`int8` pairs and the
+broadcast case `rs_stride = 0`, neither of which costs an extra cycle. An
+earlier revision tested only `stride ≡ 0 (mod 3)`, which is true of `0` as
+well — so it froze the core on every broadcast, for nothing.
+
+`conflict` is the real case, and like `same_word` it is a pure function of
+the stride residue and the lane mask, never of the addresses, so it is
+available **in the issue cycle** (by construction, even with `ADRREG`). It is
+not a fault and not an illegal encoding — the hardware **serializes**:
+
+1. **The memory splits the pair itself.** `parmem3_2` (and `parmem5_2`)
+   sequence the two single-lane accesses internally — lane 0, then lane 1
+   with the complementary lane mask — and expose the fact to the core as a
+   single **registered** `freeze` output. The LS unit carries no sequencer:
+   it presents one dual access and consumes one `freeze` bit.
+
+   The bit must come out of a flip-flop, not combinationally. A path from
+   the stride register through the residue tree to the global clock enable
+   of every pipeline stage would be the worst path in the machine. Being
+   registered, it also lands at the right time: at cycle `T` the pair is
+   issued and lane 0 is performed, at `T+1` the bit freezes the core while
+   lane 1 completes, at `T+2` execution resumes.
+
+   This is why the mechanism is confined to the **`L = 2`** members of the
+   family. A `parmemB_L` with more lanes would have to freeze the core for
+   up to `L` cycles per conflict, which is a different and far less
+   attractive trade; the wider components stay conflict-reporting only.
 2. The whole machine is **frozen for one cycle** while the second
    access is performed: every stage holds its state, in-flight
    operations included. This is a **total freeze**, not a front-end
@@ -820,26 +883,17 @@ stay a performance matter instead of a correctness one.
 
 Consequently, strides that are multiples of 3 are **legal but slow**.
 The compiler's layout rules (pad pitches whose digit sum is divisible
-by 3) are **performance hints, not correctness requirements**. `oob`
-is unchanged: checked per lane, the offending lane is suppressed and the
-core halts with cause `OOB`, which takes precedence over `conflict` when
-both assert.
+by 3) are **performance hints, not correctness requirements**.
+
+**No out-of-bounds fault.** An earlier revision had `parmem3_2` report an
+`oob` condition per lane, suppress the offending lane and halt the core. That
+mechanism is **removed**: an address beyond the backed scratchpad is not
+detected and not reported. Addresses in the unbacked top region decode as
+MMIO (§4.1); anything else outside the backed range reads or writes an
+undefined location. Staying in range is a compiler obligation like every
+other, and `conflict` is now the only condition the memory reports.
 
 ### 10.5 Open items
 
 - Sub-word store support on the word-wide banks (byte write enables in
   `dpmemrf`, as §3.4 requires).
-- **MMIO relocation.** The word address is `DMEM_DEPTH_LOG2 + 2` bits
-  while only `3 × 2^DMEM_DEPTH_LOG2` words are backed, so a whole
-  `2^DMEM_DEPTH_LOG2`-word region above the scratchpad is unbacked by
-  construction. Moving the §4.2 control registers there would return 9
-  words to the scratchpad and turn their decode into a plain range
-  check; it also overlaps `parmem3_2`'s `oob` region, so the two
-  decodes must be reconciled.
-- **Sub-word dual addressing.** §10.2 states dual lane addresses as
-  word EAs while §10.3's stride is in words, which leaves byte- and
-  half-granular `LD2`/`ST2*` unable to name a sub-word element. Either
-  `addr`/`stride` become byte quantities for those variants (bank word
-  = `EA_i >> 2`, byte lane = `EA_i[1:0]`) or the sub-word dual forms
-  are defined as word-strided with in-word selection only. To be
-  resolved before the dual tier is implemented.

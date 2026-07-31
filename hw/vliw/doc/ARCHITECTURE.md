@@ -2,8 +2,10 @@
 
 ## Overview
 
-A 4-slot VLIW processor targeting FPGA implementation (Xilinx/AMD), designed for
-pure processing kernels. The pipeline is **fully exposed**: there is no
+A **32-bit**, 4-slot VLIW processor targeting FPGA implementation (Xilinx/AMD),
+designed for pure processing kernels. The 32 bits are the datapath — registers,
+ALU and memory words; the instruction encoding is separately 36 bits per slot
+(§Data Width). The pipeline is **fully exposed**: there is no
 interlock, no branch-shadow squash and no interrupt mechanism. Instruction
 latencies, the branch shadow and the write ordering are **architectural** —
 the compiler must satisfy them, and a scheduling mistake yields a wrong
@@ -21,6 +23,28 @@ cannot decide statically (§No Interlock, §Faults and Host Control).
 | `IMEM_DEPTH_LOG2`  | 10      | 10–14  | Instruction memory depth (1K–16K words)  |
 | `DMEM_DEPTH_LOG2`  | 11      | 10–14  | Data memory depth (1K–16K 32-bit words)  |
 | `BRAM_OUT_REG`     | TBD     | 0–1    | Hardened BRAM/DPRAM output register, per memory; `1` = +1 read-latency cycle for higher `fmax` (see §Memory Model) |
+
+---
+
+## Data Width
+
+The core is a **32-bit machine**: registers, ALU operands and results,
+memory words and the sub-word extension rules are all 32 bits. This is
+independent of the instruction encoding, where a slot is 36 bits and a
+bundle 144 — the two numbers describe different things and are easy to
+confuse.
+
+| Quantity                          | Width    |
+|-----------------------------------|----------|
+| Register, ALU operand and result  | 32 bits  |
+| Data memory word                  | 32 bits  |
+| Effective address                 | byte-addressed, `DMEM_DEPTH_LOG2 + 2` word bits |
+| **Instruction slot**              | 36 bits  |
+| **Instruction bundle**            | 144 bits |
+
+Sub-word accesses (`LB`/`LH` and their store and dual forms) address bytes
+and half-words inside a 32-bit word and extend to 32 bits on load
+(LOAD_STORE.md §3.4); nothing in the datapath is narrower than 32 bits.
 
 ---
 
@@ -59,14 +83,19 @@ cannot decide statically (§No Interlock, §Faults and Host Control).
   (§No Interlock)
 - **Zero register (`r0`)**: a **single canonical zero** lives at one
   physical location, conventionally **bank 0, reg 0** (global read address
-  `0000000`). Because every slot can read any bank, every slot reads `r0`
+  `00000000`). Because every slot can read any bank, every slot reads `r0`
   through this one address — no need to replicate zero in every bank. The
   per-bank locals at "reg 0" of banks 1–3 are therefore **free general-purpose
   registers** (or scratch / discard slots) for their owning slot.
-- **Write ports**: exactly **one per slot** — four total. Each slot retires at
-  most one result per cycle, so the write-port count is fixed by the slot count;
-  there is nothing in the datapath that can drive a fifth concurrent write. This
-  is what keeps each bank a single-writer structure (see §No Interlock).
+- **Write ports**: exactly **one per slot** — five total, the LS slot owning
+  two (one per lane of a dual load). Each bank has a single writer, so no
+  write-port arbitration exists anywhere in the datapath.
+- **Write-port scheduling is the compiler's obligation.** A slot whose
+  latencies differ can retire two results in the same cycle from a single
+  write port, and nothing detects it — one write is lost. The compiler must
+  keep `issue_cycle + latency` distinct within each slot (ALU.md §5). The LS
+  slot is exempt by construction: all its results retire at the same distance
+  (LOAD_STORE.md §3.10).
   There is no interrupt entry, hence no context save at all — a fault halts
   the core and the host inspects the register file as it stands
   (§Faults and Host Control).
@@ -83,7 +112,7 @@ cannot decide statically (§No Interlock, §Faults and Host Control).
 ### Implementation of `r0`
 
 Only **one physical storage cell** needs to actually hold zero — at the
-canonical address `0000000` (bank 0, reg 0). Three implementation styles are
+canonical address `00000000` (bank 0, reg 0). Three implementation styles are
 possible; option A is recommended for this design.
 
 
@@ -102,10 +131,10 @@ and in all mainstream simulators).
 #### Option B — Read-side mux (force read data to 0)
 
 Force the read data of any port to 0 whenever its read address is the
-canonical `0000000`, regardless of what the storage cell contains:
+canonical `00000000`, regardless of what the storage cell contains:
 
 ```systemverilog
-assign rdata[p] = (raddr[p] == 7'b0000000) ? 32'b0 : mem_rdata[p];
+assign rdata[p] = (raddr[p] == 8'b00000000) ? 32'b0 : mem_rdata[p];
 ```
 
 **Pros**: no init required, no write-enable masking, robust against any reset
@@ -155,7 +184,7 @@ for `J`).
 
 ### Common header (all slots)
 
-Every slot is a **32-bit** instruction. The two top fields have the same meaning
+Every slot is a **36-bit** instruction. The two top fields have the same meaning
 in every slot:
 
 | Bit     | Field    | Description                                            |
@@ -163,7 +192,7 @@ in every slot:
 | [35:30] | `opcode` | 6-bit instruction selector (per-slot opcode space)     |
 
 There is no `fmt` bit: register and immediate forms are **distinct opcodes**
-within each slot's flat 6-bit space (e.g. `ADD`/`ADDI`, `MOV`/`MOVI`). On the
+within each slot's flat 6-bit space (e.g. `ADD`/`ADDI`, `CMOV`/`CMOVI`). On the
 LUT6 fabric a 6-bit field costs the same to decode as 5, and the per-slot opcode
 namespaces make opcodes plentiful, so a flat encoding is free.
 
@@ -181,7 +210,7 @@ instruction using the common header (flat `opcode[35:30]`, `NOP = 000000`),
 with **R-type** (reg–reg, plus a `funct(9)` extension field), **I-type**
 (reg–`imm17`, signed **±65535**; register and immediate forms are distinct
 opcodes) and **U-type** (`LUI`, `imm20`) formats. Operations:
-`ADD SUB AND OR XOR SLT SLTU SLL SRL SRA MUL MULH INV_SQRT LUI`, with advisory
+`ADD SUB AND OR XOR SLT SLTU SLL SRL SRA MUL MULH LUI`, with advisory
 latencies of 2–5 cycles (see §Compiler latency model).
 
 The complete encoding — opcode map, bit layouts, pseudo-instructions
@@ -193,7 +222,7 @@ to avoid drift.
 
 ### Load/Store Slot (×1)
 
-The Load/Store slot is a full **32-bit** instruction using the common header
+The Load/Store slot is a full **36-bit** instruction using the common header
 (flat `opcode[35:30]`, `NOP = 000000`). It is the core's single memory port —
 loads and stores to the on-chip data scratchpad and to the memory-mapped control
 registers at the top of the data address space. Access width and sign/zero
@@ -213,7 +242,7 @@ reference; they are not duplicated here to avoid drift.
 
 ### Control Slot (×1)
 
-The Control slot is a full **32-bit** instruction using the common header
+The Control slot is a full **36-bit** instruction using the common header
 (flat `opcode[35:30]`, `NOP = 000000`). It owns PC sequencing, branches,
 jumps, halts, and the single-context hardware loop, and also carries a
 **lightweight integer ALU** (`ADD/SUB/ADDI`, `AND/OR/XOR/ANDI`, `SLT*` — no
@@ -254,12 +283,17 @@ Field conventions (see `CONTROL_UNIT.md` §3 for exact bit layouts):
 ### Stages
 
 ```
-Cycle:  1     2     3     4     5     6     7     8
-       [IF]─[ID]─[RR]─[EX1]─[EX2]─[EX3]─[EX4]─[EX5]
-                            ↑WB   ↑WB   ↑WB   ↑WB   ↑WB
-                            ADD   BAR   MUL         ISQRT
+Cycle:  1     2     3     4     5     6     7
+       [IF]─[ID]─[RR]─[EX1]─[EX2]─[EX3]─[EX4]
+                            ↑WB   ↑WB   ↑WB
+                            ADD   BAR   MUL
                             LOAD
+                            MOV
 ```
+
+The depth shown is provisional: it follows the latency table above, which is
+itself a placeholder until the functional units are synthesised. `EX5` was
+present only for `INV_SQRT`, now deferred (ALU.md §3.5).
 
 | Stage | Name      | Description                                       | Implementation        |
 |-------|-----------|---------------------------------------------------|-----------------------|
@@ -270,7 +304,6 @@ Cycle:  1     2     3     4     5     6     7     8
 | EX2   | Execute 2 | Writeback: ADD/SUB/logic/LOAD                     | Registered            |
 | EX3   | Execute 3 | Writeback: barrel shift                           | Registered            |
 | EX4   | Execute 4 | Writeback: multiplier                             | Registered            |
-| EX5   | Execute 5 | Writeback: INV_SQRT                               | Registered            |
 
 > **BRAM output register (`fmax`).** IF and RR read BRAM (fetch and register
 > file). Each may enable the hardened **output register** (`BRAM_OUT_REG`),
@@ -297,7 +330,6 @@ earliest a dependent instruction may read `rN` is:
 | LOAD              | W + 2                                        |
 | Barrel shift      | W + 3                                        |
 | MUL/MULH          | W + 4                                        |
-| INV_SQRT          | W + 5                                        |
 | JAL/JALR (rd)     | W + 1                                        |
 | Branch (shadow)   | 3 **architectural delay slots** — always executed |
 
@@ -307,11 +339,21 @@ earliest a dependent instruction may read `rN` is:
 > explicit `NOP`s — an unfilled shadow is a correctness fault, not a lost
 > cycle.
 
-> **Write ordering.** Latencies are not uniform (W+2 to W+5), so two writes to
-> the *same* register may land out of program order — a `MUL` at W+4 followed
-> by an `ADD` at W+2 leaves the multiply's value in place. The compiler owns
-> this ordering; a machine with an interlock got it for free from the WAW
-> check (SCOREBOARD.md §4).
+> **Write ordering.** Latencies are not uniform, so two writes to the *same*
+> register may land out of program order — a `MUL` at W+4 followed by an `ADD`
+> at W+2 leaves the multiply's value in place. Two writes to *different*
+> registers of the same bank may also collide on its single write port, which
+> nothing detects. The compiler owns both (ALU.md §5); a machine with an
+> interlock got them from the WAW check and the write-port delay line.
+
+> **The values in this table are provisional.** Every latency is architectural
+> — the compiler encodes it and a change is an ISA change — but the numbers
+> themselves are placeholders until the functional units are synthesised and
+> their real depths measured. The same holds for `BRANCH_SHADOW`, provisionally
+> **3** (CONTROL_UNIT.md §5.1). Assembly in these specifications is therefore
+> **illustrative of the contract, not of the final schedule**: the shapes
+> (delay slots to fill, distinct retire cycles per slot) are settled, the
+> distances are not.
 
 ---
 
@@ -328,7 +370,7 @@ What the compiler owns, in full:
 - **Data latencies** (§Latency model) — read a value before it lands and you
   get the previous one.
 - **Write ordering to one register**, because latencies differ per operation.
-- **The branch shadow** — three architectural delay slots, always executed.
+- **The branch shadow** — `BRANCH_SHADOW` = **3** architectural delay slots, always executed.
 - **Restartability**, if wanted: a value in flight survives an arbitrary delay
   only if nothing overwrites its register meanwhile. Dense code may reuse a
   single register as a dataflow buffer (a value consumed in the one cycle it
@@ -457,8 +499,6 @@ A synchronous fault **halts** the core. There is no handler and no resume:
 
 | Cause | Raised by |
 |-------|-----------|
-| `MISALIGN` | an access violating §3.5 natural alignment (LOAD_STORE.md) |
-| `OOB`      | an effective address outside the backed scratchpad (`oob`, LOAD_STORE.md §10.4) |
 | `ILLEGAL`  | a reserved opcode in any slot |
 | `SOFTWARE` | the control slot's `TRAP` instruction — a deliberate halt, usable as an assertion or breakpoint |
 
@@ -498,10 +538,26 @@ without rewriting IMEM.
 - The block is on side B's clock (the NI domain); the dual-clock banks are the
   crossing, exactly as for the scratchpad.
 
-> **Open item — instruction memory.** Loading IMEM from the NI is not
-> specified here. A clean restart usually implies new code, so the NI needs a
-> write path to IMEM (a second port, or a boot-time DMA); it is the one piece
-> of the host interface still missing.
+### What the NI maps
+
+The host interface is entirely the NI's: it maps three regions into its own
+address space, and the core provides the second port of each.
+
+| Region              | Direction | Purpose                                        |
+|---------------------|-----------|------------------------------------------------|
+| Control registers   | R/W       | the `CTRL` / `STATUS` / `FAULT_*` / `START_PC` block above |
+| Instruction memory  | W (R)     | code loading, so a restart can bring new code   |
+| Data memory         | R/W       | operands in, results out — side B of the scratchpad |
+
+So the sequence of the previous paragraph is literal: the host polls `STATUS`
+through the register region, writes code into the IMEM region and operands
+into the data region, then writes `RUN`. IMEM therefore needs a second write
+port on the NI clock, like the scratchpad banks.
+
+> **Deferred — 2D DMA.** The NI is intended to carry a two-dimensional DMA
+> engine, so tiles can be pushed and pulled without the host walking them word
+> by word. It is set aside for now: nothing in this specification depends on
+> it, and the mapping above is what a DMA would drive anyway.
 
 ---
 
@@ -531,7 +587,7 @@ without rewriting IMEM.
 |-----------------|----------|----------------------|--------------|
 | Instruction     | 144 bits | 2^`IMEM_DEPTH_LOG2`  | 1–2          |
 | Data            | 32 bits  | 2^`DMEM_DEPTH_LOG2`  | 1–4          |
-| Register file   | 32 bits  | 6×32                 | ~1           |
+| Register file   | 32 bits  | 5 banks × 32 regs    | LUTRAM, not BRAM |
 | **Total (typ)** |          |                      | **~4**       |
 
 ---
@@ -553,7 +609,7 @@ and is **not** a RISC-V implementation.
 | Jumps                     | `JAL` (link = next PC), `JALR` (`rs1 + imm17`)             |
 | Type taxonomy             | R / I / U / B / J terminology                              |
 | Hardwired zero register   | `r0` convention (`x0` in RV)                               |
-| 32-bit constant idiom     | `LUI` + `ADDI` (20-bit + 12-bit immediates)                |
+| 32-bit constant idiom     | `LUI` + `ADDI` (20-bit upper + 17-bit immediate)           |
 | Pseudo-instructions       | `NOP MOV NEG NOT LI J CALL RET BEQZ BNEZ`                  |
 | Trap / return model       | None — `TRAP` halts, there is no handler and no return     |
 
@@ -570,7 +626,6 @@ and is **not** a RISC-V implementation.
 | `JAL` range           | ±1 M VLIW words (21-bit field)                  | ±1 MiB bytes (20-bit field)           |
 | Hazard handling       | **None** — exposed pipeline, latencies and delay slots architectural | Implementation-defined interlocks |
 | Hardware loops        | `LOOP` / `LOOPI`, single-context (see CONTROL_UNIT) | Not present (custom extensions only)  |
-| `INV_SQRT`            | Native ALU op                                   | Not present                           |
 | Exceptions            | Fatal: halt + cause, read by the host over the NI port | Trap handler, resumable               |
 | Missing               | `AUIPC FENCE ECALL EBREAK CSR* atomics F D C V` | Present in standard extensions        |
 

@@ -9,7 +9,6 @@ responsible for:
 - Compares (`SLT`, `SLTU` — materialized 0/1 results)
 - Barrel shifts (`SLL`, `SRL`, `SRA`)
 - Multiplication (`MUL`, `MULH`)
-- `INV_SQRT` (reciprocal square root approximation)
 - Upper-immediate constant generation (`LUI`)
 
 Each slot is single-issue: at most one ALU instruction per slot per VLIW word,
@@ -110,10 +109,10 @@ is contiguous.
 | `010011` | `SRAI`     | `rd, rs1, shamt`  | `rd <- rs1 >> shamt` (arithmetic)                | §3.3   |
 | `010100` | `MUL`      | `rd, rs1, rs2`    | `rd <- (rs1 * rs2)[31:0]`                        | §3.2   |
 | `010101` | `MULH`     | `rd, rs1, rs2`    | `rd <- (rs1 * rs2)[63:32]` (signed × signed)     | §3.2   |
-| `010110` | `INV_SQRT` | `rd, rs1`         | `rd <- ≈ 1/sqrt(rs1)`                            | §3.5   |
 | `010111` | `LUI`      | `rd, imm20`       | `rd <- imm20 << 12`                              | §3.4   |
 
-Reserved: opcodes `011000`–`111111` (40 entries). Executing a reserved opcode
+Reserved: opcode `010110` (`INV_SQRT`, deferred — §3.5) and `011000`–`111111`
+(41 entries in total). Executing a reserved opcode
 **halts the core** with cause `ILLEGAL` (ARCHITECTURE.md §Faults and Host
 Control) — the assembler must never emit one. This reserved space is the
 landing zone for the proposed DSP extensions in §7 (non-normative).
@@ -126,7 +125,7 @@ landing zone for the proposed DSP extensions in §7 (non-normative).
 - `shamt` in `SLLI`/`SRLI`/`SRAI` is `imm17[4:0]` (0–31); the assembler must
   emit 0 in `imm17[16:5]`.
 - Register and immediate forms are **distinct opcodes** (no format bit).
-- `SUB`, `MUL`, `MULH`, `INV_SQRT` have **no immediate form**
+- `SUB`, `MUL`, `MULH` have **no immediate form**
   (`SUBI x` = `ADDI -x`).
 
 ### 3.2 R-type format (register–register)
@@ -160,18 +159,19 @@ landing zone for the proposed DSP extensions in §7 (non-normative).
   signed field, so they are always representable as a positive value and
   never borrow from the upper half.
 
-### 3.5 INV_SQRT
+### 3.5 INV_SQRT — deferred, not part of this revision
 
-| [35:30]  | [29:25] | [24:8]      | [7:0]  |
-|----------|---------|-------------|--------|
-| `010110` | rd(5)   | unused(17)  | rs1(8) |
+Opcode `010110` is **reserved**. A reciprocal-square-root approximation was
+sketched in an earlier draft but never specified: operand domain, result
+number format (integer vs Q-format fixed point), approximation precision and
+the behaviour at `rs1 = 0` or on negative inputs were all left open, and the
+kernels driving this design do not need it today. It is set aside rather than
+half-specified.
 
-- `rd <- ≈ 1/sqrt(rs1)`; latency 5 — the deepest operation, and therefore
-  the widest gap the compiler must leave before a consumer.
-- **Open item:** the operand domain and result number format (integer vs
-  Q-format fixed point), the approximation precision, and the behaviour for
-  `rs1 = 0` / negative inputs are **not yet specified**. They must be pinned
-  down (together with `ABI.md`) before ISS/RTL implementation.
+Consequence for the pipeline: `INV_SQRT` was the only `W + 5` operation and
+therefore the sole reason for an **EX5** stage. Without it the ALU slot is
+four deep (`MUL`/`MULH` at `W + 4`). Whether EX5 survives is a question for
+the synthesis pass that fixes the latencies (§4).
 
 ---
 
@@ -183,7 +183,6 @@ landing zone for the proposed DSP extensions in §7 (non-normative).
 | `LUI`                    | `rd` at W + 2                              |
 | `SLL`/`SRL`/`SRA` (`*I`) | `rd` at W + 3                              |
 | `MUL`/`MULH`             | `rd` at W + 4                              |
-| `INV_SQRT`               | `rd` at W + 5                              |
 
 These are the `BRAM_OUT_REG = 0` baseline values and they are a **correctness
 contract**: the core has no interlock (ARCHITECTURE.md §No Interlock), so a
@@ -193,18 +192,35 @@ differ, so a `MUL` (W+4) issued before an `ADD` (W+2) lands *after* it.
 
 ---
 
-## 5. Scoreboard Interaction
+## 5. Write-port scheduling (compiler obligation)
 
-- Each ALU slot is the **single writer** of its own bank, so WAW hazards and
-  write-port structural conflicts stay local to that bank
-  (ARCHITECTURE.md §Scoreboard).
-- **Structural conflicts are real** in this slot because latencies differ:
-  e.g. `INV_SQRT` issued at W (retires W + 5) and a shift issued at W + 2
-  (retires W + 5) would land on the bank's single write port in the same
-  cycle. The per-bank `wbres` delay line detects this at issue and stalls the
-  younger op — no compiler action required for correctness.
-- Cross-bank RAW (an ALU op reading another slot's in-flight result) is covered
-  by the `busy` bits, as for every slot.
+- Each ALU slot is the **single writer** of its own bank, so WAW hazards stay
+  local to that bank and no write-port arbitration exists in hardware
+  (ARCHITECTURE.md §No Interlock).
+- **The slot's latencies differ, and its bank has one write port.** Two
+  instructions issued at different cycles can therefore retire in the *same*
+  cycle. Nothing detects it: with no interlock there is no delay line, no
+  stall and no arbiter — one of the two writes is simply lost.
+
+```asm
+        MUL      b0r1, b0r2, b0r3   ; T   -> retires T+4
+        SLL      b0r4, b0r5, b0r6   ; T+1 -> retires T+4   <-- collision
+        ADD      b0r7, b0r8, b0r9   ; T+2 -> retires T+4   <-- collision
+```
+
+- **Rule (normative).** No two instructions issued into the same slot may
+  retire in the same cycle. Since every latency is fixed and known at
+  compile time, this is a pure scheduling obligation — the compiler computes
+  `issue_cycle + latency` per instruction and keeps those values distinct
+  within a slot. It costs no hardware, and it is the same division of labour
+  as everywhere else in this core: the compiler owns what it can decide
+  statically, and hardware owns only what it cannot (the bank-conflict
+  freeze, LOAD_STORE.md §10.4, whose trigger is a runtime register value).
+- The LS slot is exempt by construction: all of its results retire at the
+  same distance, so its writes are serialised by issue order
+  (LOAD_STORE.md §3.10).
+- Cross-slot RAW — reading another slot's in-flight result — is the ordinary
+  latency obligation of §4, not a structural one.
 
 ---
 
@@ -280,5 +296,5 @@ no pair at all: a single `ADDI rd, r0, imm17` covers them.
 
 No slot-local parameters. Latencies derive from the pipeline structure
 (ARCHITECTURE.md §Pipeline) and are architectural (§4): retiming the
-multiplier or `INV_SQRT` register depth for `fmax` changes the contract and
+multiplier register depth for `fmax` changes the contract and
 requires the kernels to be rebuilt.

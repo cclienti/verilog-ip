@@ -303,11 +303,13 @@ Immediate form (`CMOVI`, opcode `010001`):
 - Condition is evaluated in EX1; write-enable to the register file is gated
   by the condition result — one AND gate, no extra pipeline stage
 - Latency: 2 cycles
-- `rd`, `rs_cond`, `rs_src` follow the same bank rules as MOV
-- **Scoreboard**: `rd`'s `busy` / `wbres` reservation is made at issue and
-  released on its scheduled write-back cycle **whether or not** the condition
-  fires — a suppressed write only masks the write-enable, so `rd` never gets
-  stuck busy and a waiting reader observes the retained value.
+- `rd` is in the control slot's own bank; `rs_cond` and `rs_src` are full
+  8-bit global addresses (any bank)
+- **Scheduling**: a `CMOV` occupies its write-back cycle whether or not the
+  condition fires — the suppressed case only masks the write-enable. It
+  therefore counts for the write-port rule (ALU.md §5) exactly like an
+  unconditional write, and a reader scheduled after the latency observes
+  either the new value or the retained one, never a stale third state.
 
 ### 3.9 Integer ALU operations (address / counter / condition)
 
@@ -569,7 +571,9 @@ iteration.
 
 This is a correctness matter, not a cost one. Below, the two `LW`s that become
 the delay slots would re-read with `r20` already advanced — past the end of the
-array on the final iteration, which raises `OOB` and halts the core:
+array on the final iteration. Nothing catches that: there is no out-of-bounds
+check in the memory (LOAD_STORE.md §10.4), so the reads simply return whatever
+those addresses hold, and any store in the shadow would corrupt them:
 
 ```asm
         LOOPI  10, end_off
@@ -797,8 +801,10 @@ and it cannot be a synthesis-time consequence of front-end depth. Changing
 `BRAM_OUT_REG` (ARCHITECTURE.md §Memory Model) changes the fetch depth and so
 would change the number of delay slots — which means the ISA must **fix**
 `BRANCH_SHADOW` and the implementation must match it, not the reverse. Its
-value is not yet finalized (§8); freezing it is now an ISA decision, not a
-tuning knob.
+value is provisionally **3** — a conservative guess, since the front end is
+not designed yet. It stays a placeholder until the fetch path is synthesised,
+at which point `BRAM_OUT_REG` must be chosen to match it rather than the
+reverse (§8).
 
 Hot inner loops avoid the question entirely by using the hardware loop (§4):
 the back-edge is computed at fetch and carries no shadow at all.
@@ -873,7 +879,7 @@ optimization.
 | Parameter       | Default | Description                          |
 |-----------------|---------|--------------------------------------|
 | `LOOP_CNT_W`    | 32      | Iteration counter width              |
-| `BRANCH_SHADOW` | 3 (TBD) | VLIW words of **architectural delay slots** after any EX1-resolved redirect (§5.1) — they execute, and the compiler must fill them. Because it is architectural it is baked into binaries, so it cannot follow the fetch depth: the BRAM output-register choice (`BRAM_OUT_REG`, ARCHITECTURE.md §Memory Model) must be **fixed to match** the chosen value, not the reverse. Exact value **not yet finalized** — freezing it is an ISA decision. |
+| `BRANCH_SHADOW` | **3** (provisional) | VLIW words of **architectural delay slots** after any EX1-resolved redirect (§5.1) — they execute, and the compiler must fill them. Set to 3 as a conservative placeholder before the front end is designed. Because it is architectural it is baked into binaries, so it cannot follow the fetch depth: once the fetch path is synthesised, `BRAM_OUT_REG` (ARCHITECTURE.md §Memory Model) must be **fixed to match** this value, not the reverse. |
 
 ---
 

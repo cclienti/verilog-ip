@@ -54,7 +54,7 @@ FIELDS = {
     "rs_base":   ([(7, 0)],   "read 1",  "base address register"),
     "rs_index":  ([(15, 8)],  "read 2",  "index register (indexed loads)"),
     "rs_data":   ([(15, 8)],  "read 2",  "store data (classic stores)"),
-    "rs_stride": ([(15, 8)],  "read 2",  "signed word stride (dual ops)"),
+    "rs_stride": ([(15, 8)],  "read 2",  "signed byte stride (dual ops)"),
     "s0":        ([(31, 24)], "read 3",  "lane-0 store data (dual stores)"),
     "s1":        ([(23, 16)], "read 4",  "lane-1 store data (dual stores)"),
     "rs_datax":  ([(23, 16)], "read 4",  "store data (indexed stores)"),
@@ -180,14 +180,15 @@ INSTRUCTIONS = [
       "mem8[EA0] <- s0[7:0]; mem8[EA1] <- s1[7:0]"),
 ]
 
-# EA_i = rs_base + i * rs_stride (words) for the dual tier; EA = rs_base +
+# EA_i = rs_base + i * rs_stride (bytes, word-aligned base) for the dual
 # sign_ext(imm) (bytes) for the classic tier -- LOAD_STORE.md 3.5 / 10.
 LATENCY = ("Every LS result retires at W + 2 in the baseline configuration, "
            "and one cycle later for each of the memory's BRAM_OUT_REG and "
            "ADRREG options -- MOV and MOV2 included, even though they never "
            "reach the memory, so that the one write port per bank sees at "
            "most one result per cycle. A conflicting dual access (stride "
-           "divisible by 3) is split by the hardware: it costs one extra "
+           "whose word distance is divisible by 3) is split by the hardware: "
+           "it costs one extra "
            "cycle and returns d1 one cycle after d0. Stores produce no "
            "register result. See LOAD_STORE.md sections 5.1 and 10.4.")
 
