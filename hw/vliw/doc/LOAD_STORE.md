@@ -525,9 +525,13 @@ compiler must satisfy (§5.2).
 There is no interlock: the rules below are contractual, and violating one
 produces a wrong result, not a stall.
 
-- A consumer of a load must issue at least `1 + ADRREG + OUTREGA` bundles
-  after it (`W + 2` in the baseline). Scheduled earlier, it reads whatever
-  the destination register held before — silently.
+- A consumer of a load must issue at least `2 + ADRREG + OUTREGA` bundles
+  after it (`W + 2` in the baseline, matching §5.1). Scheduled earlier, it
+  reads whatever the destination register held before — silently. The `2`
+  is the architectural distance of §5.1: one cycle of address arithmetic in
+  EX1 and one registered bank read at EX2. `ADRREG` and `OUTREGA` add their
+  own cycles on top; `1 + ADRREG + OUTREGA` is the memory's internal read
+  latency and is one bundle short of what the compiler must leave.
 - The same applies to every source of a load or store (`rs_base`,
   `rs_data`, `rs_index`, `rs_stride`, `s0`, `s1`): each must have settled
   before the access issues.
@@ -939,12 +943,20 @@ Consequently, strides that are multiples of 3 are **legal but slow**.
 The compiler's layout rules (pad pitches whose digit sum is divisible
 by 3) are **performance hints, not correctness requirements**.
 
-**No out-of-bounds fault.** An earlier revision had `parmem3_2` report an
-`oob` condition per lane, suppress the offending lane and halt the core. That
-mechanism is **removed**: an address beyond the backed scratchpad is not
-detected and not reported. Addresses in the unbacked top region decode as
-MMIO (§4.1); anything else outside the backed range reads or writes an
-undefined location. Staying in range is a compiler obligation like every
-other, and `conflict` is now the only condition the memory reports.
+**No out-of-bounds fault — but the memory still suppresses the access.**
+The core raises no fault for an address beyond the backed scratchpad: there
+is no `OOB` cause and nothing halts (ARCHITECTURE.md §Faults are fatal).
+Staying in range is a compiler obligation like every other.
+
+The memory nevertheless still *detects* the condition. `parmem3_2` and
+`parmem5_2` keep their `oob[1:0]` and `oobb` outputs and clear the offending
+lane's bank enable, which is why the RTL retains the full-width range check:
+without it a negative or overflowing effective address would alias onto an
+in-range cell after truncation and corrupt live data. The observable
+behaviour of an out-of-range access is therefore **suppression**, not an
+undefined location — a store past the end is not written at all, and its
+paired load lane returns the previous bank output. The LS unit may leave
+`oob`/`oobb` unconnected; it must not assume the access happened somewhere
+harmless.
 
 ### 10.5 Open items
