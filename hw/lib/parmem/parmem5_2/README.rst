@@ -92,6 +92,7 @@ STRIDE_W    12              Signed stride width, in words (<= DEPTH + 3)
 ADRREG      0               Address-phase pipeline register (+1 cycle, fmax option)
 OUTREGA     0               Extra side-A output register (+1 cycle, fmax option)
 OUTREGB     0               Extra side-B output register (+1 cycle, fmax option)
+NB          WIDTH/8         Byte lanes per word — **derived, do not override**
 ==========  ==============  ====================================================
 
 Signals
@@ -106,13 +107,16 @@ wen            input                                     Write enable, shared by
 lane_en        input         [1:0]                       Per-lane enable (lane i at ``addr + i*stride``)
 addr           input         [DEPTH+2:0]                 Linear word address of lane 0
 stride         input         [STRIDE_W-1:0]              Signed word stride
+ben            input         [2*NB-1:0]                  Per-lane byte write mask (writes only)
 dia            input         [2*WIDTH-1:0]               Lane write data (lane i at ``i*WIDTH``)
 doa            output        [2*WIDTH-1:0]               Lane read data (1 + ADRREG + OUTREGA cycles)
-conflict       output                                    ``stride % 5 == 0`` and both lanes: serialize
+freeze         output                                    **Registered**: stall the caller for one cycle
+conflict       output                                    Observability only — the memory serializes itself
 oob            output        [1:0]                       ``EA_i`` out of range, lane suppressed
 clkb           input                                     Side B clock (network interface)
 enb            input                                     Port B enable
 web            input                                     Port B write enable (0 = read)
+benb           input         [NB-1:0]                    Port B byte write mask (writes only)
 addrb          input         [DEPTH+2:0]                 Port B linear word address
 dib            input         [WIDTH-1:0]                 Port B write data
 dob            output        [WIDTH-1:0]                 Port B read data (1 + OUTREGB cycles)

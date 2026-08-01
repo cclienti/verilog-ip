@@ -32,19 +32,31 @@ the clock-domain crossing.
 Components
 ----------
 
-All components share the same interface style (per-lane enables, packed
-lane data; only the linear address width differs with M) and are
-interchangeable under a common load/store unit.
+All components share the same addressing style — per-lane enables, packed
+lane data, only the linear address width differing with M — but they are
+**no longer drop-in interchangeable**. The two ``L = 2`` members carry two
+features the wider ones do not:
 
-===============  ====  ====  =======================================================
-Component        M     L     Status on a 5 ns (200 MHz) OOC budget
-===============  ====  ====  =======================================================
-``parmem3_2``    3     2     Single-cycle on all fabrics (meets outright on Zynq)
-``parmem5_2``    5     2     Single-cycle on all fabrics; strides ×3 conflict-free
-``parmem5_4``    5     4     Single-cycle from Kintex-7; ADRREG on Zynq-7000
-``parmem11_8``   11    8     Single-cycle on Kintex UltraScale+ only
-``parmem17_16``  17    16    Burroughs-BSP configuration; near-miss on UltraScale+
-===============  ====  ====  =======================================================
+- **byte write enables** (``ben`` / ``benb``), so sub-word stores are
+  possible; the wider members write whole words only;
+- **internal conflict serialization** behind a registered ``freeze``
+  output. The wider members only *report* ``conflict`` and drop lane 1, and
+  a caller using one must serialize itself. Serialization is deliberately
+  confined to ``L = 2``: a wider ``parmemB_L`` would have to stall the
+  caller for up to ``L`` cycles per conflict.
+
+Swapping one for another therefore requires port changes, and swapping a
+wider member in loses sub-word stores.
+
+===============  ====  ====  ==========  ==============  ==========================================
+Component        M     L     Byte WE     Serializes      Status on a 5 ns (200 MHz) OOC budget
+===============  ====  ====  ==========  ==============  ==========================================
+``parmem3_2``    3     2     yes         yes             Single-cycle on all fabrics; ADRREG on Zynq
+``parmem5_2``    5     2     yes         yes             Single-cycle from Kintex-7; strides ×3 free
+``parmem5_4``    5     4     no          no              Single-cycle from Kintex-7; ADRREG on Zynq
+``parmem11_8``   11    8     no          no              Single-cycle on Kintex UltraScale+ only
+``parmem17_16``  17    16    no          no              Burroughs-BSP configuration; near-miss on US+
+===============  ====  ====  ==========  ==============  ==========================================
 
 See each component's ``README.rst`` for its full contract and
 ``doc/RESULTS.md`` for the study behind the family: the six measured

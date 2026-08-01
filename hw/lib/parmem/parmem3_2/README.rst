@@ -15,10 +15,12 @@ instruction**:
 - both enabled lanes share ``wen``: an LD2 (two loads) or an ST2 (two
   stores) — a read/write mix cannot be expressed.
 
-The interface is shared with the whole ``parmem`` family
-(per-lane enables, packed lane data), so the memories are interchangeable
-under a common load/store unit — only the linear address width differs
-(``DEPTH+2`` bits here vs ``DEPTH+3`` for the 5-bank variants).
+The addressing style is shared with the whole ``parmem`` family (per-lane
+enables, packed lane data; the linear address width differs — ``DEPTH+2``
+bits here vs ``DEPTH+3`` for the 5-bank variants). The **ports are not**:
+this component and ``parmem5_2`` add byte write enables and internal
+conflict serialization, which ``parmem5_4``/``parmem11_8``/``parmem17_16``
+do not have. See ``../README.rst``.
 
 ``ADRREG = 1`` inserts a pipeline register at the end of the address
 phase (bank enables/WE/address/data muxes and bank ids), breaking the
@@ -36,12 +38,20 @@ CRT (Chinese Remainder Theorem) addressing — **no divider**:
 
 Because ``gcd(3, 2^DEPTH) = 1`` this map is a bijection over the
 ``3 * 2^DEPTH``-word space. The pair conflicts exactly when
-``stride ≡ 0 (mod 3)`` — **power-of-2 strides never conflict**. On
-conflict, lane 0 is served, lane 1 is dropped (its write is not performed
-and its ``doa`` slice is **invalid**), and ``conflict`` requests
-serialization from the caller; the same applies to a lane suppressed by
-``oob*``. ``conflict`` is a **pure function of the stride residue and the
-lane mask** (deliberately not gated by ``oob*``, which keeps the EA1
+a **non-zero** ``stride ≡ 0 (mod 3)`` — **power-of-2 strides never
+conflict**. A zero stride puts both lanes on the same word, which a single
+access serves on a read; on a write the lanes carry different byte masks and
+data, so it serializes like any other conflict.
+
+On conflict the memory **serializes internally**: it serves lane 0, re-issues
+for lane 1 on the next cycle, and raises the registered ``freeze`` output for
+exactly that cycle so the caller stalls. Lane 0's word is captured and
+replayed alongside lane 1's, so the pair still presents together and keeps
+the latency of a conflict-free pair. The caller consumes ``freeze`` and must
+hold its inputs while it is high; it does **not** need to act on ``conflict``,
+which remains an output for observability only. A lane suppressed by ``oob*``
+is still dropped outright. ``conflict`` is a **pure function of the stride
+residue and the lane mask** (deliberately not gated by ``oob*``, which keeps the EA1
 adder and range compare out of its cone — it is the caller's stall
 request and the most timing-critical output); it may assert together with
 ``oob[1]``, in which case the oob trap takes precedence.
@@ -103,6 +113,7 @@ STRIDE_W    12              Signed stride width, in words (must be <= DEPTH+2)
 ADRREG      0               Address-phase pipeline register (+1 cycle, fmax option)
 OUTREGA     0               Extra side-A output register (+1 cycle, fmax option)
 OUTREGB     0               Extra side-B output register (+1 cycle, fmax option)
+NB          WIDTH/8         Byte lanes per word — **derived, do not override**
 ==========  ==============  ====================================================
 
 Signals
@@ -117,13 +128,16 @@ wen            input                             Write enable, shared by the pai
 lane_en        input         [1:0]               Per-lane enable (lane i at ``addr + i*stride``)
 addr           input         [DEPTH+1:0]         Linear word address of lane 0
 stride         input         [STRIDE_W-1:0]      Signed word stride (EA1 = addr + stride)
+ben            input         [2*NB-1:0]          Per-lane byte write mask (writes only)
 dia            input         [2*WIDTH-1:0]       Lane write data (lane i at ``i*WIDTH``)
 doa            output        [2*WIDTH-1:0]       Lane read data (1 + ADRREG + OUTREGA cycles)
-conflict       output                            stride % 3 == 0 and both lanes: serialize
+freeze         output                            **Registered**: stall the caller for one cycle
+conflict       output                            Observability only — the memory serializes itself
 oob            output        [1:0]               ``EA_i`` out of range, lane suppressed
 clkb           input                             Side B clock (network interface)
 enb            input                             Port B enable
 web            input                             Port B write enable (0 = read)
+benb           input         [NB-1:0]            Port B byte write mask (writes only)
 addrb          input         [DEPTH+1:0]         Port B linear word address
 dib            input         [WIDTH-1:0]         Port B write data
 dob            output        [WIDTH-1:0]         Port B read data (1 + OUTREGB cycles)
