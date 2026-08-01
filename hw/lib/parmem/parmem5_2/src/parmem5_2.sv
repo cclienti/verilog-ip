@@ -55,7 +55,8 @@ module parmem5_2
     parameter STRIDE_W = 12,  //signed stride width, in words; <= DEPTH+3
     parameter ADRREG   = 0,   //register the address phase (+1 cycle, fmax option)
     parameter OUTREGA  = 0,   //extra side-A output register (fmax option)
-    parameter OUTREGB  = 0)   //extra side-B output register (fmax option)
+    parameter OUTREGB  = 0,   //extra side-B output register (fmax option)
+    parameter NB       = WIDTH/8)  //byte lanes -- derived, do not override
 
    (//Side A: one dual strided load/store access pair
     input  logic                clka,
@@ -64,16 +65,19 @@ module parmem5_2
     input  logic [1:0]          lane_en,  //per-lane enable
     input  logic [DEPTH+2:0]    addr,     //lane 0 linear address
     input  logic [STRIDE_W-1:0] stride,   //signed, in words
+    input  logic [2*NB-1:0]     ben,      //per-lane byte mask (writes only)
     input  logic [2*WIDTH-1:0]  dia,      //lane write data
     output logic [2*WIDTH-1:0]  doa,      //lane read data
 
-    output logic                conflict, //stride % 5 == 0: serialize
+    output logic                freeze,   //REGISTERED: stall the core 1 cycle
+    output logic                conflict, //observability only (see header)
     output logic [1:0]          oob,      //EA_i out of range
 
     //Side B: single linear-addressed port (network interface)
     input  logic                clkb,
     input  logic                enb,
     input  logic                web,
+    input  logic [NB-1:0]       benb,     //byte mask (writes only)
     input  logic [DEPTH+2:0]    addrb,
     input  logic [WIDTH-1:0]    dib,
     output logic [WIDTH-1:0]    dob,
@@ -88,6 +92,9 @@ module parmem5_2
    localparam OFFSET = 25;
    // 2^STRIDE_W mod 5 (two's-complement sign correction; 2^k mod 5
    // cycles 1, 2, 4, 3)
+   //cycles from access issue to bank data valid on side A
+   localparam int SER_D = ADRREG + 1 + OUTREGA;
+
    localparam CM = (STRIDE_W % 4 == 0) ? 1 : (STRIDE_W % 4 == 1) ? 2
                  : (STRIDE_W % 4 == 2) ? 4 : 3;
 
@@ -180,6 +187,8 @@ module parmem5_2
    logic [4:0]            bank0_oh;
    logic [2:0]            bank0, bank1;
    logic [1:0]            ce;
+   logic                  same_word, ser_start, ser_phase;
+   logic [1:0]            lane_en_eff;
 
    assign ea1_full = EAW'($signed({1'b0, addr}))
                      + EAW'($signed(stride));
@@ -195,17 +204,44 @@ module parmem5_2
    // adder (full-width check before truncation: negative/overflowing
    // sums would alias in-range cells)
    //----------------------------------------------------------------
-   assign oob[0] = en & lane_en[0] & (addr[AW-1:DEPTH] >= 3'd5);
-   assign oob[1] = en & lane_en[1]
+   assign oob[0] = en & lane_en_eff[0] & (addr[AW-1:DEPTH] >= 3'd5);
+   assign oob[1] = en & lane_en_eff[1]
                    & (ea1_full[EAW-1]
                       | (ea1_full[EAW-2:DEPTH] >= (EAW - 1 - DEPTH)'(5)));
 
-   assign ce = {2{en}} & lane_en & ~oob;
+   assign ce = {2{en}} & lane_en_eff & ~oob;
 
    //----------------------------------------------------------------
-   // Conflict: pure function of the stride residue and the lane mask
+   // same_word vs conflict. Both lanes land on one bank when the stride
+   // residue is zero; a ZERO stride additionally puts them on the same
+   // word (bank1 == bank0 and idx1 == idx0).
+   //
+   // On a READ that costs nothing and needs no serialization: the one
+   // bank access is issued for lane 0, and the return path hands the
+   // same word to both lanes because their bank selects are equal.
+   // On a WRITE it does not: the lanes carry different byte masks and
+   // different data, so a same-word store serializes like any other
+   // conflict. See parmem3_2 for the full rationale.
    //----------------------------------------------------------------
-   assign conflict = en & (scorr == '0) & (lane_en == 2'b11);
+   assign same_word = en & (stride == '0) & (lane_en == 2'b11);
+   assign conflict  = en & (scorr == '0) & (lane_en == 2'b11)
+                      & ~(same_word & ~wen);
+
+   //----------------------------------------------------------------
+   // Internal serialization. ser_phase is the second half of a
+   // conflicting pair; it drives `freeze` straight out of its flop, so
+   // nothing combinational runs from the stride into the core's clock
+   // enable. While ser_phase is high the core is stalled and therefore
+   // still presenting the same access, so only the lane mask is
+   // overridden.
+   //----------------------------------------------------------------
+   assign ser_start   = conflict & ~ser_phase;
+   assign lane_en_eff = ser_phase ? 2'b10 : lane_en;
+   assign freeze      = ser_phase;
+
+   always_ff @(posedge clka) begin
+      ser_phase <= ser_start;
+   end
 
    //----------------------------------------------------------------
    // Per-bank steering: raw-match ownership (EARLY cone: residues and
@@ -215,13 +251,14 @@ module parmem5_2
    logic [4:0]       ena_bank, wea_bank;
    logic [DEPTH-1:0] addra_bank [0:4];
    logic [WIDTH-1:0] dia_bank [0:4];
+   logic [NB-1:0]    ben_bank [0:4];
 
    generate
       for (genvar b = 0; b < 5; b = b + 1) begin: gen_asteer
          logic [1:0] rawm, sel;
 
-         assign rawm[0] = lane_en[0] & bank0_oh[b];
-         assign rawm[1] = lane_en[1] & (bank1 == 3'(b));
+         assign rawm[0] = lane_en_eff[0] & bank0_oh[b];
+         assign rawm[1] = lane_en_eff[1] & (bank1 == 3'(b));
 
          assign sel[0] = rawm[0];
          assign sel[1] = rawm[1] & ~rawm[0];
@@ -232,6 +269,7 @@ module parmem5_2
          assign addra_bank[b] = rawm[0] ? idx0 : idx1;
          assign dia_bank[b]   = rawm[0] ? dia[0 +: WIDTH]
                                         : dia[WIDTH +: WIDTH];
+         assign ben_bank[b]   = rawm[0] ? ben[0 +: NB] : ben[NB +: NB];
       end
    endgenerate
 
@@ -244,6 +282,7 @@ module parmem5_2
    logic [4:0]       ena_bank_q, wea_bank_q;
    logic [DEPTH-1:0] addra_bank_q [0:4];
    logic [WIDTH-1:0] dia_bank_q [0:4];
+   logic [NB-1:0]    ben_bank_q [0:4];
    logic [1:0]       ce_q;
    logic [2:0]       bank0_q, bank1_q;
 
@@ -256,6 +295,7 @@ module parmem5_2
             for (int b = 0; b < 5; b++) begin
                addra_bank_q[b] <= addra_bank[b];
                dia_bank_q[b]   <= dia_bank[b];
+               ben_bank_q[b]   <= ben_bank[b];
             end
             if (ce[0] == 1'b1) begin
                bank0_q <= bank0;
@@ -274,6 +314,7 @@ module parmem5_2
          for (genvar b = 0; b < 5; b = b + 1) begin: gen_pass
             assign addra_bank_q[b] = addra_bank[b];
             assign dia_bank_q[b]   = dia_bank[b];
+            assign ben_bank_q[b]   = ben_bank[b];
          end
       end
    endgenerate
@@ -312,12 +353,14 @@ module parmem5_2
 
    generate
       for (genvar b = 0; b < 5; b = b + 1) begin: gen_bank
-         dpmemrf #(.DEPTH(DEPTH), .WIDTH(WIDTH),
+         dpmemrf #(.DEPTH(DEPTH), .WIDTH(WIDTH), .BYTE_WE(1),
                    .OUTREGA(OUTREGA), .OUTREGB(OUTREGB))
-         bank_inst (.clka(clka), .ena(ena_bank_q[b]), .wea(wea_bank_q[b]),
+         bank_inst (.clka(clka), .ena(ena_bank_q[b]),
+                    .wea({NB{wea_bank_q[b]}} & ben_bank_q[b]),
                     .addra(addra_bank_q[b]), .dia(dia_bank_q[b]),
                     .doa(bankdoa[b]),
-                    .clkb(clkb), .enb(enb_bank[b]), .web(web_bank[b]),
+                    .clkb(clkb), .enb(enb_bank[b]),
+                    .web({NB{web_bank[b]}} & benb),
                     .addrb(idxb), .dib(dib),
                     .dob(bankdob[b]));
       end
@@ -345,6 +388,24 @@ module parmem5_2
       end
    end
 
+   //----------------------------------------------------------------
+   // Serialized-pair replay. On a conflict both lanes share one bank,
+   // so lane 1's access overwrites the bank output lane 0's word came
+   // out on, one cycle later. Capture lane 0's word as it appears and
+   // present it again on the cycle lane 1's word is valid, so the pair
+   // still leaves together.
+   //
+   // The replay is folded INTO the bank mux rather than stacked after
+   // it: the hold register is a sixth input of what was a 5:1 select,
+   // which costs no extra logic level (a 5:1 already spans two LUT6).
+   //----------------------------------------------------------------
+   localparam logic [2:0] SEL_HOLD = 3'd5;   // first unused bank code
+
+   logic [SER_D:0]   ser_dly;
+   logic [WIDTH-1:0] doa0_hold;
+   logic [2:0]       sel0, sel1;
+   logic [WIDTH-1:0] doa0_out, doa1_out;
+
    generate
       if (OUTREGA != 0) begin: gen_selra
          logic [1:0][2:0] bank_rr;
@@ -358,14 +419,46 @@ module parmem5_2
                bank_rr[1] <= bank_r[1];
             end
          end
-         assign doa[0 +: WIDTH]     = bankdoa[bank_rr[0]];
-         assign doa[WIDTH +: WIDTH] = bankdoa[bank_rr[1]];
+         assign sel0 = ser_dly[SER_D] ? SEL_HOLD : bank_rr[0];
+         assign sel1 = bank_rr[1];
       end
       else begin: gen_selra
-         assign doa[0 +: WIDTH]     = bankdoa[bank_r[0]];
-         assign doa[WIDTH +: WIDTH] = bankdoa[bank_r[1]];
+         assign sel0 = ser_dly[SER_D] ? SEL_HOLD : bank_r[0];
+         assign sel1 = bank_r[1];
       end
    endgenerate
+
+   always_comb begin
+      case (sel0)
+        3'd0:    doa0_out = bankdoa[0];
+        3'd1:    doa0_out = bankdoa[1];
+        3'd2:    doa0_out = bankdoa[2];
+        3'd3:    doa0_out = bankdoa[3];
+        3'd4:    doa0_out = bankdoa[4];
+        default: doa0_out = doa0_hold;
+      endcase
+      case (sel1)
+        3'd0:    doa1_out = bankdoa[0];
+        3'd1:    doa1_out = bankdoa[1];
+        3'd2:    doa1_out = bankdoa[2];
+        3'd3:    doa1_out = bankdoa[3];
+        default: doa1_out = bankdoa[4];
+      endcase
+   end
+
+   // Captured from the mux output itself: at capture time sel0 still
+   // points at lane 0's bank, so this is bankdoa[bank_r[0]] without a
+   // second 5:1 select. The path through doa0_hold is broken by the
+   // register, so the loop is sequential, not combinational.
+   always_ff @(posedge clka) begin
+      ser_dly <= {ser_dly[SER_D-1:0], ser_start};
+      if (ser_dly[SER_D-1] == 1'b1) begin
+         doa0_hold <= doa0_out;
+      end
+   end
+
+   assign doa[0 +: WIDTH]     = doa0_out;
+   assign doa[WIDTH +: WIDTH] = doa1_out;
 
    generate
       if (OUTREGB != 0) begin: gen_selrb

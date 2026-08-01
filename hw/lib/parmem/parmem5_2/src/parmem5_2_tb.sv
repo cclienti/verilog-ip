@@ -39,6 +39,7 @@ module parmem5_2_tb();
    localparam NB_LANES = 2;
    localparam AW       = DEPTH + 3;
    localparam WORDS    = NB_BANKS * (1 << DEPTH);
+   localparam NBY      = WIDTH / 8;
 
    logic                      clka, clkb;
    logic                      en, wen;
@@ -47,10 +48,13 @@ module parmem5_2_tb();
    logic [STRIDE_W-1:0]       stride;
    logic [NB_LANES*WIDTH-1:0] dia;
    logic [NB_LANES*WIDTH-1:0] doa;
+   logic [NB_LANES*NBY-1:0]   ben;
+   logic                      freeze;
    logic                      conflict;
    logic [NB_LANES-1:0]       oob;
 
    logic                      enb, web;
+   logic [NBY-1:0]            benb;
    logic [AW-1:0]             addrb;
    logic [WIDTH-1:0]          dib;
    logic [WIDTH-1:0]          dob;
@@ -64,9 +68,11 @@ module parmem5_2_tb();
    parmem5_2 #(.DEPTH(DEPTH), .WIDTH(WIDTH), .STRIDE_W(STRIDE_W),
                .OUTREGA(0), .OUTREGB(0))
    parmem5_2_inst (.clka(clka), .en(en), .wen(wen), .lane_en(lane_en),
-                   .addr(addr), .stride(stride), .dia(dia), .doa(doa),
-                   .conflict(conflict), .oob(oob),
-                   .clkb(clkb), .enb(enb), .web(web), .addrb(addrb),
+                   .addr(addr), .stride(stride), .ben(ben),
+                   .dia(dia), .doa(doa),
+                   .freeze(freeze), .conflict(conflict), .oob(oob),
+                   .clkb(clkb), .enb(enb), .web(web), .benb(benb),
+                   .addrb(addrb),
                    .dib(dib), .dob(dob), .oobb(oobb));
 
    // ADRREG = 1 variant: address-phase pipeline register, 2-cycle reads
@@ -75,6 +81,8 @@ module parmem5_2_tb();
    logic [AW-1:0]             addr_p;
    logic [STRIDE_W-1:0]       stride_p;
    logic [NB_LANES*WIDTH-1:0] dia_p, doa_p;
+   logic [NB_LANES*NBY-1:0]   ben_p;
+   logic                      freeze_p;
    logic                      conflict_p;
    logic [NB_LANES-1:0]       oob_p;
 
@@ -82,9 +90,11 @@ module parmem5_2_tb();
                .ADRREG(1), .OUTREGA(0), .OUTREGB(0))
    parmem5_2_adr_inst (.clka(clka), .en(en_p), .wen(wen_p),
                        .lane_en(lane_en_p), .addr(addr_p),
-                       .stride(stride_p), .dia(dia_p), .doa(doa_p),
-                       .conflict(conflict_p), .oob(oob_p),
-                       .clkb(clkb), .enb(1'b0), .web(1'b0), .addrb('0),
+                       .stride(stride_p), .ben(ben_p),
+                       .dia(dia_p), .doa(doa_p),
+                       .freeze(freeze_p), .conflict(conflict_p), .oob(oob_p),
+                       .clkb(clkb), .enb(1'b0), .web(1'b0), .benb('0),
+                       .addrb('0),
                        .dib('0), .dob(), .oobb());
 
    //----------------------------------------------------------------
@@ -124,12 +134,13 @@ module parmem5_2_tb();
 
    task automatic idle();
       en = 0; wen = 0; lane_en = '0; addr = '0; stride = '0; dia = '0;
-      enb = 0; web = 0; addrb = '0; dib = '0;
+      ben = '1;                       // full-word writes unless stated
+      enb = 0; web = 0; addrb = '0; dib = '0; benb = '1;
    endtask
 
    task automatic idle_p();
       en_p = 0; wen_p = 0; lane_en_p = '0; addr_p = '0; stride_p = '0;
-      dia_p = '0;
+      dia_p = '0; ben_p = '1;
    endtask
 
    task automatic check(input string what, input bit cond);
@@ -217,8 +228,13 @@ module parmem5_2_tb();
       end
       $display("phase 2 (pair read, stride %% 5 != 0) done");
 
-      //--- Phase 3: stride %% 5 == 0 -> conflict, lane 0 wins ---------
+      //--- Phase 3: stride %% 5 == 0, non-zero -> serialized pair -----
+      // The memory serves lane 0, raises `freeze` for exactly one cycle
+      // while it serves lane 1, and replays lane 0's word so the pair
+      // still leaves together. The core holds its inputs while frozen,
+      // which the extra negedge below models.
       for (s = -NB_BANKS; s <= NB_BANKS; s += NB_BANKS) begin
+         if (s == 0) continue;                   // same_word: phase 3b
          for (int a = 0; a < WORDS; a += 7) begin
             if (!group_in_range(a, s, '1)) continue;
             @(negedge clka);
@@ -227,13 +243,93 @@ module parmem5_2_tb();
             #2;
             check($sformatf("s %0d a %0d: conflict expected", s, a),
                   conflict === 1'b1);
+            check($sformatf("s %0d a %0d: freeze not yet", s, a),
+                  freeze === 1'b0);
+            @(negedge clka);                     // frozen: hold inputs
+            #2;
+            check($sformatf("s %0d a %0d: freeze asserted", s, a),
+                  freeze === 1'b1);
             @(negedge clka);
             idle();
-            check($sformatf("s %0d a %0d: lane 0 wins", s, a),
+            #2;
+            check($sformatf("s %0d a %0d: freeze released", s, a),
+                  freeze === 1'b0);
+            check($sformatf("s %0d a %0d: lane 0 replayed", s, a),
                   doa[0 +: WIDTH] === refmem[a]);
+            check($sformatf("s %0d a %0d: lane 1 served", s, a),
+                  doa[WIDTH +: WIDTH] === refmem[a + s]);
          end
       end
-      $display("phase 3 (stride %% 5 == 0, conflicts) done");
+      $display("phase 3 (stride %% 5 == 0, serialized pairs) done");
+
+      //--- Phase 3b: stride 0 -> same word, one access, no freeze -----
+      for (int a = 0; a < WORDS; a += 5) begin
+         @(negedge clka);
+         en = 1; wen = 0; lane_en = '1;
+         addr = a[AW-1:0]; stride = '0;
+         #2;
+         check($sformatf("stride 0 a %0d: no conflict on a read", a),
+               conflict === 1'b0);
+         @(negedge clka);
+         idle();
+         #2;
+         check($sformatf("stride 0 a %0d: never freezes", a),
+               freeze === 1'b0);
+         check($sformatf("stride 0 a %0d: lane 0", a),
+               doa[0 +: WIDTH] === refmem[a]);
+         check($sformatf("stride 0 a %0d: lane 1 gets the same word", a),
+               doa[WIDTH +: WIDTH] === refmem[a]);
+      end
+      // a same-word WRITE carries two masks and two words: it serializes
+      @(negedge clka);
+      en = 1; wen = 1; lane_en = '1; addr = 6; stride = '0; ben = '1;
+      dia[0 +: WIDTH]     = 32'h11112222;
+      dia[WIDTH +: WIDTH] = 32'h33334444;
+      #2;
+      check("stride 0 write: conflict expected", conflict === 1'b1);
+      @(negedge clka);                           // frozen: hold
+      #2;
+      check("stride 0 write: freeze asserted", freeze === 1'b1);
+      @(negedge clka);
+      idle();
+      refmem[6] = 32'h33334444;                  // lane 1 writes last
+      read_check_single(6, refmem[6], "stride 0 write: lane 1 landed last");
+      $display("phase 3b (stride 0, same word) done");
+
+      //--- Phase 3c: byte write enables ------------------------------
+      begin
+         logic [WIDTH-1:0] base_w;
+         base_w = 32'h01234567;
+         write_single(7, base_w);
+         refmem[7] = base_w;
+         @(negedge clka);
+         en = 1; wen = 1; lane_en = 'b1; addr = 7; stride = '0;
+         ben = '0; ben[1:0] = 2'b11;             // low half only
+         dia[0 +: WIDTH] = 32'hAAAABBBB;
+         @(negedge clka);
+         idle();
+         refmem[7] = {base_w[31:16], 16'hBBBB};
+         read_check_single(7, refmem[7], "ben: low half written");
+         @(negedge clka);
+         en = 1; wen = 1; lane_en = 'b1; addr = 7; stride = '0;
+         ben = '0;                               // empty mask
+         dia[0 +: WIDTH] = 32'hDEADBEEF;
+         @(negedge clka);
+         idle();
+         read_check_single(7, refmem[7], "ben: empty mask writes nothing");
+         @(negedge clka);                        // per-lane masks, strided
+         en = 1; wen = 1; lane_en = '1; addr = 8; stride = STRIDE_W'(1);
+         ben = '0; ben[0] = 1'b1; ben[NBY + 3] = 1'b1;
+         dia[0 +: WIDTH]     = 32'h00000077;
+         dia[WIDTH +: WIDTH] = 32'h88000000;
+         @(negedge clka);
+         idle();
+         refmem[8] = {refmem[8][31:8], 8'h77};
+         refmem[9] = {8'h88, refmem[9][23:0]};
+         read_check_single(8, refmem[8], "ben: lane 0 mask");
+         read_check_single(9, refmem[9], "ben: lane 1 mask");
+      end
+      $display("phase 3c (byte write enables) done");
 
       //--- Phase 4: pair write, verified by read-back -----------------
       for (s = 1; s <= NB_BANKS + 2; s += NB_BANKS - 1) begin
