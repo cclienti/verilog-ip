@@ -289,7 +289,9 @@ Host Control) — the assembler must never emit one.
 | `LBU`| —     | byte (8-bit)  | zero-extended to 32   |
 | `LHU`| —     | half (16-bit) | zero-extended to 32   |
 
-- Stores write only the addressed byte lane(s) via the bank byte write-enables;
+- Stores write only the addressed byte lane(s); each bank is built from four
+  independently write-enabled byte slices (§10.1), so a sub-word store simply
+  leaves the other slices disabled.
   the rest of the 32-bit word is unchanged.
 - Data memory is **little-endian**: byte 0 of a word is the least-significant
   byte.
@@ -700,6 +702,22 @@ Why 3 banks (measured — `hw/lib/parmem/doc/RESULTS.md`):
   and the optional `ADRREG` address-phase register adds one cycle
   while keeping `conflict` combinational at issue.
 
+**Byte granularity (normative).** Each bank is **four 8-bit memories**, not
+one 32-bit memory with a byte-enable port. A sub-word store enables only the
+slices it touches; a word store enables all four. `dpmemrf` is therefore used
+unchanged — it stays a plain single-write-enable dual-port memory, which
+matters because it is shared with other IP — and the byte mask lives in
+`parmem3_2`, whose bank generate loop becomes `3 banks × 4 slices`. Side A's
+`wen` widens to a per-lane byte mask and side B's `web` to a four-bit mask.
+
+> **To measure before committing to it.** Four narrow slices and one wide
+> memory with byte enables cost the same BRAM at `DMEM_DEPTH_LOG2 = 11` and
+> above, because each 2048×8 slice fills a BRAM18 exactly. At
+> `DMEM_DEPTH_LOG2 = 10` they do not: a 1024×32 bank fits **one** BRAM36,
+> while four 1024×8 slices take one BRAM18 each — four BRAM18, twice the
+> memory for the same data. If shallow scratchpads matter, that is a
+> synthesis run to do before fixing the parameter range.
+
 ### 10.2 Dual strided access pair — encoding
 
 The LS slot's dual-op class accesses a **pair from one instruction**:
@@ -724,10 +742,14 @@ word_i = (rs_base >> 2) + i · (rs_stride >> 2)
 so the stride's own low two bits are simply dropped: 4 bytes of stride is one
 word, 8 bytes is two. This buys two things at once.
 
-*Contiguous sub-word data works.* A stride smaller than 4 bytes puts both
-lanes **in the same word** — `int16` pairs, `int8` pairs — and one bank read
-serves them both, the sub-word steering extracting the two elements. That is
-one access, not two, and no conflict is possible:
+*Contiguous sub-word loads work in one access.* A stride smaller than 4
+bytes puts both lanes **in the same word** — `int16` pairs, `int8` pairs — and
+one bank read serves them both, the sub-word steering extracting the two
+elements. A same-word **store** does not get the same break: the two lanes
+carry different byte masks and different data, and one access presents only
+one of each, so it serializes like any other conflict (§10.4). Packing the
+pair in an ALU slot ahead of a plain `SW` avoids that cycle entirely, which
+is why the hardware does not:
 
 ```asm
 ; int16 array, word-aligned base, contiguous pair
@@ -739,6 +761,31 @@ one access, not two, and no conflict is possible:
 word-aligned, the lane-to-lane word distance is `rs_stride >> 2` and does not
 depend on the base at all — which is what keeps `conflict` computable before
 the address adder (§10.4).
+
+**When the sub-word dual forms pay (compiler cost model).** Counted in LS-slot
+cycles, since the single memory port is the bottleneck:
+
+| access | sub-word dual | alternative | verdict |
+|---|---|---|---|
+| `LD2H`/`LD2B`, **strided** | 1 cycle, 2 elements | 2 × `LH` = 2 cycles | **2× — this is why they exist** |
+| `LD2H`/`LD2B`, contiguous | 1 cycle, 2 elements | `LW` + 2 ALU extracts | equal on the port, saves 2 ALU slots |
+| `ST2H`/`ST2B`, **strided** | 1 cycle, 2 elements | 2 × `SH` = 2 cycles | **2×** |
+| `ST2H`/`ST2B`, contiguous | 2 cycles (serialized) | ALU pack + `SW` = 1 cycle | **the alternative wins** |
+
+So the sub-word dual forms earn their opcodes on **strided** data — the column
+walk through an `int16` array, which is the access pattern the
+prime-interleaved memory exists for. On contiguous data they are neutral at
+best, and the contiguous *store* is better served by packing the pair in an
+ALU slot and emitting a plain `SW`.
+
+> **Coupled to the SIMD decision.** If the ALU ever gains packed sub-word
+> lanes (`ALU.md` §7, P3), a word stays packed from memory through the
+> arithmetic and back, `LD2W` feeds 4 `int16` per cycle to 4 packed MACs, and
+> these forms become not merely redundant but backwards — they unpack what
+> SIMD wants packed. Conversely, dropping them *without* P3 makes 16-bit work
+> slower than it is today, since the unpacking moves into the ALU slots with
+> nothing to amortise it. The two decisions must be taken together, and P3 is
+> itself blocked on P1 (the fused-MAC accumulator question).
 
 The pair instructions **split across the two encoding tiers by how many
 registers they name**, not by being "dual":
@@ -821,15 +868,22 @@ Let `Δ = rs_stride >> 2` be the lane-to-lane distance in bank words
 follow from it, and they must not be confused:
 
 ```
-same_word = (Δ == 0)                    -- both lanes inside one 32-bit word
-conflict  = (Δ != 0) && (Δ % 3 == 0)    -- distinct words, same bank
+same_word = (Δ == 0)                              -- one 32-bit word
+conflict  = (Δ % 3 == 0) && !(same_word && load)  -- same bank, two accesses
 ```
 
-`same_word` is **free**: one bank read serves both lanes and the sub-word
-steering splits it. It covers contiguous `int16`/`int8` pairs and the
-broadcast case `rs_stride = 0`, neither of which costs an extra cycle. An
-earlier revision tested only `stride ≡ 0 (mod 3)`, which is true of `0` as
-well — so it froze the core on every broadcast, for nothing.
+`same_word` is **free on a load**: one bank read serves both lanes, because
+their bank selects are equal, and the sub-word steering splits the shared
+word. It covers contiguous `int16`/`int8` pairs and the degenerate broadcast
+`rs_stride = 0`. An earlier revision tested only `stride ≡ 0 (mod 3)`, which
+is true of `0` as well — so it froze the core on every broadcast, for nothing.
+
+A same-word **store** serializes: the lanes carry different byte masks and
+different data, which one access cannot present. Merging them was considered
+and rejected — it is the only mergeable case in the instruction set, so it
+would buy one cycle at the price of an exception to an ISA that otherwise has
+none, and the compiler can pack the pair in an ALU slot and emit a plain
+store instead.
 
 `conflict` is the real case, and like `same_word` it is a pure function of
 the stride residue and the lane mask, never of the addresses, so it is
@@ -894,6 +948,3 @@ undefined location. Staying in range is a compiler obligation like every
 other, and `conflict` is now the only condition the memory reports.
 
 ### 10.5 Open items
-
-- Sub-word store support on the word-wide banks (byte write enables in
-  `dpmemrf`, as §3.4 requires).
