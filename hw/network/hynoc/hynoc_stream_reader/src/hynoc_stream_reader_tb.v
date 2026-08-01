@@ -134,7 +134,7 @@ module hynoc_stream_reader_tb();
    // Value Change Dump
    //----------------------------------------------------------------
    initial begin
-      $dumpfile ("hynoc_stream_reader_tb.vcd");
+      $dumpfile ("hynoc_stream_reader_tb.fst");
       $dumpvars;
    end
 

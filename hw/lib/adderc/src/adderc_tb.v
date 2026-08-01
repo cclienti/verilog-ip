@@ -62,7 +62,7 @@ module adderc_tb () ;
      #2 clk = !clk;
 
    initial  begin
-      $dumpfile ("adderc_tb.vcd");
+      $dumpfile ("adderc_tb.fst");
       $dumpvars;
    end
 

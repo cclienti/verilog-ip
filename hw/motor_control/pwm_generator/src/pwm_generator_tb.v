@@ -38,7 +38,7 @@ module pwm_generator_tb;
    //----------------------------------------------------------------
 
    initial  begin
-      $dumpfile ("pwm_generator_tb.vcd");
+      $dumpfile ("pwm_generator_tb.fst");
       $dumpvars;
    end
 

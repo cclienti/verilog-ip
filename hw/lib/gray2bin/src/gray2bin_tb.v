@@ -44,7 +44,7 @@ module gray2bin_tb;
    // Value Change Dump
    //----------------------------------------------------------------
    initial  begin
-      $dumpfile ("gray2bin_tb.vcd");
+      $dumpfile ("gray2bin_tb.fst");
       $dumpvars;
    end
 

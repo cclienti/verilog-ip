@@ -35,6 +35,9 @@ doc/logo/*png
 ##################
 # Verilog simulation
 ##################
+**/project/*.fst
+**/project/*.fst.hier
+# Dumps from before the switch to FST, and other simulators' output.
 **/project/*.vcd
 **/project/*_tb
 **/project/*_postsyn

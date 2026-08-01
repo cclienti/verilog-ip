@@ -94,7 +94,7 @@ module shmemif_tb();
    // Value Change Dump
    //----------------------------------------------------------------
    initial begin
-      $dumpfile ("shmemif_tb.vcd");
+      $dumpfile ("shmemif_tb.fst");
       $dumpvars;
    end
 

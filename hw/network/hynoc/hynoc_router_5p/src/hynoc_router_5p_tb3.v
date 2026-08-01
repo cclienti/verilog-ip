@@ -251,7 +251,7 @@ module hynoc_router_5p_tb3;
    // Value Change Dump
    //----------------------------------------------------------------
    initial begin
-      $dumpfile ("hynoc_router_5p_tb3.vcd");
+      $dumpfile ("hynoc_router_5p_tb3.fst");
       $dumpvars;
    end
 

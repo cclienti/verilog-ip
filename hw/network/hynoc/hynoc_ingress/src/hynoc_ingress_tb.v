@@ -144,7 +144,7 @@ module hynoc_ingress_tb;
    //----------------------------------------------------------------
 
    initial begin
-      $dumpfile ("hynoc_ingress_tb.vcd");
+      $dumpfile ("hynoc_ingress_tb.fst");
       $dumpvars;
    end
 

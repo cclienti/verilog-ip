@@ -102,7 +102,7 @@ module vliwrf_tb ();
    // VCD
    //----------------------------------------------------------------
    initial begin
-      $dumpfile("vliwrf_tb.vcd");
+      $dumpfile("vliwrf_tb.fst");
       $dumpvars(0, vliwrf_tb);
    end
 

@@ -45,7 +45,7 @@ module dpmemwf_tb();
    // VCD
    //----------------------------------------------------------------
    initial begin
-      $dumpfile("dpmemwf_tb.vcd");
+      $dumpfile("dpmemwf_tb.fst");
       $dumpvars(0,dpmemwf_tb);
    end
 

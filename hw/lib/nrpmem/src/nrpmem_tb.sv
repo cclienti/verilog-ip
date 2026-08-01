@@ -80,7 +80,7 @@ module nrpmem_tb ();
    // VCD
    //----------------------------------------------------------------
    initial begin
-      $dumpfile("nrpmem_tb.vcd");
+      $dumpfile("nrpmem_tb.fst");
       $dumpvars(0, nrpmem_tb);
    end
 

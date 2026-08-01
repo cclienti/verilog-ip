@@ -33,7 +33,7 @@ module prra_lut_tb();
    // Value Change Dump
    //----------------------------------------------------------------
    initial begin
-      $dumpfile ("prra_lut_tb.vcd");
+      $dumpfile ("prra_lut_tb.fst");
       $dumpvars;
    end
 

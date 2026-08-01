@@ -50,7 +50,7 @@ module multiplier_tb();
    // VCD
    //----------------------------------------------------------------
    initial begin
-      $dumpfile("multiplier_tb.vcd");
+      $dumpfile("multiplier_tb.fst");
       $dumpvars(0,multiplier_tb);
    end
 

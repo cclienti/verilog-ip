@@ -210,7 +210,7 @@ module hynoc_router_5p_tb;
    //----------------------------------------------------------------
 
    initial begin
-      $dumpfile ("hynoc_router_5p_tb.vcd");
+      $dumpfile ("hynoc_router_5p_tb.fst");
       $dumpvars;
    end
 

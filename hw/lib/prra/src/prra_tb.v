@@ -80,7 +80,7 @@ module prra_tb();
    //----------------------------------------------------------------
 
    initial begin
-      $dumpfile ("prra_tb.vcd");
+      $dumpfile ("prra_tb.fst");
       $dumpvars;
    end
 

@@ -90,7 +90,7 @@ module hynoc_router_5p_tb4;
    //----------------------------------------------------------------
 
    initial begin
-      $dumpfile ("hynoc_router_5p_tb4.vcd");
+      $dumpfile ("hynoc_router_5p_tb4.fst");
       $dumpvars;
    end
 

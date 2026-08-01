@@ -105,7 +105,7 @@ module hynoc_router_3p_tb;
    //----------------------------------------------------------------
 
    initial begin
-      $dumpfile ("hynoc_router_3p_tb.vcd");
+      $dumpfile ("hynoc_router_3p_tb.fst");
       $dumpvars;
    end
 

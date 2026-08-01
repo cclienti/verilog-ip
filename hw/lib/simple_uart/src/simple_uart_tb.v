@@ -44,7 +44,7 @@ module simple_uart_tb;
    // Value Change Dump
    //----------------------------------------------------------------
    initial  begin
-      $dumpfile ("simple_uart_tb.vcd");
+      $dumpfile ("simple_uart_tb.fst");
       $dumpvars;
    end
 

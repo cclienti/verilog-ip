@@ -70,7 +70,7 @@ module rmii_mac_rx_tb;
     // Value Change Dump
     //----------------------------------------------
     initial  begin
-        $dumpfile ("rmii_mac_rx_tb.vcd");
+        $dumpfile ("rmii_mac_rx_tb.fst");
         $dumpvars;
     end
 

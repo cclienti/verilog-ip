@@ -32,7 +32,7 @@ module cmpgt_tb () ;
          .b(b));
 
    initial  begin
-      $dumpfile ("cmpgt_tb.vcd");
+      $dumpfile ("cmpgt_tb.fst");
       $dumpvars;
    end
 

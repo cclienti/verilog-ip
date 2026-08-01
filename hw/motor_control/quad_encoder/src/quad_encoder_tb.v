@@ -41,7 +41,7 @@ module quad_encoder_tb;
    //----------------------------------------------------------------
 
    initial  begin
-      $dumpfile ("quad_encoder_tb.vcd");
+      $dumpfile ("quad_encoder_tb.fst");
       $dumpvars;
    end
 

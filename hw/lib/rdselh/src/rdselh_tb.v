@@ -32,7 +32,7 @@ module rdselh_tb();
    // VCD
    //----------------------------------------------
    initial  begin
-      $dumpfile ("rdselh_tb.vcd");
+      $dumpfile ("rdselh_tb.fst");
       $dumpvars;
    end
 

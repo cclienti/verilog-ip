@@ -75,7 +75,7 @@ module hynoc_stream_writer_tb();
    // Value Change Dump
    //----------------------------------------------------------------
    initial begin
-      $dumpfile ("hynoc_stream_writer_tb.vcd");
+      $dumpfile ("hynoc_stream_writer_tb.fst");
       $dumpvars;
    end
 

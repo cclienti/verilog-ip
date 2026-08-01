@@ -110,7 +110,7 @@ module sclkfifolut_tb;
    // Value Change Dump
    //----------------------------------------------------------------
    initial  begin
-      $dumpfile ("sclkfifolut_tb.vcd");
+      $dumpfile ("sclkfifolut_tb.fst");
       $dumpvars;
    end
 

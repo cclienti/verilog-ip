@@ -97,7 +97,7 @@ module hynoc_egress_tb();
    //----------------------------------------------------------------
 
    initial begin
-      $dumpfile ("hynoc_egress_tb.vcd");
+      $dumpfile ("hynoc_egress_tb.fst");
       $dumpvars;
     end
 

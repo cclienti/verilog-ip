@@ -43,7 +43,7 @@ module uart_reg_if_tb;
    //----------------------------------------------------------------
 
    initial  begin
-      $dumpfile ("uart_reg_if_tb.vcd");
+      $dumpfile ("uart_reg_if_tb.fst");
       $dumpvars;
    end
 

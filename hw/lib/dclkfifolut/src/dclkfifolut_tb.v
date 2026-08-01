@@ -100,7 +100,7 @@ module dclkfifolut_tb;
    // Value Change Dump
    //----------------------------------------------------------------
    initial  begin
-      $dumpfile ("dclkfifolut_tb.vcd");
+      $dumpfile ("dclkfifolut_tb.fst");
       $dumpvars;
    end
 

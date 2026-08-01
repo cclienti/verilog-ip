@@ -37,7 +37,7 @@ module asdpmem_tb();
    // VCD
    //----------------------------------------------------------------
    initial begin
-      $dumpfile("asdpmem_tb.vcd");
+      $dumpfile("asdpmem_tb.fst");
       $dumpvars(0,asdpmem_tb);
    end
 

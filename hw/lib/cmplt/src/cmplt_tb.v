@@ -33,7 +33,7 @@ module cmplt_tb () ;
 
 
    initial  begin
-      $dumpfile ("cmplt_tb.vcd");
+      $dumpfile ("cmplt_tb.fst");
       $dumpvars;
    end
 

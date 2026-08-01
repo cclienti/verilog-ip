@@ -71,7 +71,7 @@ module sclkfiforeg_tb;
    // Value Change Dump
    //----------------------------------------------------------------
    initial begin
-      $dumpfile ("sclkfiforeg_tb.vcd");
+      $dumpfile ("sclkfiforeg_tb.fst");
       $dumpvars;
    end
 

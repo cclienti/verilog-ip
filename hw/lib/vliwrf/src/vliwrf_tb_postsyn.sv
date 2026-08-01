@@ -75,7 +75,7 @@ module vliwrf_tb_postsyn ();
    // VCD
    //----------------------------------------------------------------
    initial begin
-      $dumpfile("vliwrf_tb_postsyn.vcd");
+      $dumpfile("vliwrf_tb_postsyn.fst");
       $dumpvars(0, vliwrf_tb_postsyn);
    end
 

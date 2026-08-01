@@ -127,7 +127,7 @@ module hynoc_local_interface_tb();
    //----------------------------------------------------------------
 
    initial begin
-      $dumpfile ("hynoc_local_interface_tb.vcd");
+      $dumpfile ("hynoc_local_interface_tb.fst");
       $dumpvars;
    end
 

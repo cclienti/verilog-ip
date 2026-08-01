@@ -40,7 +40,7 @@ module barrel_tb();
    // VCD
    //----------------------------------------------------------------
    initial begin
-      $dumpfile("barrel_tb.vcd");
+      $dumpfile("barrel_tb.fst");
       $dumpvars(0, barrel_tb);
    end
 

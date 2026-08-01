@@ -118,7 +118,7 @@ endmodule
 
 module smalldiv_tb();
    initial begin
-      $dumpfile("smalldiv_tb.vcd");
+      $dumpfile("smalldiv_tb.fst");
       $dumpvars(0, smalldiv_tb);
    end
 
