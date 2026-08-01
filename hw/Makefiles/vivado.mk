@@ -18,7 +18,7 @@ VIVADO_BOARDFILE       ?= ../../../boards/zedboard/zedboard.xdc
 # which only applies to the non-project vivado-gen-* targets).
 VIVADO_PROJECT_OOC     ?= 0
 
-.PHONY: vivado-gen-post-syn.tcl vivado-gen-post-impl.tcl
+.PHONY: vivado-project.tcl vivado-gen-post-syn.tcl vivado-gen-post-impl.tcl
 .PHONY: project.vivado synth.vivado impl.vivado floorplan.vivado
 .PHONY: clean.vivado distclean.vivado
 
