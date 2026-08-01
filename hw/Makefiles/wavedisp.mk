@@ -8,6 +8,9 @@ WAVEDISP_FILE            = $(TESTBENCH_MODULE).wave.py
 WAVEDISP_GTKWAVE_TCL     = $(TESTBENCH_MODULE).gtkwave.tcl
 WAVEDISP_MODELSIM_TCL    = $(TESTBENCH_MODULE).modelsim.tcl
 WAVEDISP_RIVIERAPRO_TCL  = $(TESTBENCH_MODULE).rivierapro.tcl
+# Surfer has no scripting language: this is a flat list of the commands
+# its own prompt accepts, replayed once the dump is loaded.
+WAVEDISP_SURFER_FILE     = $(TESTBENCH_MODULE).sucl
 WAVEDISP_DOT_FILE        = $(TESTBENCH_MODULE).dot
 
 ifeq ($(WAVEDISP_GEN_ARGS),)
@@ -18,6 +21,7 @@ endif
 
 
 .PHONY: $(WAVEDISP_GTKWAVE_TCL) $(WAVEDISP_MODELSIM_TCL) $(WAVEDISP_RIVIERAPRO_TCL)
+.PHONY: $(WAVEDISP_SURFER_FILE)
 .PHONY: wavedisp wavedisp_dot wavedisp_venv
 
 
@@ -37,7 +41,8 @@ $(WAVEDISP_BIN):
 
 wavedisp_venv: $(WAVEDISP_BIN)
 
-wavedisp: $(WAVEDISP_GTKWAVE_TCL) $(WAVEDISP_MODELSIM_TCL) $(WAVEDISP_RIVIERAPRO_TCL)
+wavedisp: $(WAVEDISP_GTKWAVE_TCL) $(WAVEDISP_MODELSIM_TCL) $(WAVEDISP_RIVIERAPRO_TCL) \
+	$(WAVEDISP_SURFER_FILE)
 
 wavedisp_dot: $(WAVEDISP_DOT_FILE)
 	xdot $^
@@ -51,6 +56,9 @@ $(WAVEDISP_MODELSIM_TCL): $(WAVEDISP_FILE) $(WAVEDISP_BIN)
 $(WAVEDISP_RIVIERAPRO_TCL): $(WAVEDISP_FILE) $(WAVEDISP_BIN)
 	$(WAVEDISP_BIN) -t rivierapro -o $@ $< $(WAVEDISP_KWARGS)
 
+$(WAVEDISP_SURFER_FILE): $(WAVEDISP_FILE) $(WAVEDISP_BIN)
+	$(WAVEDISP_BIN) -t surfer -o $@ $< $(WAVEDISP_KWARGS)
+
 $(WAVEDISP_DOT_FILE): $(WAVEDISP_FILE) $(WAVEDISP_BIN)
 	$(WAVEDISP_BIN) -t dot -o $@ $< $(WAVEDISP_KWARGS)
 
@@ -58,5 +66,5 @@ clean:: wavedisp_clean
 
 wavedisp_clean:
 	rm -rf $(WAVEDISP_GTKWAVE_TCL) $(WAVEDISP_MODELSIM_TCL) \
-		$(WAVEDISP_RIVIERAPRO_TCL) $(WAVEDISP_DOT_FILE) \
-		__pycache__
+		$(WAVEDISP_RIVIERAPRO_TCL) $(WAVEDISP_SURFER_FILE) \
+		$(WAVEDISP_DOT_FILE) __pycache__

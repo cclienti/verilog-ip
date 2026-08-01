@@ -117,11 +117,6 @@ endmodule
 
 
 module smalldiv_tb();
-   initial begin
-      $dumpfile("smalldiv_tb.fst");
-      $dumpvars(0, smalldiv_tb);
-   end
-
    smalldiv_test #(.DIVIDER_VALUE         (3),
                    .DIVIDEND_WIDTH        (18),
                    .THEORETICAL_LUT_WIDTH (6),

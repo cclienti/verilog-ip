@@ -31,11 +31,6 @@ module cmpgt_tb () ;
          .a(a),
          .b(b));
 
-   initial  begin
-      $dumpfile ("cmpgt_tb.fst");
-      $dumpvars;
-   end
-
    initial begin
       cpt = 0;
    end

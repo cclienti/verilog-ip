@@ -72,14 +72,6 @@ module vliwrf_tb_postsyn ();
       .rddata (rddata));
 
    //----------------------------------------------------------------
-   // VCD
-   //----------------------------------------------------------------
-   initial begin
-      $dumpfile("vliwrf_tb_postsyn.fst");
-      $dumpvars(0, vliwrf_tb_postsyn);
-   end
-
-   //----------------------------------------------------------------
    // Clock: 10 ns period (matches timescale 1ps/1ps)
    //----------------------------------------------------------------
    initial clk = 1'b0;

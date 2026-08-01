@@ -178,24 +178,38 @@ The following simulators are supported: **Icarus Verilog**, **Verilator**, and *
 
 Waveforms are managed using `wavedisp <https://github.com/cclienti/wavedisp>`_, a Python package
 that provides a portable way to describe and display waveforms across different HDL simulators and
-VCD viewers. It generates TCL scripts for **GTKWave**, **ModelSim**, and **RivieraPro** from a
-unique waveform description written in Python.
+waveform viewers. It generates TCL scripts for **GTKWave**, **ModelSim** and **RivieraPro**, and a
+command file for **Surfer**, from a unique waveform description written in Python.
 
 Each module provides a ``<testbench>.wave.py`` file describing the waveform layout. The
-``make trace`` target automatically generates the TCL script and opens GTKWave with the correct
-waveform configuration.
+``make trace`` and ``make trace-surfer`` targets generate the corresponding script and open the
+viewer with the right waveform configuration.
 
 ``wavedisp`` is automatically installed in a local Python virtual environment (``hw/.venv``) on
 the first use of ``make trace`` or ``make wavedisp``. No manual installation is required.
 
 **Icarus Verilog**
 
-To run a simulation and generate a VCD waveform file:
+To run a simulation and generate a waveform file:
 
 .. code-block:: bash
 
    cd hw/lib/adderc/project
-   make vcd
+   make sim
+
+The dump is written in **FST**, which GTKWave and Surfer both read. Testbenches do not name
+their dump file: ``hw/Makefiles/dumper.v`` is elaborated beside the testbench as a second root
+module and takes the name and the scope from the makefile.
+
+The format comes from the ``IVERILOG_DUMPER`` environment variable, which ``iverilog.mk``
+exports and from which it also derives the file extension, so the two can never disagree. Set
+it to ``lxt2`` or ``vcd`` to get ``<testbench>.lxt2`` or ``<testbench>.vcd`` instead. Only the
+bare format names work; the tuned variants such as ``fst-space`` exist as ``vvp`` extended
+arguments only and are silently ignored here.
+
+Running ``vvp ./<testbench>`` by hand outside ``make`` writes VCD unless your shell exports
+``IVERILOG_DUMPER`` too. Adding ``export IVERILOG_DUMPER=fst`` to your shell rc makes the
+direct route behave like the ``make`` one.
 
 To run the simulation and open the waveform directly in GTKWave:
 
@@ -203,6 +217,16 @@ To run the simulation and open the waveform directly in GTKWave:
 
    cd hw/lib/adderc/project
    make trace
+
+To open it in Surfer instead:
+
+.. code-block:: bash
+
+   cd hw/lib/adderc/project
+   make trace-surfer
+
+Surfer has no scripting language, so ``wavedisp`` generates a ``<testbench>.sucl`` file: a flat
+list of the commands Surfer's own prompt accepts, replayed once the dump is loaded.
 
 To run the simulation and check for errors:
 
@@ -255,9 +279,11 @@ To only compile/elaborate the design:
 +------------------+----------------------------------------------------+
 | Target           | Description                                        |
 +==================+====================================================+
-| ``vcd``          | Simulate with Icarus Verilog, generate VCD file    |
+| ``sim``          | Simulate with Icarus Verilog, generate FST dump    |
 +------------------+----------------------------------------------------+
 | ``trace``        | Simulate with Icarus Verilog and open GTKWave      |
++------------------+----------------------------------------------------+
+| ``trace-surfer`` | Simulate with Icarus Verilog and open Surfer       |
 +------------------+----------------------------------------------------+
 | ``check``        | Simulate and check for errors                      |
 +------------------+----------------------------------------------------+

@@ -37,6 +37,7 @@ doc/logo/*png
 ##################
 **/project/*.fst
 **/project/*.fst.hier
+**/project/*.lxt2
 # Dumps from before the switch to FST, and other simulators' output.
 **/project/*.vcd
 **/project/*_tb
@@ -64,6 +65,7 @@ doc/logo/*png
 **/project/*.modelsim.tcl
 **/project/*.gtkwave.tcl
 **/project/*.rivierapro.tcl
+**/project/*.sucl
 
 ##################
 # Vivado

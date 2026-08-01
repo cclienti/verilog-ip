@@ -32,12 +32,6 @@ module cmplt_tb () ;
          .b(b));
 
 
-   initial  begin
-      $dumpfile ("cmplt_tb.fst");
-      $dumpvars;
-   end
-
-
    initial begin
       cpt = 0;
    end

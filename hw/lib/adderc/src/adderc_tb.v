@@ -61,11 +61,6 @@ module adderc_tb () ;
    always
      #2 clk = !clk;
 
-   initial  begin
-      $dumpfile ("adderc_tb.fst");
-      $dumpvars;
-   end
-
    always @(posedge clk) begin
       if(srst) begin
          cpt <= 0;
