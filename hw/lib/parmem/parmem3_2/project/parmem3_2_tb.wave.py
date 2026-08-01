@@ -17,19 +17,35 @@ def generator():
     """
     testbench = Hierarchy('parmem3_2_tb')
 
-    testbench.add(Divider('stimulus'))
+    testbench.add(Divider('stimulus -- side A'))
     testbench.add(Disp(['clka', 'clkb', 'errors']))
     testbench.add(Disp(['en', 'wen', 'lane_en', 'addr', 'stride']))
     testbench.add(Disp(['ben', 'dia', 'doa']))
     testbench.add(Disp(['freeze', 'conflict', 'oob']))
 
+    testbench.add(Divider('stimulus -- side B'))
+    testbench.add(Disp(['enb', 'web', 'benb', 'addrb']))
+    testbench.add(Disp(['dib', 'dob', 'oobb']))
+
     grp = testbench.add(Group('dut (ADRREG=0, OUTREGA=0)'))
     inst = grp.add(Hierarchy('parmem3_2_inst'))
     inst.include('parmem3_2.wave.py', internals=True)
 
+    # The output-register variant runs on its own `_r` stimulus, held one
+    # cycle longer to flush the enable-gated output register.
+    testbench.add(Divider('stimulus -- OUTREGA=1/OUTREGB=1 variant'))
+    testbench.add(Disp(['en_r', 'wen_r', 'addr_r', 'dia_r', 'doa_r']))
+    testbench.add(Disp(['enb_r', 'web_r', 'benb_r', 'addrb_r', 'dib_r', 'dob_r']))
+
     grp = testbench.add(Group('dut_r (OUTREGA=1, OUTREGB=1)'))
     inst = grp.add(Hierarchy('parmem3_2_reg_inst'))
     inst.include('parmem3_2.wave.py')
+
+    # The ADRREG=1 instance is driven from the delayed stimulus.
+    testbench.add(Divider('stimulus -- ADRREG=1 variant, delayed one cycle'))
+    testbench.add(Disp(['en_p', 'wen_p', 'lane_en_p', 'addr_p', 'stride_p']))
+    testbench.add(Disp(['ben_p', 'dia_p', 'doa_p']))
+    testbench.add(Disp(['freeze_p', 'conflict_p', 'oob_p']))
 
     grp = testbench.add(Group('dut_p (ADRREG=1)'))
     inst = grp.add(Hierarchy('parmem3_2_adr_inst'))
@@ -39,7 +55,9 @@ def generator():
     # timing differs per instance. Only the signals that show it.
     testbench.add(Divider('serialization sweep'))
     testbench.add(Disp(['en_s', 'wen_s', 'lane_en_s', 'addr_s', 'stride_s']))
-    testbench.add(Disp(['ben_s', 'dia_s', 'doa_s', 'freeze_s']))
+    # doa_s is an unpacked array, which iverilog does not dump; each
+    # instance's own doa below carries the same data.
+    testbench.add(Disp(['ben_s', 'dia_s', 'freeze_s']))
     for idx in range(4):
         adrreg, outrega = idx % 2, idx // 2
         grp = testbench.add(

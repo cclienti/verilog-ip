@@ -40,10 +40,20 @@ def generator(nb_banks=3, internals=False, banks=False):
         blk.add(Disp(['bank0', 'bank1', 'idx0', 'idx1']))
         blk.add(Disp(['ce', 'ena_bank', 'wea_bank']))
 
+        blk.add(Disp(['bank0_oh', 'ea1_full']))
+        # Registered when ADRREG=1, a combinational pass-through of the
+        # signals above otherwise.
+        blk.add(Disp(['ena_bank_q', 'wea_bank_q', 'ce_q']))
+        blk.add(Disp(['bank0_q', 'bank1_q', 'bank_r']))
+
         blk.add(Divider('internals -- serialization'))
         blk.add(Disp(['same_word', 'ser_start', 'ser_phase', 'lane_en_eff']))
         blk.add(Disp(['ser_dly', 'ser_flush', 'doa0_hold']))
-        blk.add(Disp(['sel0', 'sel1']))
+        blk.add(Disp(['sel0', 'sel1', 'doa0_out', 'doa1_out']))
+
+        blk.add(Divider('internals -- side B CRT decode'))
+        blk.add(Disp(['bankb', 'bankb_oh', 'idxb', 'ceb']))
+        blk.add(Disp(['enb_bank', 'web_bank', 'bankb_r']))
 
     if banks:
         blk.add(Divider('internals -- banks'))
