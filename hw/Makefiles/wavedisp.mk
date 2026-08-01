@@ -1,5 +1,14 @@
 # Wavedisp venv management
+#
+# An already-activated venv wins: if VIRTUAL_ENV is set, wavedisp is
+# installed there rather than in a second, private one. That keeps an
+# editable checkout (pip install -e) visible to the build instead of
+# being shadowed by a PyPI copy.
+ifdef VIRTUAL_ENV
+WAVEDISP_VENV_DIR        ?= $(VIRTUAL_ENV)
+else
 WAVEDISP_VENV_DIR        ?= $(realpath $(dir $(lastword $(MAKEFILE_LIST))))/.venv
+endif
 WAVEDISP_VENV_PYTHON      = $(WAVEDISP_VENV_DIR)/bin/python
 WAVEDISP_VENV_PIP         = $(WAVEDISP_VENV_DIR)/bin/pip
 WAVEDISP_BIN              = $(WAVEDISP_VENV_DIR)/bin/wavedisp
@@ -29,12 +38,17 @@ HELP_ENTRIES += 'waves.wavedisp|generate the save scripts for every viewer'
 HELP_ENTRIES += 'dot.wavedisp|generate and display the dot diagram of the AST'
 HELP_ENTRIES += 'venv.wavedisp|create the Python venv and install wavedisp'
 
-# Create venv and install wavedisp from PyPI if not already installed
+# Install wavedisp if it is missing. The venv is only created when we are
+# not already inside one.
 $(WAVEDISP_BIN):
+ifdef VIRTUAL_ENV
+	@echo "[wavedisp] Using the active venv $(VIRTUAL_ENV)."
+else
 	@echo "[wavedisp] Creating Python venv in $(WAVEDISP_VENV_DIR)..."
 	python3 -m venv $(WAVEDISP_VENV_DIR)
-	@echo "[wavedisp] Installing wavedisp from PyPI..."
 	$(WAVEDISP_VENV_PIP) install --upgrade pip --quiet
+endif
+	@echo "[wavedisp] Installing wavedisp from PyPI..."
 	$(WAVEDISP_VENV_PIP) install wavedisp --quiet
 	@echo "[wavedisp] wavedisp installed successfully."
 
