@@ -30,5 +30,9 @@ $(VERILATOR_LIB_DIR):
 
 clean:: verilator_clean
 
+# Only what this file builds. verilator/ also holds hand-written C++
+# testbenches kept in the repository -- hynoc_router_5p has four of
+# them -- and removing the whole directory deleted them.
 verilator_clean:
-	rm -rf verilator
+	rm -rf $(VERILATOR_LIB_DIR)
+	@rmdir $(patsubst %/,%,$(dir $(VERILATOR_LIB_DIR))) 2>/dev/null || true

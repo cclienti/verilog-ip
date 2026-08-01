@@ -83,5 +83,9 @@ help::
 
 clean:: vivado_clean
 
+# The journals and logs are named rather than globbed: vivado.* also
+# matched vivado.xdc, a constraint file kept in the repository, and
+# clean deleted it.
 vivado_clean:
-	rm -rf .Xil vivado vivado-* vivado.*
+	rm -rf .Xil vivado vivado-*
+	rm -f vivado.jou vivado.log vivado_*.backup.jou vivado_*.backup.log
