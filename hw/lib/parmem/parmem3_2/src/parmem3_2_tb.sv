@@ -45,6 +45,7 @@ module parmem3_2_tb();
 
    localparam AW    = DEPTH + 2;
    localparam WORDS = 3 * (1 << DEPTH);
+   localparam NB    = WIDTH / 8;
 
    logic                clka, clkb;
    logic                en, wen;
@@ -53,10 +54,13 @@ module parmem3_2_tb();
    logic [STRIDE_W-1:0] stride;
    logic [2*WIDTH-1:0]  dia;
    logic [2*WIDTH-1:0]  doa;
+   logic [2*NB-1:0]     ben;
+   logic                freeze;
    logic                conflict;
    logic [1:0]          oob;
 
    logic                enb, web;
+   logic [NB-1:0]       benb;
    logic [AW-1:0]       addrb;
    logic [WIDTH-1:0]    dib;
    logic [WIDTH-1:0]    dob;
@@ -67,6 +71,7 @@ module parmem3_2_tb();
    logic [AW-1:0]       addr_r;
    logic [2*WIDTH-1:0]  dia_r, doa_r;
    logic                enb_r, web_r;
+   logic [NB-1:0]       benb_r;
    logic [AW-1:0]       addrb_r;
    logic [WIDTH-1:0]    dib_r, dob_r;
 
@@ -76,6 +81,8 @@ module parmem3_2_tb();
    logic [AW-1:0]       addr_p;
    logic [STRIDE_W-1:0] stride_p;
    logic [2*WIDTH-1:0]  dia_p, doa_p;
+   logic [2*NB-1:0]     ben_p;
+   logic                freeze_p;
    logic                conflict_p;
    logic [1:0]          oob_p;
 
@@ -87,27 +94,30 @@ module parmem3_2_tb();
    parmem3_2 #(.DEPTH(DEPTH), .WIDTH(WIDTH), .STRIDE_W(STRIDE_W),
              .OUTREGA(0), .OUTREGB(0))
    parmem3_2_inst (.clka(clka), .en(en), .wen(wen), .lane_en(lane_en),
-                 .addr(addr), .stride(stride), .dia(dia), .doa(doa),
-                 .conflict(conflict), .oob(oob),
-                 .clkb(clkb), .enb(enb), .web(web), .addrb(addrb),
+                 .addr(addr), .stride(stride), .ben(ben), .dia(dia), .doa(doa),
+                 .freeze(freeze), .conflict(conflict), .oob(oob),
+                 .clkb(clkb), .enb(enb), .web(web), .benb(benb), .addrb(addrb),
                  .dib(dib), .dob(dob), .oobb(oobb));
 
    // OUTREG = 1 variant: 2-cycle reads, enable-gated output register
    parmem3_2 #(.DEPTH(DEPTH), .WIDTH(WIDTH), .STRIDE_W(STRIDE_W),
              .OUTREGA(1), .OUTREGB(1))
    parmem3_2_reg_inst (.clka(clka), .en(en_r), .wen(wen_r), .lane_en(2'b01),
-                     .addr(addr_r), .stride('0), .dia(dia_r), .doa(doa_r),
-                     .conflict(), .oob(),
-                     .clkb(clkb), .enb(enb_r), .web(web_r), .addrb(addrb_r),
+                     .addr(addr_r), .stride('0), .ben({2*NB{1'b1}}),
+                     .dia(dia_r), .doa(doa_r),
+                     .freeze(), .conflict(), .oob(),
+                     .clkb(clkb), .enb(enb_r), .web(web_r), .benb(benb_r),
+                     .addrb(addrb_r),
                      .dib(dib_r), .dob(dob_r), .oobb());
 
    // ADRREG = 1 variant: address-phase pipeline register, 2-cycle reads
    parmem3_2 #(.DEPTH(DEPTH), .WIDTH(WIDTH), .STRIDE_W(STRIDE_W),
              .ADRREG(1), .OUTREGA(0), .OUTREGB(0))
    parmem3_2_adr_inst (.clka(clka), .en(en_p), .wen(wen_p), .lane_en(lane_en_p),
-                     .addr(addr_p), .stride(stride_p), .dia(dia_p),
-                     .doa(doa_p), .conflict(conflict_p), .oob(oob_p),
-                     .clkb(clkb), .enb(1'b0), .web(1'b0), .addrb('0),
+                     .addr(addr_p), .stride(stride_p), .ben(ben_p), .dia(dia_p),
+                     .doa(doa_p), .freeze(freeze_p),
+                     .conflict(conflict_p), .oob(oob_p),
+                     .clkb(clkb), .enb(1'b0), .web(1'b0), .benb('0), .addrb('0),
                      .dib('0), .dob(), .oobb());
 
    //----------------------------------------------------------------
@@ -147,17 +157,18 @@ module parmem3_2_tb();
 
    task automatic idle();
       en = 0; wen = 0; lane_en = '0; addr = '0; stride = '0; dia = '0;
-      enb = 0; web = 0; addrb = '0; dib = '0;
+      ben = '1;                       // full-word writes unless stated
+      enb = 0; web = 0; addrb = '0; dib = '0; benb = '1;
    endtask
 
    task automatic idle_r();
       en_r = 0; wen_r = 0; addr_r = '0; dia_r = '0;
-      enb_r = 0; web_r = 0; addrb_r = '0; dib_r = '0;
+      enb_r = 0; web_r = 0; addrb_r = '0; dib_r = '0; benb_r = '1;
    endtask
 
    task automatic idle_p();
       en_p = 0; wen_p = 0; lane_en_p = '0; addr_p = '0; stride_p = '0;
-      dia_p = '0;
+      dia_p = '0; ben_p = '1;
    endtask
 
    task automatic check(input string what, input bit cond);
@@ -230,8 +241,13 @@ module parmem3_2_tb();
       end
       $display("phase 2 (pair read, signed strides, no conflict) done");
 
-      //--- Phase 3: stride %% 3 == 0 -> conflict (including 0) --------
+      //--- Phase 3: stride %% 3 == 0, non-zero -> internal serialization
+      // The memory serves lane 0, raises `freeze` for exactly one cycle
+      // while it serves lane 1, and replays lane 0's word so the pair
+      // still leaves together. The core holds its inputs while frozen,
+      // which is what the extra negedge below models.
       for (s = -9; s <= 9; s += 3) begin
+         if (s == 0) continue;                  // same_word: see phase 3b
          for (int a = 0; a < WORDS; a += 7) begin
             a1 = a + s;
             if (a1 < 0 || a1 >= WORDS) continue;
@@ -241,13 +257,60 @@ module parmem3_2_tb();
             #2;
             check($sformatf("stride %0d addr %0d: conflict expected", s, a),
                   conflict === 1'b1);
+            check($sformatf("stride %0d addr %0d: freeze not yet", s, a),
+                  freeze === 1'b0);
+            @(negedge clka);                    // core is frozen: hold inputs
+            #2;
+            check($sformatf("stride %0d addr %0d: freeze asserted", s, a),
+                  freeze === 1'b1);
             @(negedge clka);
             idle();
-            check($sformatf("stride %0d addr %0d: lane 0 wins", s, a),
+            #2;
+            check($sformatf("stride %0d addr %0d: freeze released", s, a),
+                  freeze === 1'b0);
+            check($sformatf("stride %0d addr %0d: lane 0 replayed", s, a),
                   doa[0 +: WIDTH] === refmem[a]);
+            check($sformatf("stride %0d addr %0d: lane 1 served", s, a),
+                  doa[WIDTH +: WIDTH] === refmem[a1]);
          end
       end
-      $display("phase 3 (stride %% 3 == 0, conflicts) done");
+      $display("phase 3 (stride %% 3 == 0, serialized pairs) done");
+
+      //--- Phase 3b: stride 0 -> same word, one access, no freeze ------
+      for (int a = 0; a < WORDS; a += 5) begin
+         @(negedge clka);
+         en = 1; wen = 0; lane_en = '1;
+         addr = a[AW-1:0]; stride = '0;
+         #2;
+         check($sformatf("stride 0 addr %0d: no conflict on a read", a),
+               conflict === 1'b0);
+         @(negedge clka);
+         idle();
+         #2;
+         check($sformatf("stride 0 addr %0d: never freezes", a),
+               freeze === 1'b0);
+         check($sformatf("stride 0 addr %0d: lane 0", a),
+               doa[0 +: WIDTH] === refmem[a]);
+         check($sformatf("stride 0 addr %0d: lane 1 gets the same word", a),
+               doa[WIDTH +: WIDTH] === refmem[a]);
+      end
+      // ...but a same-word WRITE has two masks and two data words, so it
+      // serializes like any other conflict
+      @(negedge clka);
+      en = 1; wen = 1; lane_en = '1; addr = 6; stride = '0;
+      ben = '1;
+      dia[0 +: WIDTH]     = 32'h11112222;
+      dia[WIDTH +: WIDTH] = 32'h33334444;
+      #2;
+      check("stride 0 write: conflict expected", conflict === 1'b1);
+      @(negedge clka);                          // frozen: hold
+      #2;
+      check("stride 0 write: freeze asserted", freeze === 1'b1);
+      @(negedge clka);
+      idle();
+      refmem[6] = 32'h33334444;                 // lane 1 writes last
+      read_check_single(6, refmem[6], "stride 0 write: lane 1 landed last");
+      $display("phase 3b (stride 0, same word) done");
 
       //--- Phase 4: pair writes (ST2-style) ---------------------------
       for (s = 1; s <= 4; s += 3) begin            // strides 1 and 4
@@ -304,6 +367,54 @@ module parmem3_2_tb();
          idle();
       end
       $display("phase 5 (partial lane masks) done");
+
+      //--- Phase 5b: byte write enables (the byte-sliced banks) --------
+      begin
+         logic [WIDTH-1:0] base_w;
+         // seed a known word
+         base_w = 32'h01234567;
+         write_single(7, base_w);
+         refmem[7] = base_w;
+         // low half only
+         @(negedge clka);
+         en = 1; wen = 1; lane_en = 'b1; addr = 7; stride = '0;
+         ben = '0; ben[1:0] = 2'b11;
+         dia[0 +: WIDTH] = 32'hAAAABBBB;
+         @(negedge clka);
+         idle();
+         refmem[7] = {base_w[31:16], 16'hBBBB};
+         read_check_single(7, refmem[7], "ben: low half written");
+         // single byte, byte 2
+         @(negedge clka);
+         en = 1; wen = 1; lane_en = 'b1; addr = 7; stride = '0;
+         ben = '0; ben[2] = 1'b1;
+         dia[0 +: WIDTH] = 32'h00CC0000;
+         @(negedge clka);
+         idle();
+         refmem[7] = {refmem[7][31:24], 8'hCC, refmem[7][15:0]};
+         read_check_single(7, refmem[7], "ben: byte 2 written");
+         // no byte enabled: the word must not change at all
+         @(negedge clka);
+         en = 1; wen = 1; lane_en = 'b1; addr = 7; stride = '0;
+         ben = '0;
+         dia[0 +: WIDTH] = 32'hDEADBEEF;
+         @(negedge clka);
+         idle();
+         read_check_single(7, refmem[7], "ben: empty mask writes nothing");
+         // lane 1 carries its own mask on a strided pair
+         @(negedge clka);
+         en = 1; wen = 1; lane_en = '1; addr = 8; stride = STRIDE_W'(1);
+         ben = '0; ben[0] = 1'b1; ben[NB + 3] = 1'b1;   // lane 0 byte 0, lane 1 byte 3
+         dia[0 +: WIDTH]     = 32'h00000077;
+         dia[WIDTH +: WIDTH] = 32'h88000000;
+         @(negedge clka);
+         idle();
+         refmem[8] = {refmem[8][31:8], 8'h77};
+         refmem[9] = {8'h88, refmem[9][23:0]};
+         read_check_single(8, refmem[8], "ben: lane 0 mask");
+         read_check_single(9, refmem[9], "ben: lane 1 mask");
+      end
+      $display("phase 5b (byte write enables) done");
 
       //--- Phase 6: out-of-range --------------------------------------
       // EA0 top-bits check
