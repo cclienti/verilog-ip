@@ -36,6 +36,17 @@ module dpmemrf
 
    localparam CHUNK = WIDTH / NBE;   //WIDTH when BYTE_WE = 0, else 8
 
+   // NBE and CHUNK are truncating divisions: with BYTE_WE = 1 and a WIDTH
+   // that is not a multiple of 8, the write loop would cover only
+   // NBE*CHUNK bits and the top of every word would never be assigned.
+   initial begin
+      if (BYTE_WE != 0 && (WIDTH % 8) != 0) begin
+         $display("dpmemrf: BYTE_WE=1 requires WIDTH %% 8 == 0 (WIDTH=%0d)",
+                  WIDTH);
+         $finish;
+      end
+   end
+
    reg [WIDTH-1:0] ram[2**DEPTH-1:0];
    reg [WIDTH-1:0] doa_reg, dob_reg;
    integer         ia, ib;
