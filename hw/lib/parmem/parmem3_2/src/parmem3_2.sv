@@ -72,11 +72,10 @@
 // DEPTH=4: 0 + (-20) truncates to 44 < 48). Out-of-range lanes are
 // reported on oob[i] and suppressed individually.
 //
-// Byte granularity: each bank is WIDTH/8 independently write-enabled
-// 8-bit dpmemrf instances rather than one WIDTH-bit memory with a
-// byte-enable port. dpmemrf is shared with other IP and stays
-// unchanged; the byte masks (`ben` per lane, `benb` on side B) live
-// here. A load ignores them.
+// Byte granularity: the banks stay full-width and use dpmemrf's
+// BYTE_WE mode, which maps onto the BRAM's native per-byte write
+// enables. The masks (`ben` per lane, `benb` on side B) are steered
+// alongside the write data; a load ignores them.
 //
 // Side B is a single linear-addressed port with its own clock and CRT
 // decode (network interface). Side A reads: 1 + ADRREG + OUTREGA
@@ -397,24 +396,25 @@ module parmem3_2
    logic [WIDTH-1:0] bankdoa [0:2];
    logic [WIDTH-1:0] bankdob [0:2];
 
-   // Each bank is NB independently write-enabled 8-bit memories: the
-   // byte mask is the per-slice write enable, so dpmemrf keeps its
-   // single-bit `wea`/`web` and needs no byte-enable port.
+   // One full-width bank per modulus, using dpmemrf's byte-write-enable
+   // mode (BYTE_WE = 1). This maps onto the BRAM's native WEA[3:0], so
+   // sub-word writes cost no extra primitive. Splitting the bank into
+   // four 8-bit memories was implemented and measured first: it doubled
+   // the primitive count at DEPTH = 10 and spread the address nets over
+   // four times as many sites, which broke timing at 5 ns on xc7z020-1
+   // with 88% of the critical path in routing.
    generate
       for (genvar b = 0; b < 3; b = b + 1) begin: gen_bank
-         for (genvar k = 0; k < NB; k = k + 1) begin: gen_slice
-            dpmemrf #(.DEPTH(DEPTH), .WIDTH(8),
-                      .OUTREGA(OUTREGA), .OUTREGB(OUTREGB))
-            slice_inst (.clka(clka), .ena(ena_bank_q[b]),
-                        .wea(wea_bank_q[b] & ben_bank_q[b][k]),
-                        .addra(addra_bank_q[b]),
-                        .dia(dia_bank_q[b][8*k +: 8]),
-                        .doa(bankdoa[b][8*k +: 8]),
-                        .clkb(clkb), .enb(enb_bank[b]),
-                        .web(web_bank[b] & benb[k]),
-                        .addrb(idxb), .dib(dib[8*k +: 8]),
-                        .dob(bankdob[b][8*k +: 8]));
-         end
+         dpmemrf #(.DEPTH(DEPTH), .WIDTH(WIDTH), .BYTE_WE(1),
+                   .OUTREGA(OUTREGA), .OUTREGB(OUTREGB))
+         bank_inst (.clka(clka), .ena(ena_bank_q[b]),
+                    .wea({NB{wea_bank_q[b]}} & ben_bank_q[b]),
+                    .addra(addra_bank_q[b]), .dia(dia_bank_q[b]),
+                    .doa(bankdoa[b]),
+                    .clkb(clkb), .enb(enb_bank[b]),
+                    .web({NB{web_bank[b]}} & benb),
+                    .addrb(idxb), .dib(dib),
+                    .dob(bankdob[b]));
       end
    endgenerate
 

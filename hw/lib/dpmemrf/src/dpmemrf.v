@@ -16,28 +16,42 @@
 module dpmemrf
   #(parameter DEPTH   = 10,
     parameter WIDTH   = 32,
+    parameter BYTE_WE = 0,   //1: wea/web become per-byte write enables
+    parameter NBE     = BYTE_WE ? WIDTH/8 : 1,  //derived, do not override
     parameter OUTREGA = 1,
     parameter OUTREGB = 1)
 
-   (input wire             clka, ena, wea,
+   (input wire             clka, ena,
+    input wire [NBE-1:0]   wea,
     input wire [DEPTH-1:0] addra,
     input wire [WIDTH-1:0] dia,
     output reg [WIDTH-1:0] doa,
 
-    input wire             clkb, enb, web,
+    input wire             clkb, enb,
+    input wire [NBE-1:0]   web,
     input wire [DEPTH-1:0] addrb,
     input wire [WIDTH-1:0] dib,
     output reg [WIDTH-1:0] dob);
 
 
+   localparam CHUNK = WIDTH / NBE;   //WIDTH when BYTE_WE = 0, else 8
+
    reg [WIDTH-1:0] ram[2**DEPTH-1:0];
    reg [WIDTH-1:0] doa_reg, dob_reg;
+   integer         ia, ib;
 
+   // READ_FIRST on both ports: the non-blocking read of ram[] samples the
+   // pre-write content. The per-chunk write is the pattern Vivado maps
+   // onto the BRAM's native byte write enables (WEA[3:0] on a 32-bit
+   // port), so BYTE_WE = 1 costs no extra primitive -- it does NOT split
+   // the memory into narrow slices.
    always @ (posedge clka) begin
       if(ena == 1'b1) begin
          doa_reg <= ram[addra];
-         if(wea == 1'b1) begin
-            ram[addra] <= dia;
+         for(ia = 0; ia < NBE; ia = ia + 1) begin
+            if(wea[ia] == 1'b1) begin
+               ram[addra][ia*CHUNK +: CHUNK] <= dia[ia*CHUNK +: CHUNK];
+            end
          end
       end
    end
@@ -60,8 +74,10 @@ module dpmemrf
    always @ (posedge clkb) begin
       if(enb == 1'b1) begin
          dob_reg <= ram[addrb];
-         if(web == 1'b1) begin
-            ram[addrb] <= dib;
+         for(ib = 0; ib < NBE; ib = ib + 1) begin
+            if(web[ib] == 1'b1) begin
+               ram[addrb][ib*CHUNK +: CHUNK] <= dib[ib*CHUNK +: CHUNK];
+            end
          end
       end
    end
