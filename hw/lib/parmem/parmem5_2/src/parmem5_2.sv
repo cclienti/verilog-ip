@@ -189,6 +189,8 @@ module parmem5_2
    logic [1:0]            ce;
    logic                  same_word, ser_start, ser_phase;
    logic [1:0]            lane_en_eff;
+   logic [SER_D:0]        ser_dly;
+   logic                  ser_flush;
 
    assign ea1_full = EAW'($signed({1'b0, addr}))
                      + EAW'($signed(stride));
@@ -204,7 +206,8 @@ module parmem5_2
    // adder (full-width check before truncation: negative/overflowing
    // sums would alias in-range cells)
    //----------------------------------------------------------------
-   assign oob[0] = en & lane_en_eff[0] & (addr[AW-1:DEPTH] >= 3'd5);
+   // oob[0] uses the RAW lane mask, not lane_en_eff -- see parmem3_2.
+   assign oob[0] = en & lane_en[0] & (addr[AW-1:DEPTH] >= 3'd5);
    assign oob[1] = en & lane_en_eff[1]
                    & (ea1_full[EAW-1]
                       | (ea1_full[EAW-2:DEPTH] >= (EAW - 1 - DEPTH)'(5)));
@@ -351,11 +354,18 @@ module parmem5_2
    logic [WIDTH-1:0] bankdoa [0:4];
    logic [WIDTH-1:0] bankdob [0:4];
 
+   // Serialized-pair flush -- see parmem3_2 for the full rationale. With
+   // OUTREGA = 1 the bank output register is enable-gated, so lane 1's
+   // word only reaches bankdoa on a further ENABLED edge, which the
+   // resumed core does not necessarily provide. ser_flush re-enables the
+   // banks for exactly that cycle; it carries no write enable.
+   assign ser_flush = (OUTREGA != 0) ? ser_dly[SER_D-1] : 1'b0;
+
    generate
       for (genvar b = 0; b < 5; b = b + 1) begin: gen_bank
          dpmemrf #(.DEPTH(DEPTH), .WIDTH(WIDTH), .BYTE_WE(1),
                    .OUTREGA(OUTREGA), .OUTREGB(OUTREGB))
-         bank_inst (.clka(clka), .ena(ena_bank_q[b]),
+         bank_inst (.clka(clka), .ena(ena_bank_q[b] | ser_flush),
                     .wea({NB{wea_bank_q[b]}} & ben_bank_q[b]),
                     .addra(addra_bank_q[b]), .dia(dia_bank_q[b]),
                     .doa(bankdoa[b]),
@@ -401,7 +411,6 @@ module parmem5_2
    //----------------------------------------------------------------
    localparam logic [2:0] SEL_HOLD = 3'd5;   // first unused bank code
 
-   logic [SER_D:0]   ser_dly;
    logic [WIDTH-1:0] doa0_hold;
    logic [2:0]       sel0, sel1;
    logic [WIDTH-1:0] doa0_out, doa1_out;

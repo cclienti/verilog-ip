@@ -224,6 +224,8 @@ module parmem3_2
    logic [1:0]         ce;
    logic               same_word, ser_start, ser_phase;
    logic [1:0]         lane_en_eff;
+   logic [SER_D:0]     ser_dly;
+   logic               ser_flush;
 
    assign ea1_full = $signed({1'b0, addr})
                      + (AW + 1)'($signed(stride));
@@ -243,7 +245,11 @@ module parmem3_2
    // >= 3*2^DEPTH <=> both top bits of the in-range field set
    // (3*2^DEPTH = "11" << DEPTH)
    //----------------------------------------------------------------
-   assign oob[0] = en & lane_en_eff[0] & (addr[AW-1:AW-2] == 2'b11);
+   // oob[0] uses the RAW lane mask, not lane_en_eff: during the freeze
+   // cycle the override clears lane 0, but the address it reports out of
+   // range is still the one being held, and a core latching faults on the
+   // stalled cycle must still see it.
+   assign oob[0] = en & lane_en[0] & (addr[AW-1:AW-2] == 2'b11);
    assign oob[1] = en & lane_en_eff[1]
                    & (ea1_full[AW] | (ea1_full[AW-1] & ea1_full[AW-2]));
 
@@ -403,11 +409,22 @@ module parmem3_2
    // the primitive count at DEPTH = 10 and spread the address nets over
    // four times as many sites, which broke timing at 5 ns on xc7z020-1
    // with 88% of the critical path in routing.
+   // Serialized-pair flush. With OUTREGA = 1 the bank output register is
+   // enable-gated, so lane 1's word -- clocked into the bank's internal
+   // read register during the freeze cycle -- only reaches bankdoa on a
+   // further ENABLED edge. The core has resumed by then and is usually
+   // addressing something else, leaving the bank disabled and lane 1's
+   // word stranded. ser_flush re-enables the banks for exactly that one
+   // cycle. It carries no write enable, so the extra edge is a harmless
+   // dummy read; and because `doa <= doa_reg` is non-blocking, the word
+   // it flushes out is lane 1's, not the dummy.
+   assign ser_flush = (OUTREGA != 0) ? ser_dly[SER_D-1] : 1'b0;
+
    generate
       for (genvar b = 0; b < 3; b = b + 1) begin: gen_bank
          dpmemrf #(.DEPTH(DEPTH), .WIDTH(WIDTH), .BYTE_WE(1),
                    .OUTREGA(OUTREGA), .OUTREGB(OUTREGB))
-         bank_inst (.clka(clka), .ena(ena_bank_q[b]),
+         bank_inst (.clka(clka), .ena(ena_bank_q[b] | ser_flush),
                     .wea({NB{wea_bank_q[b]}} & ben_bank_q[b]),
                     .addra(addra_bank_q[b]), .dia(dia_bank_q[b]),
                     .doa(bankdoa[b]),
@@ -459,7 +476,6 @@ module parmem3_2
    //----------------------------------------------------------------
    localparam logic [1:0] SEL_HOLD = 2'd3;   // the unused bank code
 
-   logic [SER_D:0]   ser_dly;
    logic [WIDTH-1:0] doa0_hold;
    logic [1:0]       sel0, sel1;
    logic [WIDTH-1:0] doa0_out, doa1_out;

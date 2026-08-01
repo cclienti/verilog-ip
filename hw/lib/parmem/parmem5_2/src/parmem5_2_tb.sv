@@ -98,6 +98,33 @@ module parmem5_2_tb();
                        .dib('0), .dob(), .oobb());
 
    //----------------------------------------------------------------
+   // Serialization sweep: the same stimulus into all four
+   // ADRREG x OUTREGA combinations, since the replay path is timed by
+   // SER_D = ADRREG + 1 + OUTREGA.
+   //----------------------------------------------------------------
+   logic                      en_s, wen_s;
+   logic [NB_LANES-1:0]       lane_en_s;
+   logic [AW-1:0]             addr_s;
+   logic [STRIDE_W-1:0]       stride_s;
+   logic [NB_LANES*NBY-1:0]   ben_s;
+   logic [NB_LANES*WIDTH-1:0] dia_s;
+   logic [NB_LANES*WIDTH-1:0] doa_s [0:3];
+   logic [3:0]                freeze_s;
+
+   generate
+      for (genvar g = 0; g < 4; g = g + 1) begin: gen_sweep
+         parmem5_2 #(.DEPTH(DEPTH), .WIDTH(WIDTH), .STRIDE_W(STRIDE_W),
+                     .ADRREG(g % 2), .OUTREGA(g / 2), .OUTREGB(0))
+         sweep_inst (.clka(clka), .en(en_s), .wen(wen_s),
+                     .lane_en(lane_en_s), .addr(addr_s), .stride(stride_s),
+                     .ben(ben_s), .dia(dia_s), .doa(doa_s[g]),
+                     .freeze(freeze_s[g]), .conflict(), .oob(),
+                     .clkb(clkb), .enb(1'b0), .web(1'b0), .benb('0),
+                     .addrb('0), .dib('0), .dob(), .oobb());
+      end
+   endgenerate
+
+   //----------------------------------------------------------------
    // VCD
    //----------------------------------------------------------------
    initial begin
@@ -136,6 +163,11 @@ module parmem5_2_tb();
       en = 0; wen = 0; lane_en = '0; addr = '0; stride = '0; dia = '0;
       ben = '1;                       // full-word writes unless stated
       enb = 0; web = 0; addrb = '0; dib = '0; benb = '1;
+   endtask
+
+   task automatic idle_s();
+      en_s = 0; wen_s = 0; lane_en_s = '0; addr_s = '0; stride_s = '0;
+      dia_s = '0; ben_s = '1;
    endtask
 
    task automatic idle_p();
@@ -494,6 +526,43 @@ module parmem5_2_tb();
       idle_p();
       @(negedge clka);
       $display("phase 8 (ADRREG=1 variant, 2-cycle reads) done");
+
+      //--- Phase 9: serialization across all ADRREG x OUTREGA ---------
+      begin
+         int ser_d, va, vb;
+         idle_s();
+         for (int a = 0; a < 16; a++) begin
+            @(negedge clka);
+            en_s = 1; wen_s = 1; lane_en_s = 'b1; addr_s = a[AW-1:0];
+            stride_s = '0; ben_s = '1;
+            dia_s[0 +: WIDTH] = pattern(a);
+            @(negedge clka);
+            idle_s();
+         end
+         for (int g = 0; g < 4; g++) begin
+            ser_d = (g % 2) + 1 + (g / 2);
+            va = 6; vb = 11;                      // stride 5: same bank
+            @(negedge clka);
+            en_s = 1; wen_s = 0; lane_en_s = '1;
+            addr_s = va[AW-1:0]; stride_s = STRIDE_W'(5);
+            @(negedge clka);                      // frozen: core holds
+            #2;
+            check($sformatf("sweep g%0d (ADRREG=%0d OUTREGA=%0d): freeze",
+                            g, g % 2, g / 2), freeze_s[g] === 1'b1);
+            @(negedge clka);
+            idle_s();                             // core resumes elsewhere
+            repeat (ser_d - 1) @(negedge clka);
+            check($sformatf("sweep g%0d (ADRREG=%0d OUTREGA=%0d): lane 0 = %08h exp %08h",
+                            g, g % 2, g / 2, doa_s[g][0 +: WIDTH], pattern(va)),
+                  doa_s[g][0 +: WIDTH] === pattern(va));
+            check($sformatf("sweep g%0d (ADRREG=%0d OUTREGA=%0d): lane 1 = %08h exp %08h",
+                            g, g % 2, g / 2, doa_s[g][WIDTH +: WIDTH], pattern(vb)),
+                  doa_s[g][WIDTH +: WIDTH] === pattern(vb));
+            repeat (3) @(negedge clka);
+            idle_s();
+         end
+      end
+      $display("phase 9 (serialization across ADRREG x OUTREGA) done");
 
       //--- Summary ------------------------------------------------------
       if (errors == 0) begin
