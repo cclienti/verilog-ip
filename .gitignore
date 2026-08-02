@@ -85,3 +85,10 @@ doc/logo/*png
 # Quartus
 ##################
 **/project/quartus-*/
+
+##################
+# Kept synthesis/implementation reports
+##################
+# Declared untracked in .claude/CLAUDE.md, but nothing enforced it: 98 MB
+# of checkpoints and netlists sat one `git add -A` away from the history.
+**/project/results/
