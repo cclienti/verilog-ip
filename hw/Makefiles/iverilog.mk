@@ -45,18 +45,43 @@ DUMPER_FILE        ?= $(IVERILOG_MK_DIR)/dumper.v
 DUMPER_MODULE      ?= wave_dumper
 
 # Post-synthesis simulation (netlist produced by vivado-gen-post-syn)
-# POST_SYNTH_TB_FILE: dedicated testbench for the post-syn netlist (no param overrides).
-# Defaults to <testbench_dir>/<testbench_module>_postsyn.sv if not set in project Makefile.
 # GLBL_FILE: Xilinx glbl module (provides glbl.GSR used by FDRE/RAM primitives).
 #            Copied from the Vivado installation into vivado-post-syn/ by vivado-gen-post-syn.
 #            Override in the project Makefile if needed.
 POST_SYNTH_FILE       ?= vivado-post-syn/$(TOP_MODULE)_syn.v
-POST_SYNTH_TB_MODULE  ?= $(TESTBENCH_MODULE)_postsyn
-POST_SYNTH_TB_FILE    ?= $(dir $(TESTBENCH_FILE))$(POST_SYNTH_TB_MODULE).sv
-POST_SYNTH_TB_EXE     ?= $(POST_SYNTH_TB_MODULE)
-POST_SYNTH_DUMP       ?= $(POST_SYNTH_TB_MODULE).$(IVERILOG_DUMPER)
+
+# The RTL testbench is reused as is. What separates the two runs is small
+# enough for the testbench to bracket with `ifdef POST_SYNTH, which
+# IVFLAGS_SYN defines: the netlist takes no parameter override, the Xilinx
+# flip-flops stay held until glbl.GSR falls, and any probe reaching into a
+# hierarchy that `-flatten_hierarchy full` dissolved no longer resolves.
+# Delays need no rescaling -- each file keeps its own `timescale, so the
+# netlist imposes its 1 ps precision without the testbench changing units.
+#
+# A project preferring a separate testbench drops <testbench>_postsyn.sv
+# beside the RTL one and it is picked up instead. wildcard is safe here,
+# unlike inside a recipe: this is a source file, never a build product.
+POST_SYNTH_TB_FILE    ?= $(or $(wildcard $(dir $(TESTBENCH_FILE))$(TESTBENCH_MODULE)_postsyn.sv),$(TESTBENCH_FILE))
+POST_SYNTH_TB_MODULE  ?= $(basename $(notdir $(POST_SYNTH_TB_FILE)))
+
+# The testbench's own support modules -- memory models, checkers -- are
+# the testbench side of the source list. Only the design side is replaced
+# by the netlist: shmemif's testbench instantiates dpmemrf, which the
+# netlist neither contains nor should.
+#
+# Both testbenches are excluded, not just the one being built: where a
+# dedicated _postsyn.sv exists, the RTL testbench is still in the source
+# list, and compiling the two together instantiates the DUT twice.
+POST_SYNTH_TB_DEPS    ?= $(filter-out $(ALL_TOP_FILES) $(realpath $(TESTBENCH_FILE) $(POST_SYNTH_TB_FILE)),$(ALL_SOURCE_FILES))
+
+# Named after the target rather than after the module: sharing the RTL
+# testbench means sharing its module name too, and the post-synthesis run
+# must not overwrite the RTL executable and dump.
+POST_SYNTH_TB_EXE     ?= $(TESTBENCH_MODULE)_postsyn
+POST_SYNTH_DUMP       ?= $(POST_SYNTH_TB_EXE).$(IVERILOG_DUMPER)
 GLBL_FILE             ?= vivado-post-syn/glbl.v
-IVFLAGS_SYN           := -Wno-sensitivity-entire-array $(IVSTD)
+IVFLAGS_SYN           := -Wno-sensitivity-entire-array $(IVSTD) -DPOST_SYNTH
+IVFLAGS_SYN           += $(foreach DIR,$(ALL_TOP_FILES),-I$(dir $(DIR)))
 IVFLAGS_SYN           += -I$(dir $(POST_SYNTH_TB_FILE))
 
 # gtkwave's -S takes the next word as a script. Handing it a dump file
@@ -139,11 +164,11 @@ trace-post-syn: $(POST_SYNTH_DUMP)
 $(POST_SYNTH_DUMP): $(POST_SYNTH_TB_EXE)
 	$(VVP) ./$<
 
-$(POST_SYNTH_TB_EXE): $(POST_SYNTH_FILE) $(POST_SYNTH_TB_FILE) $(GLBL_FILE) $(DUMPER_FILE)
+$(POST_SYNTH_TB_EXE): $(POST_SYNTH_FILE) $(POST_SYNTH_TB_FILE) $(POST_SYNTH_TB_DEPS) $(GLBL_FILE) $(DUMPER_FILE)
 	$(IVERILOG) $(IVFLAGS_SYN) \
 		-DDUMP_FILE='"$(POST_SYNTH_DUMP)"' -DDUMP_SCOPE=$(POST_SYNTH_TB_MODULE) \
 		-s $(POST_SYNTH_TB_MODULE) -s glbl -s $(DUMPER_MODULE) -o $(POST_SYNTH_TB_EXE) \
-		$(POST_SYNTH_FILE) $(POST_SYNTH_TB_FILE) $(GLBL_FILE) $(DUMPER_FILE)
+		$(POST_SYNTH_FILE) $(POST_SYNTH_TB_FILE) $(POST_SYNTH_TB_DEPS) $(GLBL_FILE) $(DUMPER_FILE)
 
 clean:: iverilog_clean
 

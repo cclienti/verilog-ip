@@ -51,7 +51,11 @@ module shmemif_tb();
    //----------------------------------------------------------------
    // DUT
    //----------------------------------------------------------------
+   // Synthesis freezes the parameters into the netlist, which then takes
+   // no override. The localparams above must keep matching the values
+   // vivado-gen-post-syn was run with, or the buses no longer fit the ports.
    shmemif
+`ifndef POST_SYNTH
    #(
       .NB_PORTS            (NB_PORTS),
       .LOG2_NB_PORTS       (LOG2_NB_PORTS),
@@ -59,6 +63,7 @@ module shmemif_tb();
       .DATA_WIDTH          (DATA_WIDTH),
       .REGISTER_MEM_OUTPUT (REGISTER_MEM_OUTPUT)
    )
+`endif
    DUT
    (
       .clk           (clk),
@@ -82,6 +87,12 @@ module shmemif_tb();
    initial begin
       clk       = 0;
       srst      = 1;
+`ifdef POST_SYNTH
+      // The Xilinx flip-flops hold their output while the global set/reset
+      // is asserted, for the first 100 ns. Releasing srst before that just
+      // loses the reset pulse.
+      @(negedge glbl.GSR);
+`endif
       #10 srst  = 1;
       #20 srst  = 0;
    end
@@ -96,6 +107,10 @@ module shmemif_tb();
    genvar i;
    integer j;
 
+   // Reaches inside the DUT, so it only exists against the RTL: the
+   // netlist is synthesised with -flatten_hierarchy full and lut_gen is
+   // gone from it.
+`ifndef POST_SYNTH
    generate
      for(i=0 ; i<NB_PORTS ; i=i+1) begin: gen_view
         initial begin
@@ -107,6 +122,7 @@ module shmemif_tb();
         end
      end
    endgenerate
+`endif
 
    integer x1,x2,x3,x4;
    initial begin

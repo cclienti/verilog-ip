@@ -235,6 +235,28 @@ To run the simulation and check for errors:
    cd hw/lib/adderc/project
    make check
 
+**Post-synthesis simulation**
+
+Once ``make vivado-gen-post-syn`` has produced a netlist, ``make sim-post-syn`` simulates it with
+the same testbench used for the RTL, and ``make trace-post-syn`` opens the result. The executable
+and the dump are named ``<testbench>_postsyn``, so neither overwrites its RTL counterpart.
+
+The testbench is compiled with ``-DPOST_SYNTH`` for that run, which lets it bracket the few places
+where the two flows differ:
+
+- the netlist takes no parameter override, synthesis having frozen them;
+- the Xilinx flip-flops hold their output until ``glbl.GSR`` falls, 100 ns in, so the reset
+  sequence has to wait for it;
+- any probe reaching inside the DUT no longer resolves, ``-flatten_hierarchy full`` having
+  dissolved the hierarchy it named.
+
+Delays need no rescaling: each file keeps its own ``timescale``, so the netlist imposes its
+1 ps precision without the testbench changing units. See ``hw/lib/shmemif/src/shmemif_tb.v`` for a
+testbench that serves both flows.
+
+A project preferring to keep the two apart drops a ``<testbench>_postsyn.sv`` beside the RTL
+testbench and it is picked up instead, as ``hw/lib/vliwrf`` does.
+
 **Verilator**
 
 To lint the design:
@@ -276,31 +298,35 @@ To only compile/elaborate the design:
 
 **Available Targets Summary**
 
-+------------------+----------------------------------------------------+
-| Target           | Description                                        |
-+==================+====================================================+
-| ``sim``          | Simulate with Icarus Verilog, generate FST dump    |
-+------------------+----------------------------------------------------+
-| ``trace``        | Simulate with Icarus Verilog and open GTKWave      |
-+------------------+----------------------------------------------------+
-| ``trace-surfer`` | Simulate with Icarus Verilog and open Surfer       |
-+------------------+----------------------------------------------------+
-| ``check``        | Simulate and check for errors                      |
-+------------------+----------------------------------------------------+
-| ``lint``         | Lint the design with Verilator                     |
-+------------------+----------------------------------------------------+
-| ``verilates``    | Build the design with Verilator                    |
-+------------------+----------------------------------------------------+
-| ``msim-sim``     | Simulate with ModelSim in console mode             |
-+------------------+----------------------------------------------------+
-| ``msim-simgui``  | Simulate with ModelSim in GUI mode with waveforms  |
-+------------------+----------------------------------------------------+
-| ``msim-build``   | Compile/elaborate the design with ModelSim         |
-+------------------+----------------------------------------------------+
-| ``clean``        | Remove generated files                             |
-+------------------+----------------------------------------------------+
-| ``distclean``    | Remove all generated and project files             |
-+------------------+----------------------------------------------------+
++--------------------+---------------------------------------------------+
+| Target             | Description                                       |
++====================+===================================================+
+| ``sim``            | Simulate with Icarus Verilog, generate FST dump   |
++--------------------+---------------------------------------------------+
+| ``trace``          | Simulate with Icarus Verilog and open GTKWave     |
++--------------------+---------------------------------------------------+
+| ``trace-surfer``   | Simulate with Icarus Verilog and open Surfer      |
++--------------------+---------------------------------------------------+
+| ``check``          | Simulate and check for errors                     |
++--------------------+---------------------------------------------------+
+| ``sim-post-syn``   | Simulate the Vivado post-synthesis netlist        |
++--------------------+---------------------------------------------------+
+| ``trace-post-syn`` | Post-synthesis simulation, then open GTKWave      |
++--------------------+---------------------------------------------------+
+| ``lint``           | Lint the design with Verilator                    |
++--------------------+---------------------------------------------------+
+| ``verilates``      | Build the design with Verilator                   |
++--------------------+---------------------------------------------------+
+| ``msim-sim``       | Simulate with ModelSim in console mode            |
++--------------------+---------------------------------------------------+
+| ``msim-simgui``    | Simulate with ModelSim in GUI mode with waveforms |
++--------------------+---------------------------------------------------+
+| ``msim-build``     | Compile/elaborate the design with ModelSim        |
++--------------------+---------------------------------------------------+
+| ``clean``          | Remove generated files                            |
++--------------------+---------------------------------------------------+
+| ``distclean``      | Remove all generated and project files            |
++--------------------+---------------------------------------------------+
 
 **Note:** Replace ``hw/lib/adderc`` with the path to the module you want to simulate.
 All modules follow the same Makefile structure.
