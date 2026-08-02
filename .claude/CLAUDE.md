@@ -29,6 +29,17 @@ never from the component root. `TOP_DEPS` in that Makefile is what
 resolves dependencies; overriding `TOP_FILE` on the command line breaks
 it and yields "module not found".
 
+Targets are named `<action>.<tool>`: `sim.iverilog`, `check.iverilog`,
+`trace.gtkwave`, `trace.surfer`, `lint.verilator`, `synth.vivado`,
+`impl.vivado`, `waves.wavedisp`. Several vendors do the same job here, so
+the tool is never implicit. `make help` lists what a project provides,
+sorted by action. The old bare names — `sim`, `trace`, `lint`,
+`verilates`, `msim-sim`, `vivado-gen-post-syn` — no longer exist.
+
+`clean` removes only what rebuilds in seconds. Synthesis and
+implementation results are on `distclean`, because `clean` taking a
+netlist away cost a re-synthesis once.
+
 Iterating is faster without make:
 
 ```sh
@@ -39,6 +50,24 @@ vvp /tmp/tb.out
 ```
 
 `-y <dir>` is the module search path.
+
+**That run produces no waveform.** No testbench names its own dump file
+any more: `hw/Makefiles/dumper.v` is elaborated as a second root module
+beside the bench, and the makefile passes it the name. Add it by hand to
+dump from an invocation like the one above:
+
+```sh
+iverilog -g2012 -o /tmp/tb.out -y dpmemrf/src \
+         -DDUMP_FILE='"/tmp/tb.fst"' -DDUMP_SCOPE=parmem3_2_tb \
+         -s parmem3_2_tb -s wave_dumper \
+         parmem/parmem3_2/src/parmem3_2_tb.sv parmem/parmem3_2/src/parmem3_2.sv \
+         ../Makefiles/dumper.v
+IVERILOG_DUMPER=fst vvp /tmp/tb.out
+```
+
+The format comes from `IVERILOG_DUMPER`, which the makefile exports and a
+bare shell does not. Without it vvp writes VCD content whatever the file
+is called — that mismatch is what the switch to FST was fixing.
 
 ## Testbenches
 
@@ -75,12 +104,12 @@ Three things that are not guessable:
 
 ```sh
 cd hw/lib/<component>/project
-make wavedisp
+make waves.wavedisp
 ```
 
 The first invocation creates a venv under `hw/Makefiles/.venv` and
 pip-installs wavedisp from PyPI — that one run needs network access.
-Every later run reuses it, and `make wavedisp_venv` creates it on its
+Every later run reuses it, and `make venv.wavedisp` creates it on its
 own. Use that venv for direct calls too, from `project/`:
 
 ```sh
@@ -112,7 +141,7 @@ Not on `PATH`:
 ```sh
 export PATH="$HOME/Xilinx/2025.1/Vivado/bin:$PATH"
 cd hw/lib/<component>/project
-make vivado-gen-post-impl VIVADO_PART="xc7z020clg484-1" \
+make impl.vivado VIVADO_PART="xc7z020clg484-1" \
      VIVADO_SYNTH_OPTIONS='"-flatten_hierarchy full -no_iobuf -generic ADRREG=1"'
 ```
 
@@ -130,5 +159,6 @@ picoseconds are placement noise on a routing-dominated design. One run
 takes minutes — six exceed the 10-minute tool timeout, so batch them.
 
 `project/results/<device>-<option>/` holds kept reports and is
-deliberately untracked, as are `vivado-post-impl/`, `*.vcd` and generated
-`.tcl`.
+deliberately untracked, as are `vivado-post-impl/`, `*.fst` and generated
+`.tcl`. `make clean` leaves `vivado-post-impl/` alone — only `distclean`
+removes it.
