@@ -12,27 +12,28 @@ VERILATOR_LIB       = $(VERILATOR_LIB_DIR)/V$(TOP_MODULE)__ALL.a
 VERILATOR_MAKE      = V$(TOP_MODULE).mk
 
 
-help::
-	@echo "verilates - build the design with verilator"
-	@echo "lint - lint the design with verilator"
+.PHONY: build.verilator lint.verilator clean.verilator
 
-verilates: $(VERILATOR_LIB)
+HELP_ENTRIES += 'build.verilator|build the design with verilator'
+HELP_ENTRIES += 'lint.verilator|lint the design with verilator'
+
+build.verilator: $(VERILATOR_LIB)
 
 $(VERILATOR_LIB): $(ALL_TOP_FILES) $(VERILATOR_LIB_DIR)
 	$(VERILATOR) $(VERILATOR_FLAGS) --cc $(ALL_TOP_FILES) --top-module $(TOP_MODULE)
 	$(MAKE) -C $(VERILATOR_LIB_DIR) -f $(VERILATOR_MAKE)
 
-lint: $(ALL_TOP_FILES)
+lint.verilator: $(ALL_TOP_FILES)
 	$(VERILATOR) $(VERILATOR_FLAGS) --lint-only $(ALL_TOP_FILES) --top-module $(TOP_MODULE)
 
 $(VERILATOR_LIB_DIR):
 	mkdir -p $(VERILATOR_LIB_DIR)
 
-clean:: verilator_clean
+clean:: clean.verilator
 
 # Only what this file builds. verilator/ also holds hand-written C++
 # testbenches kept in the repository -- hynoc_router_5p has four of
 # them -- and removing the whole directory deleted them.
-verilator_clean:
+clean.verilator:
 	rm -rf $(VERILATOR_LIB_DIR)
 	@rmdir $(patsubst %/,%,$(dir $(VERILATOR_LIB_DIR))) 2>/dev/null || true

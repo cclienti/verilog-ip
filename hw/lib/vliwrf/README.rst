@@ -107,11 +107,11 @@ Simulation
 .. code-block:: bash
 
    cd project
-   make sim           # Icarus Verilog RTL simulation
-   make trace         # Simulate and open GTKWave
-   make lint          # Lint with Verilator
-   make vcd-post-syn  # Post-synthesis simulation (requires Vivado netlist)
-   make trace-post-syn  # Post-synthesis simulation + GTKWave
+   make sim.iverilog                    # Icarus Verilog RTL simulation
+   make trace.gtkwave                   # Simulate and open GTKWave
+   make lint.verilator                  # Lint with Verilator
+   make sim-post-syn.iverilog  # Post-synthesis simulation (requires Vivado netlist)
+   make trace-post-syn.gtkwave  # Post-synthesis simulation + GTKWave
 
 Post-Synthesis Simulation
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -126,13 +126,13 @@ To generate the netlist, run Vivado synthesis first:
 .. code-block:: bash
 
    cd project
-   make vivado_syn    # Runs Vivado synthesis, produces vivado-post-syn/vliwrf_syn.v
+   make synth.vivado  # Runs Vivado synthesis, produces vivado-post-syn/vliwrf_syn.v
 
 Then run the post-synthesis simulation:
 
 .. code-block:: bash
 
-   make vcd-post-syn
+   make sim-post-syn.iverilog
 
 License
 -------

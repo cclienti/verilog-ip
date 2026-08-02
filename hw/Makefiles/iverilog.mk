@@ -93,19 +93,39 @@ GTKWAVE_SCRIPT         = $(if $(WAVEDISP_GTKWAVE_TCL),-S $(WAVEDISP_GTKWAVE_TCL)
 # save script, no option.
 SURFER_COMMANDS        = $(if $(WAVEDISP_SURFER_FILE),--command-file $(WAVEDISP_SURFER_FILE))
 
-# The RTL save script names scopes under $(TESTBENCH_MODULE), and the
-# post-synthesis testbench has a different top, so loading it here would
-# select nothing. Only a script written for this top is used.
+# Where the post-synthesis run shares the RTL testbench, it shares its
+# top and its scope names, so the script wavedisp already generates
+# applies unchanged. The signals it lists inside the DUT are the ones
+# synthesis flattened away, and a viewer skips what it cannot resolve.
+#
+# A project with its own _postsyn testbench has a different top, and
+# wavedisp only generates for $(TESTBENCH_MODULE), so its script is
+# looked up under that name and has to be written by hand. wildcard is
+# right there precisely because nothing generates the file -- it would be
+# wrong above, where the recipe creates the very file it tests for, and
+# the whole recipe is expanded before its first line runs.
+ifeq ($(POST_SYNTH_TB_MODULE),$(TESTBENCH_MODULE))
+POST_SYNTH_GTKWAVE_TCL  = $(WAVEDISP_GTKWAVE_TCL)
+POST_SYNTH_SURFER_FILE  = $(WAVEDISP_SURFER_FILE)
+else
 POST_SYNTH_GTKWAVE_TCL ?= $(wildcard $(POST_SYNTH_TB_MODULE).gtkwave.tcl)
-POST_SYNTH_GTKWAVE_SCRIPT = $(if $(POST_SYNTH_GTKWAVE_TCL),-S $(POST_SYNTH_GTKWAVE_TCL))
+POST_SYNTH_SURFER_FILE ?= $(wildcard $(POST_SYNTH_TB_MODULE).sucl)
+endif
 
-help::
-	@echo "trace          - simulate design with iverilog and show the waveform with gtkwave"
-	@echo "trace-surfer   - simulate design with iverilog and show the waveform with surfer"
-	@echo "sim            - simulate the design with iverilog (aliases: fst, vcd)"
-	@echo "check          - simulate without dumping, fail on any error reported"
-	@echo "sim-post-syn   - simulate post-synthesis netlist with iverilog (aliases: fst-post-syn, vcd-post-syn)"
-	@echo "trace-post-syn - simulate post-synthesis netlist and show the waveform with gtkwave"
+POST_SYNTH_GTKWAVE_SCRIPT  = $(if $(POST_SYNTH_GTKWAVE_TCL),-S $(POST_SYNTH_GTKWAVE_TCL))
+POST_SYNTH_SURFER_COMMANDS = $(if $(POST_SYNTH_SURFER_FILE),--command-file $(POST_SYNTH_SURFER_FILE))
+
+.PHONY: sim.iverilog check.iverilog trace.gtkwave trace.surfer
+.PHONY: sim-post-syn.iverilog trace-post-syn.gtkwave trace-post-syn.surfer
+.PHONY: clean.iverilog
+
+HELP_ENTRIES += 'sim.iverilog|simulate the design'
+HELP_ENTRIES += 'check.iverilog|simulate without dumping, fail on any error reported'
+HELP_ENTRIES += 'trace.gtkwave|simulate, then show the waveform with gtkwave'
+HELP_ENTRIES += 'trace.surfer|simulate, then show the waveform with surfer'
+HELP_ENTRIES += 'sim-post-syn.iverilog|simulate the post-synthesis netlist'
+HELP_ENTRIES += 'trace-post-syn.gtkwave|simulate the netlist, then show the waveform with gtkwave'
+HELP_ENTRIES += 'trace-post-syn.surfer|simulate the netlist, then show the waveform with surfer'
 
 # The save script is built from the recipe rather than named as a
 # prerequisite: prerequisites are expanded as the rule is read, and the
@@ -117,19 +137,20 @@ help::
 # The whole recipe is expanded before its first line runs, so the option
 # below cannot be guarded on the file existing: it is guarded on the
 # variable, which is set exactly when wavedisp.mk is in play.
-trace: sim
+#
+# The viewers are named after themselves rather than after the simulator
+# that fed them: which one opens is the only thing that differs between
+# these two, and hiding that behind a single `trace` was how the second
+# viewer ended up as `trace-surfer`, an odd one out.
+trace.gtkwave: sim.iverilog
 	$(if $(WAVEDISP_GTKWAVE_TCL),$(MAKE) $(WAVEDISP_GTKWAVE_TCL))
 	$(GTKWAVE) $(GTKWAVE_SCRIPT) $(DUMP_FILE)
 
-trace-surfer: sim
+trace.surfer: sim.iverilog
 	$(if $(WAVEDISP_SURFER_FILE),$(MAKE) $(WAVEDISP_SURFER_FILE))
 	$(SURFER) $(DUMP_FILE) $(SURFER_COMMANDS)
 
-sim: $(DUMP_FILE)
-
-# Kept so the old names keep working.
-fst: sim
-vcd: sim
+sim.iverilog: $(DUMP_FILE)
 
 # The dump is written and never read here, so suppress it entirely: it
 # makes the long testbenches noticeably faster.
@@ -138,7 +159,7 @@ vcd: sim
 # pattern has to cover more than the capital-E form -- grep Error alone
 # let "FAIL: 3 error(s) found" through and reported success. No passing
 # testbench prints either word.
-check: $(TESTBENCH_MODULE)
+check.iverilog: $(TESTBENCH_MODULE)
 	@out=$$(IVERILOG_DUMPER=none $(VVP) ./$< 2>&1); status=$$?; \
 	echo "$$out"; \
 	if [ $$status -ne 0 ] || echo "$$out" | grep -qiE 'error|fail'; then exit 1; fi
@@ -153,13 +174,18 @@ $(TESTBENCH_MODULE): $(ALL_SOURCE_FILES) $(DUMPER_FILE)
 		$(ALL_SOURCE_FILES) $(DUMPER_FILE)
 
 # Post-synthesis targets
-sim-post-syn: $(POST_SYNTH_DUMP)
+sim-post-syn.iverilog: $(POST_SYNTH_DUMP)
 
-fst-post-syn: sim-post-syn
-vcd-post-syn: sim-post-syn
-
-trace-post-syn: $(POST_SYNTH_DUMP)
+# The save script is regenerated only when it is the one wavedisp owns.
+# A hand-written _postsyn script has no rule, and asking make to build it
+# would just print that it is up to date.
+trace-post-syn.gtkwave: $(POST_SYNTH_DUMP)
+	$(if $(filter $(WAVEDISP_GTKWAVE_TCL),$(POST_SYNTH_GTKWAVE_TCL)),$(MAKE) $(POST_SYNTH_GTKWAVE_TCL))
 	$(GTKWAVE) $(POST_SYNTH_GTKWAVE_SCRIPT) $(POST_SYNTH_DUMP)
+
+trace-post-syn.surfer: $(POST_SYNTH_DUMP)
+	$(if $(filter $(WAVEDISP_SURFER_FILE),$(POST_SYNTH_SURFER_FILE)),$(MAKE) $(POST_SYNTH_SURFER_FILE))
+	$(SURFER) $(POST_SYNTH_DUMP) $(POST_SYNTH_SURFER_COMMANDS)
 
 $(POST_SYNTH_DUMP): $(POST_SYNTH_TB_EXE)
 	$(VVP) ./$<
@@ -170,8 +196,8 @@ $(POST_SYNTH_TB_EXE): $(POST_SYNTH_FILE) $(POST_SYNTH_TB_FILE) $(POST_SYNTH_TB_D
 		-s $(POST_SYNTH_TB_MODULE) -s glbl -s $(DUMPER_MODULE) -o $(POST_SYNTH_TB_EXE) \
 		$(POST_SYNTH_FILE) $(POST_SYNTH_TB_FILE) $(POST_SYNTH_TB_DEPS) $(GLBL_FILE) $(DUMPER_FILE)
 
-clean:: iverilog_clean
+clean:: clean.iverilog
 
-iverilog_clean:
+clean.iverilog:
 	rm -rf $(DUMP_FILE) $(DUMP_FILE).hier $(TESTBENCH_MODULE)
 	rm -rf $(POST_SYNTH_DUMP) $(POST_SYNTH_DUMP).hier $(POST_SYNTH_TB_EXE)

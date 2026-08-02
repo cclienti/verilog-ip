@@ -48,9 +48,9 @@ Each module has a ``project/`` directory with a ``Makefile``. For example:
 .. code-block:: bash
 
    cd pwm_generator/project
-   make sim    # Icarus Verilog simulation
-   make trace  # Simulate and open GTKWave
-   make lint   # Lint with Verilator
+   make sim.iverilog    # Icarus Verilog simulation
+   make trace.gtkwave   # Simulate and open GTKWave
+   make lint.verilator  # Lint with Verilator
 
 License
 -------

@@ -22,13 +22,12 @@ endif
 
 .PHONY: $(WAVEDISP_GTKWAVE_TCL) $(WAVEDISP_MODELSIM_TCL) $(WAVEDISP_RIVIERAPRO_TCL)
 .PHONY: $(WAVEDISP_SURFER_FILE)
-.PHONY: wavedisp wavedisp_dot wavedisp_venv
+.PHONY: waves.wavedisp dot.wavedisp venv.wavedisp clean.wavedisp
 
 
-help::
-	@echo "wavedisp        - generate all wavedisp files"
-	@echo "wavedisp_dot    - generate and display the dot diagram of the AST"
-	@echo "wavedisp_venv   - create the Python venv and install wavedisp"
+HELP_ENTRIES += 'waves.wavedisp|generate the save scripts for every viewer'
+HELP_ENTRIES += 'dot.wavedisp|generate and display the dot diagram of the AST'
+HELP_ENTRIES += 'venv.wavedisp|create the Python venv and install wavedisp'
 
 # Create venv and install wavedisp from PyPI if not already installed
 $(WAVEDISP_BIN):
@@ -39,12 +38,12 @@ $(WAVEDISP_BIN):
 	$(WAVEDISP_VENV_PIP) install wavedisp --quiet
 	@echo "[wavedisp] wavedisp installed successfully."
 
-wavedisp_venv: $(WAVEDISP_BIN)
+venv.wavedisp: $(WAVEDISP_BIN)
 
-wavedisp: $(WAVEDISP_GTKWAVE_TCL) $(WAVEDISP_MODELSIM_TCL) $(WAVEDISP_RIVIERAPRO_TCL) \
+waves.wavedisp: $(WAVEDISP_GTKWAVE_TCL) $(WAVEDISP_MODELSIM_TCL) $(WAVEDISP_RIVIERAPRO_TCL) \
 	$(WAVEDISP_SURFER_FILE)
 
-wavedisp_dot: $(WAVEDISP_DOT_FILE)
+dot.wavedisp: $(WAVEDISP_DOT_FILE)
 	xdot $^
 
 $(WAVEDISP_GTKWAVE_TCL): $(WAVEDISP_FILE) $(WAVEDISP_BIN)
@@ -62,9 +61,9 @@ $(WAVEDISP_SURFER_FILE): $(WAVEDISP_FILE) $(WAVEDISP_BIN)
 $(WAVEDISP_DOT_FILE): $(WAVEDISP_FILE) $(WAVEDISP_BIN)
 	$(WAVEDISP_BIN) -t dot -o $@ $< $(WAVEDISP_KWARGS)
 
-clean:: wavedisp_clean
+clean:: clean.wavedisp
 
-wavedisp_clean:
+clean.wavedisp:
 	rm -rf $(WAVEDISP_GTKWAVE_TCL) $(WAVEDISP_MODELSIM_TCL) \
 		$(WAVEDISP_RIVIERAPRO_TCL) $(WAVEDISP_SURFER_FILE) \
 		$(WAVEDISP_DOT_FILE) __pycache__

@@ -121,9 +121,9 @@ Each module has a ``project/`` directory with a ``Makefile``. For example, to si
 .. code-block:: bash
 
    cd adderc/project
-   make sim    # Icarus Verilog simulation
-   make trace  # Simulate and open GTKWave
-   make lint   # Lint with Verilator
+   make sim.iverilog    # Icarus Verilog simulation
+   make trace.gtkwave   # Simulate and open GTKWave
+   make lint.verilator  # Lint with Verilator
 
 License
 -------

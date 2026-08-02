@@ -182,11 +182,11 @@ waveform viewers. It generates TCL scripts for **GTKWave**, **ModelSim** and **R
 command file for **Surfer**, from a unique waveform description written in Python.
 
 Each module provides a ``<testbench>.wave.py`` file describing the waveform layout. The
-``make trace`` and ``make trace-surfer`` targets generate the corresponding script and open the
+``make trace.gtkwave`` and ``make trace.surfer`` targets generate the corresponding script and open the
 viewer with the right waveform configuration.
 
 ``wavedisp`` is automatically installed in a local Python virtual environment (``hw/.venv``) on
-the first use of ``make trace`` or ``make wavedisp``. No manual installation is required.
+the first use of ``make trace.gtkwave`` or ``make waves.wavedisp``. No manual installation is required.
 
 **Icarus Verilog**
 
@@ -195,7 +195,7 @@ To run a simulation and generate a waveform file:
 .. code-block:: bash
 
    cd hw/lib/adderc/project
-   make sim
+   make sim.iverilog
 
 The dump is written in **FST**, which GTKWave and Surfer both read. Testbenches do not name
 their dump file: ``hw/Makefiles/dumper.v`` is elaborated beside the testbench as a second root
@@ -216,14 +216,14 @@ To run the simulation and open the waveform directly in GTKWave:
 .. code-block:: bash
 
    cd hw/lib/adderc/project
-   make trace
+   make trace.gtkwave
 
 To open it in Surfer instead:
 
 .. code-block:: bash
 
    cd hw/lib/adderc/project
-   make trace-surfer
+   make trace.surfer
 
 Surfer has no scripting language, so ``wavedisp`` generates a ``<testbench>.sucl`` file: a flat
 list of the commands Surfer's own prompt accepts, replayed once the dump is loaded.
@@ -233,13 +233,19 @@ To run the simulation and check for errors:
 .. code-block:: bash
 
    cd hw/lib/adderc/project
-   make check
+   make check.iverilog
 
 **Post-synthesis simulation**
 
-Once ``make vivado-gen-post-syn`` has produced a netlist, ``make sim-post-syn`` simulates it with
-the same testbench used for the RTL, and ``make trace-post-syn`` opens the result. The executable
-and the dump are named ``<testbench>_postsyn``, so neither overwrites its RTL counterpart.
+Once ``make synth.vivado`` has produced a netlist, ``make sim-post-syn.iverilog`` simulates it with
+the same testbench used for the RTL, and ``make trace-post-syn.gtkwave`` or
+``make trace-post-syn.surfer`` opens the result. The executable and the dump are named
+``<testbench>_postsyn``, so neither overwrites its RTL counterpart.
+
+Sharing the testbench also means sharing its top-level name, so the save script ``wavedisp``
+generates for the RTL run applies to the netlist unchanged — a viewer simply skips the DUT-internal
+signals synthesis flattened away. A project with its own ``_postsyn`` testbench has a different top,
+and its save script has to be written by hand under that name.
 
 The testbench is compiled with ``-DPOST_SYNTH`` for that run, which lets it bracket the few places
 where the two flows differ:
@@ -264,14 +270,14 @@ To lint the design:
 .. code-block:: bash
 
    cd hw/lib/adderc/project
-   make lint
+   make lint.verilator
 
 To build the design with Verilator:
 
 .. code-block:: bash
 
    cd hw/lib/adderc/project
-   make verilates
+   make build.verilator
 
 **ModelSim/Questa**
 
@@ -280,53 +286,70 @@ To compile and simulate in console mode:
 .. code-block:: bash
 
    cd hw/lib/adderc/project
-   make msim-sim
+   make sim.modelsim
 
 To compile and simulate with the GUI and waveforms:
 
 .. code-block:: bash
 
    cd hw/lib/adderc/project
-   make msim-simgui
+   make trace.modelsim
 
 To only compile/elaborate the design:
 
 .. code-block:: bash
 
    cd hw/lib/adderc/project
-   make msim-build
+   make build.modelsim
 
 **Available Targets Summary**
 
-+--------------------+---------------------------------------------------+
-| Target             | Description                                       |
-+====================+===================================================+
-| ``sim``            | Simulate with Icarus Verilog, generate FST dump   |
-+--------------------+---------------------------------------------------+
-| ``trace``          | Simulate with Icarus Verilog and open GTKWave     |
-+--------------------+---------------------------------------------------+
-| ``trace-surfer``   | Simulate with Icarus Verilog and open Surfer      |
-+--------------------+---------------------------------------------------+
-| ``check``          | Simulate and check for errors                     |
-+--------------------+---------------------------------------------------+
-| ``sim-post-syn``   | Simulate the Vivado post-synthesis netlist        |
-+--------------------+---------------------------------------------------+
-| ``trace-post-syn`` | Post-synthesis simulation, then open GTKWave      |
-+--------------------+---------------------------------------------------+
-| ``lint``           | Lint the design with Verilator                    |
-+--------------------+---------------------------------------------------+
-| ``verilates``      | Build the design with Verilator                   |
-+--------------------+---------------------------------------------------+
-| ``msim-sim``       | Simulate with ModelSim in console mode            |
-+--------------------+---------------------------------------------------+
-| ``msim-simgui``    | Simulate with ModelSim in GUI mode with waveforms |
-+--------------------+---------------------------------------------------+
-| ``msim-build``     | Compile/elaborate the design with ModelSim        |
-+--------------------+---------------------------------------------------+
-| ``clean``          | Remove generated files                            |
-+--------------------+---------------------------------------------------+
-| ``distclean``      | Remove all generated and project files            |
-+--------------------+---------------------------------------------------+
+Targets are named ``<action>.<tool>``: the action is what you want done, the tool is who does it.
+Several vendors do the same job here — two waveform viewers, two simulators — so the tool cannot
+be left implicit. ``make help`` lists the targets a given project actually provides, sorted by
+action, which depends on the ``.mk`` files its Makefile includes.
+
++----------------------------+----------------------------------------------------+
+| Target                     | Description                                        |
++============================+====================================================+
+| ``sim.iverilog``           | Simulate with Icarus Verilog, generate an FST dump |
++----------------------------+----------------------------------------------------+
+| ``check.iverilog``         | Simulate without dumping, fail on any error        |
++----------------------------+----------------------------------------------------+
+| ``trace.gtkwave``          | Simulate, then open the waveform in GTKWave        |
++----------------------------+----------------------------------------------------+
+| ``trace.surfer``           | Simulate, then open the waveform in Surfer         |
++----------------------------+----------------------------------------------------+
+| ``sim-post-syn.iverilog``  | Simulate the Vivado post-synthesis netlist         |
++----------------------------+----------------------------------------------------+
+| ``trace-post-syn.gtkwave`` | Post-synthesis simulation, then open GTKWave       |
++----------------------------+----------------------------------------------------+
+| ``trace-post-syn.surfer``  | Post-synthesis simulation, then open Surfer        |
++----------------------------+----------------------------------------------------+
+| ``lint.verilator``         | Lint the design with Verilator                     |
++----------------------------+----------------------------------------------------+
+| ``build.verilator``        | Build the design with Verilator                    |
++----------------------------+----------------------------------------------------+
+| ``sim.modelsim``           | Simulate with ModelSim in console mode             |
++----------------------------+----------------------------------------------------+
+| ``trace.modelsim``         | Simulate with ModelSim in GUI mode with waveforms  |
++----------------------------+----------------------------------------------------+
+| ``build.modelsim``         | Compile/elaborate the design with ModelSim         |
++----------------------------+----------------------------------------------------+
+| ``synth.vivado``           | Synthesize the design with Vivado                  |
++----------------------------+----------------------------------------------------+
+| ``impl.vivado``            | Place & route the design with Vivado               |
++----------------------------+----------------------------------------------------+
+| ``project.vivado``         | Generate the Vivado project                        |
++----------------------------+----------------------------------------------------+
+| ``project.quartus``        | Generate the Quartus project                       |
++----------------------------+----------------------------------------------------+
+| ``waves.wavedisp``         | Generate the save scripts for every viewer         |
++----------------------------+----------------------------------------------------+
+| ``clean``                  | Remove generated files                             |
++----------------------------+----------------------------------------------------+
+| ``distclean``              | Remove all generated and project files             |
++----------------------------+----------------------------------------------------+
 
 **Note:** Replace ``hw/lib/adderc`` with the path to the module you want to simulate.
 All modules follow the same Makefile structure.

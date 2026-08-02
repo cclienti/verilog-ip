@@ -12,10 +12,11 @@ QUARTUS_CUSTOM_SCRIPT   ?= custom.tcl
 QUARTUS_PROJECT_FILES    = quartus-project/$(QUARTUS_PROJECT_NAME).qpf quartus-project/$(QUARTUS_PROJECT_NAME).qsf
 
 
-help::
-	@echo "quartus-project - generate the quartus qpf/qsf files"
+.PHONY: project.quartus distclean.quartus clean.quartus
 
-quartus-project: $(QUARTUS_PROJECT_FILES)
+HELP_ENTRIES += 'project.quartus|generate the quartus qpf/qsf files'
+
+project.quartus: $(QUARTUS_PROJECT_FILES)
 
 $(QUARTUS_PROJECT_FILES):
 	@echo mkdir -p quartus-project
@@ -29,11 +30,13 @@ $(QUARTUS_PROJECT_FILES):
 	    echo "set_global_assignment -name SYSTEMVERILOG_FILE $${vfile}" >> $(QUARTUS_PROJECT_NAME).qsf; \
 	done
 
-distclean:: quartus-distclean
+distclean:: distclean.quartus
 
-quartus-distclean: clean
+distclean.quartus: clean
 	rm -rf quartus-project
 
-clean::
+clean:: clean.quartus
+
+clean.quartus:
 	cd quartus-project > /dev/null 2>&1 && rm -rf *.rpt *.chg smart.log *.htm *.eqn *.pin *.sof *.pof db incremental_db *.qws || true
 	cd quartus-project > /dev/null 2>&1 && rm -rf *.done *.smsg *.jdi *.sld *.cdf 2> /dev/null 2>&1 || true

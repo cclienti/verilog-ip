@@ -13,12 +13,13 @@ VIVADO_SYNTH_OPTIONS   ?= -flatten_hierarchy full -no_iobuf
 VIVADO_BOARDFILE       ?= ../../../boards/zedboard/zedboard.xdc
 
 .PHONY: vivado-gen-post-syn.tcl vivado-gen-post-impl.tcl
+.PHONY: project.vivado synth.vivado impl.vivado floorplan.vivado clean.vivado
 
-help::
-	@echo "vivado-gen-post-impl - place & route using the vivado implementation flow (VIVADO_PART=$(VIVADO_PART))"
-	@echo "vivado-gen-post-syn - synthesize using the vivado synthesizer (VIVADO_PART=$(VIVADO_PART))"
+HELP_ENTRIES += 'project.vivado|generate the vivado project'
+HELP_ENTRIES += 'synth.vivado|synthesize the design (VIVADO_PART=$(VIVADO_PART))'
+HELP_ENTRIES += 'impl.vivado|place & route the design (VIVADO_PART=$(VIVADO_PART))'
 
-vivado-project: vivado-project.tcl
+project.vivado: vivado-project.tcl
 	mkdir -p vivado-project
 	cd vivado-project && vivado -mode batch -source ../$^ -tclargs $(VIVADO_PROJECT_NAME) $(VIVADO_TOP_MODULE) $(VIVADO_PART)
 
@@ -33,7 +34,7 @@ vivado-project.tcl: $(ALL_TOP_FILES)
 	@echo "add_files -fileset constrs_1 $(abspath $(VIVADO_BOARDFILE))" >> $@
 	@echo "close_project -quiet" >> $@
 
-vivado-gen-post-syn: vivado-gen-post-syn.tcl
+synth.vivado: vivado-gen-post-syn.tcl
 	mkdir -p vivado-post-syn
 	cd vivado-post-syn && vivado -mode batch -source ../$^ -notrace -nolog -nojournal
 	cp -f $(GLBL_SRC) vivado-post-syn/glbl.v
@@ -51,7 +52,7 @@ vivado-gen-post-syn.tcl: $(ALL_TOP_FILES)
 	@echo "report_timing_summary -file post_synth_timing.rpt" >> $@
 	@echo "exit" >> $@
 
-vivado-gen-post-impl: vivado-gen-post-impl.tcl
+impl.vivado: vivado-gen-post-impl.tcl
 	mkdir -p vivado-post-impl
 	cd vivado-post-impl && vivado -mode batch -source ../$^ -notrace -nolog -nojournal
 	cp -f $(GLBL_SRC) vivado-post-impl/glbl.v
@@ -74,18 +75,16 @@ vivado-gen-post-impl.tcl: $(ALL_TOP_FILES)
 	@echo "report_timing_summary -file post_impl_timing.rpt" >> $@
 	@echo "exit" >> $@
 
-.PHONY: vivado-floorplan
-vivado-floorplan:
+floorplan.vivado:
 	vivado vivado-post-impl/$(TOP_MODULE)_impl.dcp
 
-help::
-	@echo "vivado-floorplan       - open post-implementation floorplan in Vivado GUI"
+HELP_ENTRIES += 'floorplan.vivado|open the post-implementation floorplan in the gui'
 
-clean:: vivado_clean
+clean:: clean.vivado
 
 # The journals and logs are named rather than globbed: vivado.* also
 # matched vivado.xdc, a constraint file kept in the repository, and
 # clean deleted it.
-vivado_clean:
+clean.vivado:
 	rm -rf .Xil vivado vivado-*
 	rm -f vivado.jou vivado.log vivado_*.backup.jou vivado_*.backup.log

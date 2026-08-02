@@ -29,11 +29,28 @@ ALL_TEST_FILES   := $(call get-file,$(TESTBENCH_FILE),$(TESTBENCH_DEPS),ALL_TOP_
 ALL_SOURCE_FILES := $(sort $(ALL_TOP_FILES) $(ALL_TEST_FILES))
 
 
-# Display list of targets. The double semicolon allows to call the
-# help target in each included .mk file.
-help::
-	@echo "distclean - remove generated files and project files"
-	@echo "clean - remove generated files"
+.PHONY: help clean distclean
+
+# Targets are named <action>.<tool>: the action is what you want done,
+# the tool is who does it. Several vendors do the same job here, so the
+# tool cannot be left implicit -- that is how one viewer ended up as
+# `trace` and the next one as `trace-surfer`.
+#
+# Each .mk file registers its targets below instead of echoing them from
+# its own help:: rule. Echoing put the listing in include order, which
+# groups by tool and scatters the same action across the output; one
+# rule over one list can sort it, so every sim.* sits next to the others.
+#
+# An entry is a single shell-quoted word, so a description may contain
+# spaces: make drops the list into the command line and the shell splits
+# it back on the quotes.
+HELP_ENTRIES += 'clean|remove generated files'
+HELP_ENTRIES += 'distclean|remove generated files and project files'
+
+help:
+	@echo "Targets are named <action>.<tool>. Available here:"
+	@echo ""
+	@printf '%s\n' $(HELP_ENTRIES) | LC_ALL=C sort | awk -F'|' 'NF==2 {printf "  %-25s %s\n", $$1, $$2}'
 
 # Useful to debug makefile variable value
 print-%:

@@ -14,13 +14,14 @@ VERIOBF_INPUT      = $(VERIFLAT_OUTPUT)
 VERIOBF_OUTPUT     = $(TOP_MODULE)_obf.v
 
 
-help::
-	@echo "veriobf - obfuscate flattened design using veriparse"
-	@echo "veriflat - flatten design using veriparse"
+.PHONY: flatten.veriparse obfuscate.veriparse clean.veriparse
 
-veriobf: $(VERIOBF_OUTPUT)
+HELP_ENTRIES += 'flatten.veriparse|flatten the design'
+HELP_ENTRIES += 'obfuscate.veriparse|obfuscate the flattened design'
 
-veriflat: $(VERIFLAT_OUTPUT)
+obfuscate.veriparse: $(VERIOBF_OUTPUT)
+
+flatten.veriparse: $(VERIFLAT_OUTPUT)
 
 $(VERIOBF_OUTPUT): $(VERIOBF_INPUT)
 	@$(VERIOBF) $(VERIOBF_FLAGS) --output $@ $^
@@ -33,10 +34,8 @@ preproc/%.pp: $(REPO_PATH)/%.v
 	@mkdir -p $(dir $@)
 	@$(IVERILOG) $(IVFLAGS) -E $< -o $@
 
-clean:: veriobf-clean veriflat-clean
+clean:: clean.veriparse
 
-veriobf-clean:
+clean.veriparse:
 	rm -rf $(VERIOBF_OUTPUT) $(VERIOBF_TESTBENCH) veriobf.log
-
-veriflat-clean:
 	rm -rf $(VERIFLAT_PP_DIR) $(VERIFLAT_OUTPUT) $(VERIFLAT_TESTBENCH) veriflat.log

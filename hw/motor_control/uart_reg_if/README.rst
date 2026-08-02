@@ -75,5 +75,5 @@ Simulation
 .. code-block:: bash
 
    cd project
-   make sim    # Icarus Verilog simulation
-   make trace  # Simulate and open GTKWave
+   make sim.iverilog   # Icarus Verilog simulation
+   make trace.gtkwave  # Simulate and open GTKWave
