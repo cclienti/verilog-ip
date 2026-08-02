@@ -32,11 +32,20 @@ $(QUARTUS_PROJECT_FILES):
 
 distclean:: distclean.quartus
 
+# Takes the directory whole, so everything the compile produced goes with
+# it: bitstreams, database, reports, project files.
 distclean.quartus: clean
 	rm -rf quartus-project
 
 clean:: clean.quartus
 
+# Only the scratch and the metadata: change files, logs, the gui
+# workspace, the jtag chain descriptions.
+#
+# What used to be removed here as well -- *.sof, *.pof, db,
+# incremental_db, and the *.rpt / *.htm reports -- is the result of a
+# Quartus fit. Nothing short of recompiling brings any of it back, so it
+# belongs with distclean, for the same reason as the vivado netlist.
 clean.quartus:
-	cd quartus-project > /dev/null 2>&1 && rm -rf *.rpt *.chg smart.log *.htm *.eqn *.pin *.sof *.pof db incremental_db *.qws || true
+	cd quartus-project > /dev/null 2>&1 && rm -rf *.chg smart.log *.eqn *.pin *.qws || true
 	cd quartus-project > /dev/null 2>&1 && rm -rf *.done *.smsg *.jdi *.sld *.cdf 2> /dev/null 2>&1 || true
