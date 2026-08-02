@@ -10,6 +10,13 @@
 // argument or, in its absence, from the IVERILOG_DUMPER environment
 // variable, which iverilog.mk exports.
 
+// This module has no delay, so its time unit is irrelevant -- but a file
+// without a timescale, elaborated next to testbenches that have one, makes
+// iverilog warn on every single build. The precision is the coarsest of
+// the tree: simulation precision is the minimum over all directives, so
+// 1ns can never make an existing one finer.
+`timescale 1ns / 1ns
+
 `ifndef DUMP_FILE
  `define DUMP_FILE "dump.fst"
 `endif
