@@ -44,8 +44,8 @@ ALL_SOURCE_FILES := $(sort $(ALL_TOP_FILES) $(ALL_TEST_FILES))
 # An entry is a single shell-quoted word, so a description may contain
 # spaces: make drops the list into the command line and the shell splits
 # it back on the quotes.
-HELP_ENTRIES += 'clean|remove generated files'
-HELP_ENTRIES += 'distclean|remove generated files and project files'
+HELP_ENTRIES += 'clean|remove the generated files that rebuild in seconds'
+HELP_ENTRIES += 'distclean|also remove project files and tool results (synthesis, place & route)'
 
 help:
 	@echo "Targets are named <action>.<tool>. Available here:"

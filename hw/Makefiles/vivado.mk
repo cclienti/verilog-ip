@@ -13,7 +13,8 @@ VIVADO_SYNTH_OPTIONS   ?= -flatten_hierarchy full -no_iobuf
 VIVADO_BOARDFILE       ?= ../../../boards/zedboard/zedboard.xdc
 
 .PHONY: vivado-gen-post-syn.tcl vivado-gen-post-impl.tcl
-.PHONY: project.vivado synth.vivado impl.vivado floorplan.vivado clean.vivado
+.PHONY: project.vivado synth.vivado impl.vivado floorplan.vivado
+.PHONY: clean.vivado distclean.vivado
 
 HELP_ENTRIES += 'project.vivado|generate the vivado project'
 HELP_ENTRIES += 'synth.vivado|synthesize the design (VIVADO_PART=$(VIVADO_PART))'
@@ -81,10 +82,23 @@ floorplan.vivado:
 HELP_ENTRIES += 'floorplan.vivado|open the post-implementation floorplan in the gui'
 
 clean:: clean.vivado
+distclean:: distclean.vivado
 
+# Only what comes back in seconds: the scratch directory, the journals
+# and logs, and the tcl scripts this file generates.
+#
 # The journals and logs are named rather than globbed: vivado.* also
 # matched vivado.xdc, a constraint file kept in the repository, and
-# clean deleted it.
+# clean deleted it. The same care applies to the directories -- the old
+# `rm -rf vivado-*` here swept up vivado-post-syn along with them.
 clean.vivado:
-	rm -rf .Xil vivado vivado-*
+	rm -rf .Xil
 	rm -f vivado.jou vivado.log vivado_*.backup.jou vivado_*.backup.log
+	rm -f vivado-project.tcl vivado-gen-post-syn.tcl vivado-gen-post-impl.tcl
+
+# The tool outputs: a netlist, a placed-and-routed checkpoint, a project.
+# Rebuilding any of them costs a synthesis or an implementation run --
+# minutes to hours -- so they do not belong beside a dump that takes two
+# seconds. clean carrying them away is how a netlist got lost.
+distclean.vivado:
+	rm -rf vivado vivado-project vivado-post-syn vivado-post-impl

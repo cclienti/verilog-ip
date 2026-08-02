@@ -346,10 +346,14 @@ action, which depends on the ``.mk`` files its Makefile includes.
 +----------------------------+----------------------------------------------------+
 | ``waves.wavedisp``         | Generate the save scripts for every viewer         |
 +----------------------------+----------------------------------------------------+
-| ``clean``                  | Remove generated files                             |
+| ``clean``                  | Remove the files that rebuild in seconds           |
 +----------------------------+----------------------------------------------------+
-| ``distclean``              | Remove all generated and project files             |
+| ``distclean``              | Also remove project files and tool results         |
 +----------------------------+----------------------------------------------------+
+
+``clean`` deliberately spares the Vivado outputs — the netlist, the placed-and-routed checkpoint,
+the project. Each costs a synthesis or an implementation run to rebuild, which does not belong
+beside a waveform dump that comes back in two seconds. ``make distclean`` removes those.
 
 **Note:** Replace ``hw/lib/adderc`` with the path to the module you want to simulate.
 All modules follow the same Makefile structure.
