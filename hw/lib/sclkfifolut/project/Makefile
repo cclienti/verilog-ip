@@ -14,4 +14,3 @@ include ../../../Makefiles/iverilog.mk
 include ../../../Makefiles/verilator.mk
 include ../../../Makefiles/modelsim.mk
 include ../../../Makefiles/vivado.mk
-include ../../../Makefiles/common.mk

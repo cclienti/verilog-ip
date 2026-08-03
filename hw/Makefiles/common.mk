@@ -50,7 +50,7 @@ HELP_ENTRIES += 'distclean|also remove project files and tool results (synthesis
 help:
 	@echo "Targets are named <action>.<tool>. Available here:"
 	@echo ""
-	@printf '%s\n' $(HELP_ENTRIES) | LC_ALL=C sort | awk -F'|' 'NF==2 {printf "  %-25s %s\n", $$1, $$2}'
+	@printf '%s\n' $(HELP_ENTRIES) | LC_ALL=C sort -u | awk -F'|' 'NF==2 {printf "  %-25s %s\n", $$1, $$2}'
 
 # Useful to debug makefile variable value
 print-%:
