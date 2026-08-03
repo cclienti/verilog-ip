@@ -5,7 +5,12 @@ TOP_MODULE        ?= hynoc_router_5p
 TOP_FILE          ?= ../src/hynoc_router_5p.v
 TOP_DEPS          ?= ../../hynoc_router_base
 
+# The one sim and trace act on; override on the command line to look at
+# another. check runs the whole list below.
 TESTBENCH_MODULE  ?= hynoc_router_5p_tb5
+TESTBENCH_MODULES ?= hynoc_router_5p_tb  hynoc_router_5p_tb2 \
+                     hynoc_router_5p_tb3 hynoc_router_5p_tb4 \
+                     hynoc_router_5p_tb5
 TESTBENCH_FILE    ?= ../src/$(TESTBENCH_MODULE).v
 TESTBENCH_DEPS    ?= ../../hynoc_stream_writer \
 			../../hynoc_stream_reader \
