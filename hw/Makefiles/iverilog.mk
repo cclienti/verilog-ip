@@ -84,14 +84,16 @@ IVFLAGS_SYN           := -Wno-sensitivity-entire-array $(IVSTD) -DPOST_SYNTH
 IVFLAGS_SYN           += $(foreach DIR,$(ALL_TOP_FILES),-I$(dir $(DIR)))
 IVFLAGS_SYN           += -I$(dir $(POST_SYNTH_TB_FILE))
 
-# gtkwave's -a takes the next word as a save file. Handing it a dump file
-# because no save file exists is how `make trace` ended up opening an
-# empty window in the projects that do not include wavedisp.mk.
+# gtkwave writes back into the save file it was given: File > Write Save
+# File lands in whatever -a named. Binding that to the generated file
+# would mean an arrangement built by hand in the gui is overwritten by the
+# next trace, and .gitignore excludes it, so it was never recoverable.
 #
-# -a and its native format rather than -S and a tcl script: wavedisp
-# writes the save file from the dump, so the rows are named after what the
-# run actually holds, and gtkwave loads it without interpreting anything.
-GTKWAVE_SAVEFILE       = $(if $(WAVEDISP_GTKWAVE_SAV),-a $(WAVEDISP_GTKWAVE_SAV))
+# A hand-written <testbench>.sav therefore wins when one exists. It is
+# yours, it is tracked -- thirteen of them live in this repository -- and
+# nothing here regenerates it, so gtkwave saving into it is what you want.
+# Write one from the gui under that name to keep a layout for good.
+GTKWAVE_USER_SAV       = $(wildcard $(TESTBENCH_MODULE).sav)
 
 # Surfer replays a command file after loading the dump. Same guard: no
 # save script, no option.
@@ -150,15 +152,41 @@ HELP_ENTRIES += 'trace-post-syn.surfer|simulate the netlist, then show the wavef
 # that fed them: which one opens is the only thing that differs between
 # these two, and hiding that behind a single `trace` was how the second
 # viewer ended up as `trace-surfer`, an odd one out.
+# The whole choice is made in one shell block because it depends on what
+# the generation actually did, and a recipe is expanded before its first
+# line runs -- a variable could not see the outcome.
+#
+# A failed generation must not cost you the viewer. wavedisp exits 1 when
+# a declared signal is missing from the dump, which is exactly what
+# happens after a port rename -- the moment you most need to look at the
+# waveform. So the check reports, and the run falls back to the tcl
+# script, which names no signals against the dump and always loads.
 trace.gtkwave: sim.iverilog
-	$(if $(WAVEDISP_GTKWAVE_SAV),$(MAKE) $(WAVEDISP_GTKWAVE_SAV))
-	$(GTKWAVE) $(GTKWAVE_SAVEFILE) $(DUMP_FILE)
+	@view=""; \
+	if [ -n "$(GTKWAVE_USER_SAV)" ]; then \
+	  view="-a $(GTKWAVE_USER_SAV)"; \
+	elif [ -n "$(WAVEDISP_GTKWAVE_SAV)" ]; then \
+	  if $(MAKE) --no-print-directory $(WAVEDISP_GTKWAVE_SAV); then \
+	    view="-a $(WAVEDISP_GTKWAVE_SAV)"; \
+	  else \
+	    echo "$(WAVEDISP_FILE): does not match the dump, opening with the tcl script instead"; \
+	    $(MAKE) --no-print-directory $(WAVEDISP_GTKWAVE_TCL) && view="-S $(WAVEDISP_GTKWAVE_TCL)"; \
+	  fi; \
+	fi; \
+	$(GTKWAVE) $$view $(DUMP_FILE)
 
 # The dump is handed to wavedisp here and not in waves.wavedisp: the
 # simulation has just run, so checking the declared signals against it is
 # free, while the generation target must stay runnable without one.
+#
+# On a mismatch the check reports and the file is regenerated without it,
+# rather than the whole target failing. wavedisp exits 1 when a declared
+# signal is missing, which is what a port rename produces -- refusing to
+# open the viewer there would withhold the waveform exactly when it is
+# needed to understand the rename.
 trace.surfer: sim.iverilog
-	$(if $(WAVEDISP_SURFER_FILE),$(MAKE) $(WAVEDISP_SURFER_FILE) WAVEDISP_DUMP=$(DUMP_FILE))
+	$(if $(WAVEDISP_SURFER_FILE),$(MAKE) $(WAVEDISP_SURFER_FILE) WAVEDISP_DUMP=$(DUMP_FILE) \
+	    || $(MAKE) $(WAVEDISP_SURFER_FILE))
 	$(SURFER) $(DUMP_FILE) $(SURFER_COMMANDS)
 
 sim.iverilog: $(DUMP_FILE)
