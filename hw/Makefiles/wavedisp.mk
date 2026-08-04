@@ -33,6 +33,18 @@ else
 WAVEDISP_KWARGS := -a '$(WAVEDISP_GEN_ARGS)'
 endif
 
+# Handed a dump, wavedisp checks every declared signal against it and
+# reports a missing one with the file and line of the declaration. That is
+# the only thing that checks these files at all -- they are written by
+# hand beside the RTL and nothing else notices when a port is renamed.
+#
+# It is passed by the trace targets, which have just run the simulation,
+# and left empty by waves.wavedisp, which must stay independent of one.
+# So the files are validated exactly when a dump happens to be at hand,
+# and generating them never requires a simulation.
+WAVEDISP_DUMP  ?=
+WAVEDISP_CHECK  = $(if $(WAVEDISP_DUMP),-D $(WAVEDISP_DUMP))
+
 
 .PHONY: $(WAVEDISP_GTKWAVE_TCL) $(WAVEDISP_MODELSIM_TCL) $(WAVEDISP_RIVIERAPRO_TCL)
 .PHONY: $(WAVEDISP_SURFER_FILE) $(WAVEDISP_GTKWAVE_SAV)
@@ -70,16 +82,16 @@ dot.wavedisp: $(WAVEDISP_DOT_FILE)
 	xdot $^
 
 $(WAVEDISP_GTKWAVE_TCL): $(WAVEDISP_FILE) $(WAVEDISP_BIN)
-	$(WAVEDISP_BIN) -t gtkwave -o $@ $< $(WAVEDISP_KWARGS)
+	$(WAVEDISP_BIN) $(WAVEDISP_CHECK) -t gtkwave -o $@ $< $(WAVEDISP_KWARGS)
 
 $(WAVEDISP_MODELSIM_TCL): $(WAVEDISP_FILE) $(WAVEDISP_BIN)
-	$(WAVEDISP_BIN) -t modelsim -o $@ $< $(WAVEDISP_KWARGS)
+	$(WAVEDISP_BIN) $(WAVEDISP_CHECK) -t modelsim -o $@ $< $(WAVEDISP_KWARGS)
 
 $(WAVEDISP_RIVIERAPRO_TCL): $(WAVEDISP_FILE) $(WAVEDISP_BIN)
-	$(WAVEDISP_BIN) -t rivierapro -o $@ $< $(WAVEDISP_KWARGS)
+	$(WAVEDISP_BIN) $(WAVEDISP_CHECK) -t rivierapro -o $@ $< $(WAVEDISP_KWARGS)
 
 $(WAVEDISP_SURFER_FILE): $(WAVEDISP_FILE) $(WAVEDISP_BIN)
-	$(WAVEDISP_BIN) -t surfer -o $@ $< $(WAVEDISP_KWARGS)
+	$(WAVEDISP_BIN) $(WAVEDISP_CHECK) -t surfer -o $@ $< $(WAVEDISP_KWARGS)
 
 $(WAVEDISP_DOT_FILE): $(WAVEDISP_FILE) $(WAVEDISP_BIN)
 	$(WAVEDISP_BIN) -t dot -o $@ $< $(WAVEDISP_KWARGS)

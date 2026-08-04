@@ -154,8 +154,11 @@ trace.gtkwave: sim.iverilog
 	$(if $(WAVEDISP_GTKWAVE_SAV),$(MAKE) $(WAVEDISP_GTKWAVE_SAV))
 	$(GTKWAVE) $(GTKWAVE_SAVEFILE) $(DUMP_FILE)
 
+# The dump is handed to wavedisp here and not in waves.wavedisp: the
+# simulation has just run, so checking the declared signals against it is
+# free, while the generation target must stay runnable without one.
 trace.surfer: sim.iverilog
-	$(if $(WAVEDISP_SURFER_FILE),$(MAKE) $(WAVEDISP_SURFER_FILE))
+	$(if $(WAVEDISP_SURFER_FILE),$(MAKE) $(WAVEDISP_SURFER_FILE) WAVEDISP_DUMP=$(DUMP_FILE))
 	$(SURFER) $(DUMP_FILE) $(SURFER_COMMANDS)
 
 sim.iverilog: $(DUMP_FILE)
