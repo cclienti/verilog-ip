@@ -15,6 +15,11 @@ WAVEDISP_BIN              = $(WAVEDISP_VENV_DIR)/bin/wavedisp
 
 WAVEDISP_FILE            = $(TESTBENCH_MODULE).wave.py
 WAVEDISP_GTKWAVE_TCL     = $(TESTBENCH_MODULE).gtkwave.tcl
+# gtkwave's own save format, which it loads with -a. Named like every
+# other generated file and NOT <testbench>.sav: thirteen save files under
+# that exact name are tracked in this repository, written by hand, and
+# generating over them would overwrite them and clean would delete them.
+WAVEDISP_GTKWAVE_SAV     = $(TESTBENCH_MODULE).gtkwave.sav
 WAVEDISP_MODELSIM_TCL    = $(TESTBENCH_MODULE).modelsim.tcl
 WAVEDISP_RIVIERAPRO_TCL  = $(TESTBENCH_MODULE).rivierapro.tcl
 # Surfer has no scripting language: this is a flat list of the commands
@@ -30,7 +35,7 @@ endif
 
 
 .PHONY: $(WAVEDISP_GTKWAVE_TCL) $(WAVEDISP_MODELSIM_TCL) $(WAVEDISP_RIVIERAPRO_TCL)
-.PHONY: $(WAVEDISP_SURFER_FILE)
+.PHONY: $(WAVEDISP_SURFER_FILE) $(WAVEDISP_GTKWAVE_SAV)
 .PHONY: waves.wavedisp dot.wavedisp venv.wavedisp clean.wavedisp
 
 
@@ -55,7 +60,7 @@ endif
 venv.wavedisp: $(WAVEDISP_BIN)
 
 waves.wavedisp: $(WAVEDISP_GTKWAVE_TCL) $(WAVEDISP_MODELSIM_TCL) $(WAVEDISP_RIVIERAPRO_TCL) \
-	$(WAVEDISP_SURFER_FILE)
+	$(WAVEDISP_SURFER_FILE) $(WAVEDISP_GTKWAVE_SAV)
 
 dot.wavedisp: $(WAVEDISP_DOT_FILE)
 	xdot $^
@@ -75,9 +80,22 @@ $(WAVEDISP_SURFER_FILE): $(WAVEDISP_FILE) $(WAVEDISP_BIN)
 $(WAVEDISP_DOT_FILE): $(WAVEDISP_FILE) $(WAVEDISP_BIN)
 	$(WAVEDISP_BIN) -t dot -o $@ $< $(WAVEDISP_KWARGS)
 
+# The only target that reads the dump: it names its rows from what the run
+# actually contains, and records the dump's path, mtime and size. Hence
+# -D, and hence regenerating it every time rather than keeping one that
+# exists -- a save file held over from an earlier run describes that run,
+# and rereading a 473 kB dump costs 40 ms.
+#
+# The dependency is written as the sim.iverilog target and not as
+# $(DUMP_FILE): 26 of the 32 project Makefiles include this file before
+# iverilog.mk, where DUMP_FILE is still empty, and prerequisites are
+# expanded as the rule is read. A target name survives either order.
+$(WAVEDISP_GTKWAVE_SAV): $(WAVEDISP_FILE) $(WAVEDISP_BIN) sim.iverilog
+	$(WAVEDISP_BIN) -D $(DUMP_FILE) -t gtkwave-savefile -o $@ $< $(WAVEDISP_KWARGS)
+
 clean:: clean.wavedisp
 
 clean.wavedisp:
 	rm -rf $(WAVEDISP_GTKWAVE_TCL) $(WAVEDISP_MODELSIM_TCL) \
 		$(WAVEDISP_RIVIERAPRO_TCL) $(WAVEDISP_SURFER_FILE) \
-		$(WAVEDISP_DOT_FILE) __pycache__
+		$(WAVEDISP_GTKWAVE_SAV) $(WAVEDISP_DOT_FILE) __pycache__

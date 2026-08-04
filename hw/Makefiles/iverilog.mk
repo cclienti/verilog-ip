@@ -84,10 +84,14 @@ IVFLAGS_SYN           := -Wno-sensitivity-entire-array $(IVSTD) -DPOST_SYNTH
 IVFLAGS_SYN           += $(foreach DIR,$(ALL_TOP_FILES),-I$(dir $(DIR)))
 IVFLAGS_SYN           += -I$(dir $(POST_SYNTH_TB_FILE))
 
-# gtkwave's -S takes the next word as a script. Handing it a dump file
-# because no save script exists is how `make trace` ended up opening an
+# gtkwave's -a takes the next word as a save file. Handing it a dump file
+# because no save file exists is how `make trace` ended up opening an
 # empty window in the projects that do not include wavedisp.mk.
-GTKWAVE_SCRIPT         = $(if $(WAVEDISP_GTKWAVE_TCL),-S $(WAVEDISP_GTKWAVE_TCL))
+#
+# -a and its native format rather than -S and a tcl script: wavedisp
+# writes the save file from the dump, so the rows are named after what the
+# run actually holds, and gtkwave loads it without interpreting anything.
+GTKWAVE_SAVEFILE       = $(if $(WAVEDISP_GTKWAVE_SAV),-a $(WAVEDISP_GTKWAVE_SAV))
 
 # Surfer replays a command file after loading the dump. Same guard: no
 # save script, no option.
@@ -112,6 +116,10 @@ POST_SYNTH_GTKWAVE_TCL ?= $(wildcard $(POST_SYNTH_TB_MODULE).gtkwave.tcl)
 POST_SYNTH_SURFER_FILE ?= $(wildcard $(POST_SYNTH_TB_MODULE).sucl)
 endif
 
+# Still the tcl script here, where the RTL run has moved to gtkwave's own
+# save format: a save file records the dump it was written from, so this
+# path needs one of its own, generated with -D $(POST_SYNTH_DUMP). A tcl
+# script names no dump and works for both.
 POST_SYNTH_GTKWAVE_SCRIPT  = $(if $(POST_SYNTH_GTKWAVE_TCL),-S $(POST_SYNTH_GTKWAVE_TCL))
 POST_SYNTH_SURFER_COMMANDS = $(if $(POST_SYNTH_SURFER_FILE),--command-file $(POST_SYNTH_SURFER_FILE))
 
@@ -143,8 +151,8 @@ HELP_ENTRIES += 'trace-post-syn.surfer|simulate the netlist, then show the wavef
 # these two, and hiding that behind a single `trace` was how the second
 # viewer ended up as `trace-surfer`, an odd one out.
 trace.gtkwave: sim.iverilog
-	$(if $(WAVEDISP_GTKWAVE_TCL),$(MAKE) $(WAVEDISP_GTKWAVE_TCL))
-	$(GTKWAVE) $(GTKWAVE_SCRIPT) $(DUMP_FILE)
+	$(if $(WAVEDISP_GTKWAVE_SAV),$(MAKE) $(WAVEDISP_GTKWAVE_SAV))
+	$(GTKWAVE) $(GTKWAVE_SAVEFILE) $(DUMP_FILE)
 
 trace.surfer: sim.iverilog
 	$(if $(WAVEDISP_SURFER_FILE),$(MAKE) $(WAVEDISP_SURFER_FILE))

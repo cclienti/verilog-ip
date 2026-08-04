@@ -64,6 +64,7 @@ doc/logo/*png
 ##################
 **/project/*.modelsim.tcl
 **/project/*.gtkwave.tcl
+**/project/*.gtkwave.sav
 **/project/*.rivierapro.tcl
 **/project/*.sucl
 
