@@ -13,7 +13,7 @@ def generator():
     blk = Block()
     blk.add(Disp('clock'))
     blk.add(Disp('srst'))
-    blk.add(Disp('pwm_ratio'))
+    blk.add(Disp('pwm_high_max'))
     blk.add(Disp('pwm_max'))
     blk.add(Disp('pwm_output'))
 
