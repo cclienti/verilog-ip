@@ -13,7 +13,7 @@
 # Each tool stays overridable on its own, for an install that mixes them
 # or wraps one in a script.
 MODELSIM_BIN_DIR   ?=
-MODELSIM_PREFIX     = $(if $(MODELSIM_BIN_DIR),$(MODELSIM_BIN_DIR:/=)/)
+MODELSIM_PREFIX     = $(if $(MODELSIM_BIN_DIR),$(abspath $(MODELSIM_BIN_DIR))/)
 
 MODELSIM_VLIB      ?= $(MODELSIM_PREFIX)vlib
 MODELSIM_VMAP      ?= $(MODELSIM_PREFIX)vmap

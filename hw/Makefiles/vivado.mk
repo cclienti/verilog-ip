@@ -1,9 +1,26 @@
 # Generic Xilinx Compilation with a Non-Project Flow
 # Copyright (C) 2013-2014 Christophe Clienti - All Rights Reserved
 
-VIVADO             ?= vivado
-VIVADO_BIN         := $(shell which $(VIVADO) 2>/dev/null)
-VIVADO_INSTALL_DIR := $(realpath $(dir $(VIVADO_BIN))/..)
+# Where the tool lives. Empty by default, so the bare name goes through
+# PATH. Vivado is usually not on PATH, so either put it there --
+#
+#   export PATH="$HOME/Xilinx/2025.1/Vivado/bin:$PATH"
+#
+# -- or set VIVADO_BIN_DIR, on the command line or exported from a shell
+# rc, which make imports as a variable of the same name.
+#
+# abspath, not a plain join: three of the recipes below cd into their
+# output directory first, so a relative prefix would no longer resolve.
+# It also absorbs a trailing slash.
+VIVADO_BIN_DIR     ?=
+VIVADO_PREFIX       = $(if $(VIVADO_BIN_DIR),$(abspath $(VIVADO_BIN_DIR))/)
+VIVADO             ?= $(VIVADO_PREFIX)vivado
+
+# The resolved executable, used only to find glbl.v inside the install.
+# `which` hands back an absolute path unchanged, so this works whether the
+# name came from PATH or from VIVADO_BIN_DIR.
+VIVADO_EXE         := $(shell which $(VIVADO) 2>/dev/null)
+VIVADO_INSTALL_DIR := $(realpath $(dir $(VIVADO_EXE))/..)
 GLBL_SRC           := $(VIVADO_INSTALL_DIR)/data/verilog/src/glbl.v
 
 VIVADO_TOP_MODULE      ?= $(TOP_MODULE)
@@ -28,7 +45,7 @@ HELP_ENTRIES += 'impl.vivado|place & route the design (VIVADO_PART=$(VIVADO_PART
 
 project.vivado: vivado-project.tcl
 	mkdir -p vivado-project
-	cd vivado-project && vivado -mode batch -source ../$^ -tclargs $(VIVADO_PROJECT_NAME) $(VIVADO_TOP_MODULE) $(VIVADO_PART)
+	cd vivado-project && $(VIVADO) -mode batch -source ../$^ -tclargs $(VIVADO_PROJECT_NAME) $(VIVADO_TOP_MODULE) $(VIVADO_PART)
 
 vivado-project.tcl: $(ALL_TOP_FILES)
 	@echo "Generating $@"
@@ -46,7 +63,7 @@ vivado-project.tcl: $(ALL_TOP_FILES)
 
 synth.vivado: vivado-gen-post-syn.tcl
 	mkdir -p vivado-post-syn
-	cd vivado-post-syn && vivado -mode batch -source ../$^ -notrace -nolog -nojournal
+	cd vivado-post-syn && $(VIVADO) -mode batch -source ../$^ -notrace -nolog -nojournal
 	cp -f $(GLBL_SRC) vivado-post-syn/glbl.v
 
 vivado-gen-post-syn.tcl: $(ALL_TOP_FILES)
@@ -64,7 +81,7 @@ vivado-gen-post-syn.tcl: $(ALL_TOP_FILES)
 
 impl.vivado: vivado-gen-post-impl.tcl
 	mkdir -p vivado-post-impl
-	cd vivado-post-impl && vivado -mode batch -source ../$^ -notrace -nolog -nojournal
+	cd vivado-post-impl && $(VIVADO) -mode batch -source ../$^ -notrace -nolog -nojournal
 	cp -f $(GLBL_SRC) vivado-post-impl/glbl.v
 
 vivado-gen-post-impl.tcl: $(ALL_TOP_FILES)
@@ -86,7 +103,7 @@ vivado-gen-post-impl.tcl: $(ALL_TOP_FILES)
 	@echo "exit" >> $@
 
 floorplan.vivado:
-	vivado vivado-post-impl/$(TOP_MODULE)_impl.dcp
+	$(VIVADO) vivado-post-impl/$(TOP_MODULE)_impl.dcp
 
 HELP_ENTRIES += 'floorplan.vivado|open the post-implementation floorplan in the gui'
 
