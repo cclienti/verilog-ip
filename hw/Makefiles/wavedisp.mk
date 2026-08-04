@@ -59,8 +59,12 @@ endif
 
 venv.wavedisp: $(WAVEDISP_BIN)
 
+# The save file is deliberately absent: it is the only output that needs a
+# dump, so listing it here would make "generate the wave files" run a
+# simulation -- seven minutes on hynoc_router_5p. trace.gtkwave builds it,
+# every time, and `make <testbench>.gtkwave.sav` builds it on its own.
 waves.wavedisp: $(WAVEDISP_GTKWAVE_TCL) $(WAVEDISP_MODELSIM_TCL) $(WAVEDISP_RIVIERAPRO_TCL) \
-	$(WAVEDISP_SURFER_FILE) $(WAVEDISP_GTKWAVE_SAV)
+	$(WAVEDISP_SURFER_FILE)
 
 dot.wavedisp: $(WAVEDISP_DOT_FILE)
 	xdot $^
