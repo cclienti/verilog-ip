@@ -130,7 +130,8 @@ POST_SYNTH_SURFER_COMMANDS = $(if $(POST_SYNTH_SURFER_FILE),--command-file $(POS
 .PHONY: clean.iverilog
 
 HELP_ENTRIES += 'sim.iverilog|simulate the design'
-HELP_ENTRIES += 'check.iverilog|run every declared testbench without dumping, fail on any error'
+HELP_ENTRIES += 'check.iverilog|run every declared testbench, fail on an error or a missing verdict'
+HELP_ENTRIES += 'check@<testbench>|run that one testbench, the name check.iverilog reports on failure'
 HELP_ENTRIES += 'trace.gtkwave|simulate, then show the waveform with gtkwave'
 HELP_ENTRIES += 'trace.surfer|simulate, then show the waveform with surfer'
 HELP_ENTRIES += 'sim-post-syn.iverilog|simulate the post-synthesis netlist'
@@ -223,11 +224,20 @@ check@%:
 # pattern has to cover more than the capital-E form -- grep Error alone
 # let "FAIL: 3 error(s) found" through and reported success. No passing
 # testbench prints either word.
+# A verdict is required, not merely the absence of the word "error".
+# Inferring success from silence passes a design that never ran: the five
+# hynoc benches print nothing of their own and end on a fixed `#8000
+# $finish`, so a router dropping every packet reported green -- the
+# readers simply never reached the checks that would have complained.
+# CLAUDE.md has always required the verdict; nothing enforced it.
 check-one.iverilog: $(TESTBENCH_MODULE)
 	@out=$$(IVERILOG_DUMPER=none $(VVP) ./$< 2>&1); status=$$?; \
 	echo "$$out"; \
 	if [ $$status -ne 0 ] || echo "$$out" | grep -qiE 'error|fail'; then \
-	  echo "$(TESTBENCH_MODULE): FAILED"; exit 1; fi
+	  echo "$(TESTBENCH_MODULE): FAILED"; exit 1; fi; \
+	if ! echo "$$out" | grep -qiE 'ALL TESTS PASSED|PASS:'; then \
+	  echo "$(TESTBENCH_MODULE): NO VERDICT - the bench reported neither success nor failure"; \
+	  exit 1; fi
 
 $(DUMP_FILE): $(TESTBENCH_MODULE)
 	$(VVP) ./$<
