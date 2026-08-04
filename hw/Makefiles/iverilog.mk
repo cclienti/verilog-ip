@@ -84,16 +84,18 @@ IVFLAGS_SYN           := -Wno-sensitivity-entire-array $(IVSTD) -DPOST_SYNTH
 IVFLAGS_SYN           += $(foreach DIR,$(ALL_TOP_FILES),-I$(dir $(DIR)))
 IVFLAGS_SYN           += -I$(dir $(POST_SYNTH_TB_FILE))
 
-# gtkwave writes back into the save file it was given: File > Write Save
-# File lands in whatever -a named. Binding that to the generated file
-# would mean an arrangement built by hand in the gui is overwritten by the
-# next trace, and .gitignore excludes it, so it was never recoverable.
+# make always opens the generated view: the layout lives in the .wave.py,
+# and wavedisp rebuilds it from the dump on every trace.
 #
-# A hand-written <testbench>.sav therefore wins when one exists. It is
-# yours, it is tracked -- thirteen of them live in this repository -- and
-# nothing here regenerates it, so gtkwave saving into it is what you want.
-# Write one from the gui under that name to keep a layout for good.
-GTKWAVE_USER_SAV       = $(wildcard $(TESTBENCH_MODULE).sav)
+# gtkwave writes back into the save file it was given, so a File > Write
+# Save File during a `make trace.gtkwave` session lands in the generated
+# file and the next trace regenerates over it. A view you want to keep
+# goes in <testbench>.sav, which nothing here writes and .gitignore does
+# not exclude -- commit it and open it yourself:
+#
+#   gtkwave <testbench>.fst <testbench>.sav
+#
+# Thirteen of those are tracked in this repository and predate wavedisp.
 
 # Surfer replays a command file after loading the dump. Same guard: no
 # save script, no option.
@@ -125,7 +127,7 @@ endif
 POST_SYNTH_GTKWAVE_SCRIPT  = $(if $(POST_SYNTH_GTKWAVE_TCL),-S $(POST_SYNTH_GTKWAVE_TCL))
 POST_SYNTH_SURFER_COMMANDS = $(if $(POST_SYNTH_SURFER_FILE),--command-file $(POST_SYNTH_SURFER_FILE))
 
-.PHONY: sim.iverilog check.iverilog check-one.iverilog trace.gtkwave trace.surfer keep.gtkwave
+.PHONY: sim.iverilog check.iverilog check-one.iverilog trace.gtkwave trace.surfer
 .PHONY: sim-post-syn.iverilog trace-post-syn.gtkwave trace-post-syn.surfer
 .PHONY: clean.iverilog
 
@@ -133,7 +135,6 @@ HELP_ENTRIES += 'sim.iverilog|simulate the design'
 HELP_ENTRIES += 'check.iverilog|run every declared testbench, fail on an error or a missing verdict'
 HELP_ENTRIES += 'check@<testbench>|run that one testbench, the name check.iverilog reports on failure'
 HELP_ENTRIES += 'trace.gtkwave|simulate, then show the waveform with gtkwave'
-HELP_ENTRIES += 'keep.gtkwave|promote the current gtkwave layout to a tracked <testbench>.sav'
 HELP_ENTRIES += 'trace.surfer|simulate, then show the waveform with surfer'
 HELP_ENTRIES += 'sim-post-syn.iverilog|simulate the post-synthesis netlist'
 HELP_ENTRIES += 'trace-post-syn.gtkwave|simulate the netlist, then show the waveform with gtkwave'
@@ -165,9 +166,7 @@ HELP_ENTRIES += 'trace-post-syn.surfer|simulate the netlist, then show the wavef
 # script, which names no signals against the dump and always loads.
 trace.gtkwave: sim.iverilog
 	@view=""; \
-	if [ -n "$(GTKWAVE_USER_SAV)" ]; then \
-	  view="-a $(GTKWAVE_USER_SAV)"; \
-	elif [ -n "$(WAVEDISP_GTKWAVE_SAV)" ]; then \
+	if [ -n "$(WAVEDISP_GTKWAVE_SAV)" ]; then \
 	  if $(MAKE) --no-print-directory $(WAVEDISP_GTKWAVE_SAV); then \
 	    view="-a $(WAVEDISP_GTKWAVE_SAV)"; \
 	  else \
@@ -186,23 +185,6 @@ trace.gtkwave: sim.iverilog
 # signal is missing, which is what a port rename produces -- refusing to
 # open the viewer there would withhold the waveform exactly when it is
 # needed to understand the rename.
-# Making the first hand-written save file, which is the one fragile step:
-# with no <testbench>.sav yet, gtkwave is bound to the generated one, so
-# File > Write Save File lands there and the next trace regenerates over
-# it. Arrange the window, save from the gui, then run this before tracing
-# again. Afterwards gtkwave binds to <testbench>.sav directly and saving
-# from the gui just works, which is why this only ever needs running once
-# per testbench.
-keep.gtkwave:
-	@if [ -n "$(GTKWAVE_USER_SAV)" ]; then \
-	  echo "$(GTKWAVE_USER_SAV) already exists; gtkwave saves into it directly, nothing to promote"; \
-	elif [ -f "$(WAVEDISP_GTKWAVE_SAV)" ]; then \
-	  cp $(WAVEDISP_GTKWAVE_SAV) $(TESTBENCH_MODULE).sav; \
-	  echo "$(TESTBENCH_MODULE).sav written -- git add it, and trace.gtkwave will use it from now on"; \
-	else \
-	  echo "nothing to promote: run make trace.gtkwave first"; exit 1; \
-	fi
-
 trace.surfer: sim.iverilog
 	$(if $(WAVEDISP_SURFER_FILE),$(MAKE) $(WAVEDISP_SURFER_FILE) WAVEDISP_DUMP=$(DUMP_FILE) \
 	    || $(MAKE) $(WAVEDISP_SURFER_FILE))
