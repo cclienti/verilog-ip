@@ -26,8 +26,19 @@ sim.modelsim: build.modelsim
 # The gui run is this vendor's viewer, so it is named like the others:
 # `trace` is what you type when you want to look at waveforms, whichever
 # tool draws them.
-trace.modelsim: build.modelsim $(WAVEDISP_MSIM_TCL)
-	$(MODELSIM_VSIM) -do 'do $(WAVEDISP_MSIM_TCL); run -all' \
+#
+# The save script is built from the recipe rather than named as a
+# prerequisite, and guarded on the variable: six project Makefiles include
+# this file before wavedisp.mk, where WAVEDISP_MODELSIM_TCL is still
+# empty, and prerequisites are expanded as the rule is read.
+#
+# The guard also decides the -do string. Without it a project that does
+# not include wavedisp.mk gets `do ; run -all`, a do with no argument.
+MODELSIM_WAVE_DO = $(if $(WAVEDISP_MODELSIM_TCL),do $(WAVEDISP_MODELSIM_TCL);)
+
+trace.modelsim: build.modelsim
+	$(if $(WAVEDISP_MODELSIM_TCL),$(MAKE) $(WAVEDISP_MODELSIM_TCL))
+	$(MODELSIM_VSIM) -do '$(MODELSIM_WAVE_DO) run -all' \
 	    $(VSIM_FLAGS) -coverage $(TESTBENCH_MODULE)
 
 build.modelsim: work.modelsim $(ALL_SOURCE_FILES)
