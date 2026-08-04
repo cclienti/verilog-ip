@@ -1,8 +1,24 @@
 # Generic Modelsim Makefile
 # Copyright (C) 2013 Christophe Clienti - All Rights Reserved
 
-MODELSIM_VLOG      ?= vlog
-MODELSIM_VSIM      ?= vsim
+# Where the tools live. Empty by default, so the bare names go through
+# PATH -- put the bin directory there and nothing else is needed.
+#
+# Otherwise set MODELSIM_BIN_DIR: on the command line, or exported in the
+# environment, which make imports as a variable of the same name, so a
+# line in your shell rc covers every project:
+#
+#   export MODELSIM_BIN_DIR=$HOME/intelFPGA/20.1/modelsim_ase/bin
+#
+# Each tool stays overridable on its own, for an install that mixes them
+# or wraps one in a script.
+MODELSIM_BIN_DIR   ?=
+MODELSIM_PREFIX     = $(if $(MODELSIM_BIN_DIR),$(MODELSIM_BIN_DIR:/=)/)
+
+MODELSIM_VLIB      ?= $(MODELSIM_PREFIX)vlib
+MODELSIM_VMAP      ?= $(MODELSIM_PREFIX)vmap
+MODELSIM_VLOG      ?= $(MODELSIM_PREFIX)vlog
+MODELSIM_VSIM      ?= $(MODELSIM_PREFIX)vsim
 
 # Code coverage is off by default because the free edition is not
 # licensed for it: vsim answers "This product is not licensed for Code
@@ -62,8 +78,8 @@ build-post-syn.modelsim: work.modelsim $(POST_SYNTH_FILE) $(ALL_TEST_FILES)
 	$(MODELSIM_VLOG) $(VLOG_FLAGS) $(POST_SYNTH_FILE) $(ALL_TEST_FILES)
 
 work.modelsim:
-	vlib work
-	vmap work work
+	$(MODELSIM_VLIB) work
+	$(MODELSIM_VMAP) work work
 
 clean:: clean.modelsim
 
