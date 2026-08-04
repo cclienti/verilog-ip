@@ -41,6 +41,12 @@ doc/logo/*png
 # Dumps from before the switch to FST, and other simulators' output.
 **/project/*.vcd
 **/project/*_tb
+# A project with several testbenches names them <module>_tb2 and up, and
+# a gitignore pattern must match the whole name -- *_tb ends there, so
+# those escaped it. hynoc_router_5p builds four, 0.5 to 1.4 MB each.
+# Bounded to a single digit so the tracked <testbench>.sav views, and any
+# other suffixed source, stay visible.
+**/project/*_tb[0-9]
 **/project/*_postsyn
 
 ##################
