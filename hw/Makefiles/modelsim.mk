@@ -4,8 +4,20 @@
 MODELSIM_VLOG      ?= vlog
 MODELSIM_VSIM      ?= vsim
 
-VLOG_FLAGS         += -lint +cover $(foreach DIR,$(ALL_TOP_FILES),+incdir+$(dir $(DIR)))
-VSIM_FLAGS         += -t ps + $(foreach PARAM,$(TESTBENCH_PARAMS),-G $(PARAM))
+# Code coverage is off by default because the free edition is not
+# licensed for it: vsim answers "This product is not licensed for Code
+# Coverage" and refuses to load the design, so trace.modelsim could never
+# run on a ModelSim ASE install. vlog accepts +cover there without
+# complaint, which is why the failure only ever showed at simulation.
+# Set to 1 on an edition that carries the licence.
+MODELSIM_COVERAGE  ?= 0
+MODELSIM_COVER_VLOG = $(if $(filter 1,$(MODELSIM_COVERAGE)),+cover)
+MODELSIM_COVER_VSIM = $(if $(filter 1,$(MODELSIM_COVERAGE)),-coverage)
+
+# The bare `+` that used to sit after -t ps was passed straight through to
+# vsim, which took it for an empty plusarg and ignored it.
+VLOG_FLAGS         += -lint $(MODELSIM_COVER_VLOG) $(foreach DIR,$(ALL_TOP_FILES),+incdir+$(dir $(DIR)))
+VSIM_FLAGS         += -t ps $(foreach PARAM,$(TESTBENCH_PARAMS),-G $(PARAM))
 
 GTKWAVE            ?= gtkwave
 VCD_FILE           ?= $(TESTBENCH_MODULE).vcd
@@ -39,7 +51,7 @@ MODELSIM_WAVE_DO = $(if $(WAVEDISP_MODELSIM_TCL),do $(WAVEDISP_MODELSIM_TCL);)
 trace.modelsim: build.modelsim
 	$(if $(WAVEDISP_MODELSIM_TCL),$(MAKE) $(WAVEDISP_MODELSIM_TCL))
 	$(MODELSIM_VSIM) -do '$(MODELSIM_WAVE_DO) run -all' \
-	    $(VSIM_FLAGS) -coverage $(TESTBENCH_MODULE)
+	    $(VSIM_FLAGS) $(MODELSIM_COVER_VSIM) $(TESTBENCH_MODULE)
 
 build.modelsim: work.modelsim $(ALL_SOURCE_FILES)
 	$(MODELSIM_VLOG) $(VLOG_FLAGS) $(ALL_SOURCE_FILES)
