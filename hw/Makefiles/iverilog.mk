@@ -225,18 +225,11 @@ check@%:
 # let "FAIL: 3 error(s) found" through and reported success. No passing
 # testbench prints either word.
 # A bench that prints no verdict is not verified: inferring success from
-# the absence of the word "error" passes a design that never ran. The five
-# hynoc benches print nothing of their own and end on a fixed `#8000
+# the absence of the word "error" passes a design that never ran. The
+# hynoc benches printed nothing of their own and ended on a fixed `#8000
 # $finish`, so a router dropping every packet reported green -- the
-# readers never reached the checks that would have complained.
-#
-# 26 of the 34 benches that build are in that state, so the missing
-# verdict is reported and does not fail the run: a gate that is red
-# everywhere gets switched off, and then nothing is checked at all.
-# CHECK_REQUIRE_VERDICT=1 makes it fail, which is where this belongs once
-# the benches carry one -- CLAUDE.md has always required it.
-CHECK_REQUIRE_VERDICT ?= 0
-
+# readers never reached the checks that would have complained. A missing
+# verdict is therefore a failure, as CLAUDE.md has always required.
 check-one.iverilog: $(TESTBENCH_MODULE)
 	@out=$$(IVERILOG_DUMPER=none $(VVP) ./$< 2>&1); status=$$?; \
 	echo "$$out"; \
@@ -244,8 +237,7 @@ check-one.iverilog: $(TESTBENCH_MODULE)
 	  echo "$(TESTBENCH_MODULE): FAILED"; exit 1; fi; \
 	if ! echo "$$out" | grep -qiE 'ALL TESTS PASSED|PASS:'; then \
 	  echo "$(TESTBENCH_MODULE): NO VERDICT - reported neither success nor failure"; \
-	  if [ "$(CHECK_REQUIRE_VERDICT)" = "1" ]; then exit 1; fi; \
-	fi
+	  exit 1; fi
 
 $(DUMP_FILE): $(TESTBENCH_MODULE)
 	$(VVP) ./$<
