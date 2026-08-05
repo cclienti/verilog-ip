@@ -64,34 +64,21 @@ HELP_ENTRIES += 'work.modelsim|map the work library'
 sim.modelsim: build.modelsim
 	$(MODELSIM_VSIM) -c -do 'run -all' $(VSIM_FLAGS) $(TESTBENCH_MODULE)
 
-# The same generated view as the iverilog trace targets, built from the
-# VCD this flow just wrote. wavedisp is invoked directly rather than
-# through its make rule: that rule depends on sim.iverilog and reads
-# $(DUMP_FILE), and overriding the latter to the VCD would have vvp
-# write FST content into a file named .vcd -- the exact name/content
-# disagreement the dump handling exists to prevent.
-#
-# A failed generation must not cost the viewer: on a mismatch the check
-# reports and gtkwave falls back to the tcl script, which names no dump
-# and always loads.
+# The view here is the tcl script, not the save file the iverilog trace
+# uses: the save file names its rows from the dump, and vsim bit-blasts
+# instance ports in its VCD -- dia becomes 32 one-bit variables -- so
+# those names never resolve as vectors. A tcl script names no dump and
+# loads regardless. The dump is not passed to wavedisp for the same
+# reason: validation against a bit-blasted VCD fails on every instance
+# port.
 trace.modelsim-gtkwave: build.modelsim
 	$(MODELSIM_VSIM) -c -do '$(MODELSIM_VCD_DO) run -all; quit -f' $(VSIM_FLAGS) $(TESTBENCH_MODULE)
-	@view=""; \
-	if [ -n "$(WAVEDISP_GTKWAVE_SAV)" ]; then \
-	  $(MAKE) --no-print-directory venv.wavedisp >/dev/null; \
-	  if $(WAVEDISP_BIN) -D $(VCD_FILE) -t gtkwave-savefile -o $(WAVEDISP_GTKWAVE_SAV) $(WAVEDISP_FILE) $(WAVEDISP_KWARGS); then \
-	    view="-a $(WAVEDISP_GTKWAVE_SAV)"; \
-	  else \
-	    echo "$(WAVEDISP_FILE): does not match the dump, opening with the tcl script instead"; \
-	    $(MAKE) --no-print-directory $(WAVEDISP_GTKWAVE_TCL) && view="-S $(WAVEDISP_GTKWAVE_TCL)"; \
-	  fi; \
-	fi; \
-	$(GTKWAVE) $$view $(VCD_FILE)
+	$(if $(WAVEDISP_GTKWAVE_TCL),$(MAKE) $(WAVEDISP_GTKWAVE_TCL))
+	$(GTKWAVE) $(if $(WAVEDISP_GTKWAVE_TCL),-S $(WAVEDISP_GTKWAVE_TCL)) $(VCD_FILE)
 
 trace.modelsim-surfer: build.modelsim
 	$(MODELSIM_VSIM) -c -do '$(MODELSIM_VCD_DO) run -all; quit -f' $(VSIM_FLAGS) $(TESTBENCH_MODULE)
-	$(if $(WAVEDISP_SURFER_FILE),$(MAKE) $(WAVEDISP_SURFER_FILE) WAVEDISP_DUMP=$(VCD_FILE) \
-	    || $(MAKE) $(WAVEDISP_SURFER_FILE))
+	$(if $(WAVEDISP_SURFER_FILE),$(MAKE) $(WAVEDISP_SURFER_FILE))
 	$(SURFER) $(VCD_FILE) $(SURFER_COMMANDS)
 
 # The same verdict rule as check.iverilog, but the failure predicate
