@@ -59,6 +59,8 @@ module rmii_mac_rx_tb;
     // Clock and reset generation
     //----------------------------------------------------------------
 
+    integer errors = 0;
+
     initial begin
         clock     = 0;
         srst      = 1;
@@ -88,7 +90,12 @@ module rmii_mac_rx_tb;
 
     initial begin
         $readmemb("inputs.mem", test_vectors);
-        #40000 $finish;
+        #40000;
+        if (errors == 0)
+          $display("rmii_mac_rx_tb: ALL TESTS PASSED");
+        else
+          $display("rmii_mac_rx_tb: %0d ERROR(S)", errors);
+        $finish;
     end
 
     always_ff @(posedge clock) begin
@@ -133,20 +140,22 @@ module rmii_mac_rx_tb;
     // Check outputs
     //----------------------------------------------------------------
     initial begin
-        #9820 assert (axi_tvalid == 1'b1 && axi_tlast == 1'b1 && axi_tuser == 1'b0) else $error("Test 1 Failed");
+        #9820 assert (axi_tvalid == 1'b1 && axi_tlast == 1'b1 && axi_tuser == 1'b0) else begin errors = errors + 1; $error("Test 1 Failed"); end
     end
     initial begin
-        #14090 assert (axi_tvalid == 1'b1 && axi_tlast == 1'b1 && axi_tuser == 1'b1) else $error("Test 2 Failed");
+        #14090 assert (axi_tvalid == 1'b1 && axi_tlast == 1'b1 && axi_tuser == 1'b1) else begin errors = errors + 1; $error("Test 2 Failed"); end
     end
     initial begin
-        #20590 assert (axi_tvalid == 1'b1 && axi_tlast == 1'b1 && axi_tuser == 1'b1 && axi_tready == 1'b0) else $error("Test 3 Failed");
-        #20 assert (axi_tvalid == 1'b1 && axi_tlast == 1'b1 && axi_tuser == 1'b1 && axi_tready == 1'b1) else $error("Test 4 Failed");
+        #20590 assert (axi_tvalid == 1'b1 && axi_tlast == 1'b1 && axi_tuser == 1'b1 && axi_tready == 1'b0) else begin errors = errors + 1; $error("Test 3 Failed"); end
+        #20 assert (axi_tvalid == 1'b1 && axi_tlast == 1'b1 && axi_tuser == 1'b1 && axi_tready == 1'b1) else begin errors = errors + 1; $error("Test 4 Failed"); end
     end
     initial begin
-        #39230 assert (axi_tvalid == 1'b1 && axi_tlast == 1'b1 && axi_tuser == 1'b0) else $error("Test 5 Failed -> Error");
+        #39230 assert (axi_tvalid == 1'b1 && axi_tlast == 1'b1 && axi_tuser == 1'b0) else begin errors = errors + 1; $error("Test 5 Failed -> Error"); end
     end
 
-    logic [1:0] rxd_delay[2:0];
+    // [3:0], not [2:0]: the shift below writes rxd_delay[3], which was
+    // out of bounds and silently ignored.
+    logic [1:0] rxd_delay[3:0];
     logic [1:0] rxd_delay_value;
     always_ff @(posedge clock) begin
         rxd_delay[0] <= rxd;
@@ -158,7 +167,8 @@ module rmii_mac_rx_tb;
     assign rxd_delay_value = rxd_delay[2];
 
     always @(posedge clock) begin
-        if (rxd_delay_value != axi_tdata && axi_tvalid == 1'b1) begin
+        if (rxd_delay_value !== axi_tdata && axi_tvalid == 1'b1) begin
+            errors = errors + 1;
             $display("Mismatch at time %t: rxd_delay = %b, axi_tdata = %b", $time, rxd_delay_value, axi_tdata);
             $error("Test 6 Failed -> Data Mismatch");
         end
