@@ -124,7 +124,18 @@ module shmemif_tb();
    endgenerate
 `endif
 
+   // This loop used to print the memory and compare nothing -- 4096
+   // lines to eyeball, sliced to ADDR_WIDTH bits, which is exactly the
+   // window that made the content look right. Each interface starts at
+   // quadrant*1024 with datain equal to the address, but interfaces 1-3
+   // stop at absolute address 1023: they wrap through the whole space
+   // and sweep quadrant 0 again with data offset by 4096. All three
+   // carry the same value there, so the final state is deterministic
+   // whatever the arbitration order: ram[a] is a+4096 below 1024 and a
+   // above. The 12-bit slice of the old print folded a+4096 back onto a,
+   // which is why the dump always looked clean.
    integer x1,x2,x3,x4;
+   integer errors = 0;
    initial begin
       #50000;
       for(j=0; j<=ARRAY_BOUND; j=j+1) begin
@@ -133,12 +144,27 @@ module shmemif_tb();
          x3 = x2 + (2**ADDR_WIDTH)/4;
          x4 = x3 + (2**ADDR_WIDTH)/4;
 
-         $display("ram[%d]: %d \t ram[%0d]: %d \t ram[%d]: %d \t ram[%d]: %d",
-                  x1[ADDR_WIDTH-1:0], dpmemrf_inst.ram[x1][ADDR_WIDTH-1:0],
-                  x2[ADDR_WIDTH-1:0], dpmemrf_inst.ram[x2][ADDR_WIDTH-1:0],
-                  x3[ADDR_WIDTH-1:0], dpmemrf_inst.ram[x3][ADDR_WIDTH-1:0],
-                  x4[ADDR_WIDTH-1:0], dpmemrf_inst.ram[x4][ADDR_WIDTH-1:0]);
+         if (dpmemrf_inst.ram[x1] !== x1 + 4096) begin
+            errors = errors + 1;
+            $display("Error: ram[%0d] = %0d (expected %0d)", x1, dpmemrf_inst.ram[x1], x1 + 4096);
+         end
+         if (dpmemrf_inst.ram[x2] !== x2) begin
+            errors = errors + 1;
+            $display("Error: ram[%0d] = %0d (expected %0d)", x2, dpmemrf_inst.ram[x2], x2);
+         end
+         if (dpmemrf_inst.ram[x3] !== x3) begin
+            errors = errors + 1;
+            $display("Error: ram[%0d] = %0d (expected %0d)", x3, dpmemrf_inst.ram[x3], x3);
+         end
+         if (dpmemrf_inst.ram[x4] !== x4) begin
+            errors = errors + 1;
+            $display("Error: ram[%0d] = %0d (expected %0d)", x4, dpmemrf_inst.ram[x4], x4);
+         end
       end
+      if (errors == 0)
+        $display("shmemif_tb: ALL TESTS PASSED (%0d words)", 2**ADDR_WIDTH);
+      else
+        $display("shmemif_tb: %0d ERROR(S)", errors);
       $finish;
    end
 

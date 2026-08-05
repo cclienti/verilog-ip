@@ -45,6 +45,7 @@ module dclkfifolut_tb;
 
    // counter
    integer                  rcpt, wcpt;
+   integer                  errors = 0;
 
    //----------------------------------------------------------------
    // DUT
@@ -99,8 +100,8 @@ module dclkfifolut_tb;
    //----------------------------------------------------------------
    // Test vectors
    //----------------------------------------------------------------
-   initial
-     #1000 $finish;
+   // The verdict lives at the end of the module: it reads rcheck_ptr,
+   // declared with the checker below.
 
    always @(posedge rclk)
      if(rsrst) begin
@@ -218,6 +219,7 @@ module dclkfifolut_tb;
          $write("rcpt(%0d) rdata(h'%0h) ref(h'%0h)", rcpt, rdata, rcheck_data);
 
          if (rcheck_data !== rdata) begin
+            errors = errors + 1;
             $display(" -> Error");
          end
          else begin
@@ -225,6 +227,19 @@ module dclkfifolut_tb;
          end
 
       end
+   end
+
+   initial begin
+      #1000;
+     if (rcheck_ptr == 0) begin
+        $display("dclkfifolut_tb: NO DATA - nothing was ever read back");
+        $display("dclkfifolut_tb: 1 ERROR(S)");
+     end
+     else if (errors == 0)
+       $display("dclkfifolut_tb: ALL TESTS PASSED (%0d words)", rcheck_ptr);
+     else
+       $display("dclkfifolut_tb: %0d ERROR(S)", errors);
+     $finish;
    end
 
 endmodule
