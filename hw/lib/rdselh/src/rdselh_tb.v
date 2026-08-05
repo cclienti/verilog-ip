@@ -45,6 +45,7 @@ module rdselh_tb();
    // Test Vectors
    //----------------------------------------------
    integer    cpt;
+   integer    errors = 0;
    reg [31:0] out_ref;
 
    initial begin
@@ -89,7 +90,13 @@ module rdselh_tb();
             out_ref   <= 32'h0000788E;
          end
 
-         5: $finish;
+         5: begin
+            if (errors == 0)
+              $display("rdselh_tb: ALL TESTS PASSED");
+            else
+              $display("rdselh_tb: %0d ERROR(S)", errors);
+            $finish;
+         end
       endcase
    end
 
@@ -100,6 +107,7 @@ module rdselh_tb();
       $write("cpt(%0d) out(32'h%08h) out_ref(32'h%08h)", cpt, out, out_ref);
 
       if (out !== out_ref) begin
+         errors = errors + 1;
          $display(" -> Error");
       end
       else begin

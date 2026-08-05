@@ -80,6 +80,7 @@ module simple_uart_tb;
 
    reg [7:0] pattern_ref [0:255];
    integer send_pattern_idx = 0;
+   integer errors = 0;
    integer recv_pattern_idx = 0;
 
    // Send the stream on the RX pin of the simple_uart module.
@@ -130,10 +131,12 @@ module simple_uart_tb;
          // Detect stop bit
          for (cnt=0; cnt<BAUD_COUNTER_MAX-1; cnt=cnt+1) @(posedge clock);
          if (tx_bit == 1'b0) begin
+            errors = errors + 1;
             $display("Error: bad stop bit at %0t", $time);
          end
 
          if (value !== pattern_ref[recv_pattern_idx]) begin
+            errors = errors + 1;
             $display("Error: bad received value (0x%02h), reference (0x%02h)",
                      value, pattern_ref[recv_pattern_idx]);
          end
@@ -178,7 +181,16 @@ module simple_uart_tb;
          send(pattern[7:0]);
       end
 
-      #100000 $finish;
+      #100000;
+      if (recv_pattern_idx == 0) begin
+         $display("simple_uart_tb: NO DATA - nothing was ever received");
+         $display("simple_uart_tb: 1 ERROR(S)");
+      end
+      else if (errors == 0)
+        $display("simple_uart_tb: ALL TESTS PASSED (%0d frames)", recv_pattern_idx);
+      else
+        $display("simple_uart_tb: %0d ERROR(S)", errors);
+      $finish;
    end
 
    // Receive process

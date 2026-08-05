@@ -1,17 +1,18 @@
-// SPDX-License-Identifier: CERN-OHL-P-2.0
-// Copyright (c) 2013-2026 Christophe Clienti
-//
-// This source describes Open Hardware and is licensed under the CERN-OHL-P v2.
-// You may redistribute and modify this file under the terms of the CERN-OHL-P v2
-// (https://ohwr.org/cern_ohl_p_v2.txt).
-//
-// This source is distributed WITHOUT ANY EXPRESS OR IMPLIED WARRANTY, INCLUDING
-// OF MERCHANTABILITY, SATISFACTORY QUALITY AND FITNESS FOR A PARTICULAR PURPOSE.
-// Please see the CERN-OHL-P v2 for applicable conditions.
-
-
-
-
+//-----------------------------------------------------------------------------
+// Title         : RMII MAC Receiver (Fast Ethernet)
+//-----------------------------------------------------------------------------
+// File          : rmii_mac_rx_tb.sv
+// Author        : Christophe Clienti <cclienti@wavecruncher.net>
+// Created       : 2025-07-28
+// Last modified : 2025-07-28
+//-----------------------------------------------------------------------------
+// Description :
+// Testbench of the RMII MAC Receiver module.
+//-----------------------------------------------------------------------------
+// Copyright (c) 2025 by Christophe Clienti. This model is the confidential and
+// proprietary property of Christophe Clienti and the possession or use of this
+// file requires a written license from Christophe Clienti.
+//------------------------------------------------------------------------------
 
 
 `timescale 1 ns / 100 ps
@@ -21,6 +22,7 @@ module rmii_mac_rx_tb;
     // Constants
     //----------------------------------------------------------------
     localparam int C_NUM_TEST_VECTORS = 490; // Number of test vectors
+
     //----------------------------------------------------------------
     // Signals
     //----------------------------------------------------------------
@@ -66,6 +68,14 @@ module rmii_mac_rx_tb;
     always
         #10 clock = !clock;
 
+    //----------------------------------------------
+    // Value Change Dump
+    //----------------------------------------------
+    initial  begin
+        $dumpfile ("rmii_mac_rx_tb.vcd");
+        $dumpvars;
+    end
+
     //----------------------------------------------------------------
     // Checks
     //----------------------------------------------------------------
@@ -78,10 +88,10 @@ module rmii_mac_rx_tb;
 
     initial begin
         $readmemb("inputs.mem", test_vectors);
-        #50000 $finish;
+        #40000 $finish;
     end
 
-    always @(posedge clock) begin
+    always_ff @(posedge clock) begin
         if(srst == 1'b1) begin
             cpt <= 0;
             cpt_mod <= 0;
@@ -108,15 +118,50 @@ module rmii_mac_rx_tb;
     end
 
     //----------------------------------------------------------------
-    // Optional: simulate AXI backpressure
-    //----------------------------------------------------------------
     // Simulate a brief AXI backpressure to trigger ERROR or DROP
-    always @(posedge clock) begin
-        if (cpt >= 700 && cpt < 701) begin
+    //----------------------------------------------------------------
+    always_ff @(posedge clock) begin
+        if (cpt == 700 || cpt == 1025 || cpt == 1026) begin
             axi_tready <= 0;
         end
         else begin
             axi_tready <= 1;
         end
     end
+
+    //----------------------------------------------------------------
+    // Check outputs
+    //----------------------------------------------------------------
+    initial begin
+        #9820 assert (axi_tvalid == 1'b1 && axi_tlast == 1'b1 && axi_tuser == 1'b0) else $error("Test 1 Failed");
+    end
+    initial begin
+        #14090 assert (axi_tvalid == 1'b1 && axi_tlast == 1'b1 && axi_tuser == 1'b1) else $error("Test 2 Failed");
+    end
+    initial begin
+        #20590 assert (axi_tvalid == 1'b1 && axi_tlast == 1'b1 && axi_tuser == 1'b1 && axi_tready == 1'b0) else $error("Test 3 Failed");
+        #20 assert (axi_tvalid == 1'b1 && axi_tlast == 1'b1 && axi_tuser == 1'b1 && axi_tready == 1'b1) else $error("Test 4 Failed");
+    end
+    initial begin
+        #39230 assert (axi_tvalid == 1'b1 && axi_tlast == 1'b1 && axi_tuser == 1'b0) else $error("Test 5 Failed -> Error");
+    end
+
+    logic [1:0] rxd_delay[2:0];
+    logic [1:0] rxd_delay_value;
+    always_ff @(posedge clock) begin
+        rxd_delay[0] <= rxd;
+        rxd_delay[1] <= rxd_delay[0];
+        rxd_delay[2] <= rxd_delay[1];
+        rxd_delay[3] <= rxd_delay[2];
+    end
+
+    assign rxd_delay_value = rxd_delay[2];
+
+    always @(posedge clock) begin
+        if (rxd_delay_value != axi_tdata && axi_tvalid == 1'b1) begin
+            $display("Mismatch at time %t: rxd_delay = %b, axi_tdata = %b", $time, rxd_delay_value, axi_tdata);
+            $error("Test 6 Failed -> Data Mismatch");
+        end
+    end
+
 endmodule

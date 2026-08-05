@@ -45,6 +45,14 @@ module simple_uart_rx
    // Baud Counter
    //---------------------------------------------------------------------------
 
+   // Declared here rather than in the Output section below: the FSM
+   // action block drives rx_value_ready_new, and iverilog requires the
+   // declaration before that use.
+   reg rx_value_ready_new;
+   reg rx_value_ready_trig;
+   reg rx_value_ready_pre1;
+   reg rx_value_ready_pre2;
+
    reg [BAUD_COUNTER_WIDTH-1 : 0] baud_counter;
    reg baud_counter_reset;
    reg baud_counter_max_new;
@@ -324,10 +332,6 @@ module simple_uart_rx
    // Output
    //---------------------------------------------------------------------------
 
-   reg rx_value_ready_new;
-   reg rx_value_ready_trig;
-   reg rx_value_ready_pre1;
-   reg rx_value_ready_pre2;
 
    always @(posedge clock) begin
       if (srst == 1'b1) begin

@@ -8,10 +8,9 @@ TESTBENCH_MODULE  ?= rdselh_tb
 TESTBENCH_FILE    ?= ../src/rdselh_tb.v
 
 
+include ../../../Makefiles/common.mk
 include ../../../Makefiles/wavedisp.mk
 include ../../../Makefiles/iverilog.mk
 include ../../../Makefiles/verilator.mk
 include ../../../Makefiles/modelsim.mk
 include ../../../Makefiles/vivado.mk
-include ../../../Makefiles/yosys.mk
-include ../../../Makefiles/common.mk

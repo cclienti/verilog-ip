@@ -1,16 +1,20 @@
-// SPDX-License-Identifier: CERN-OHL-P-2.0
-// Copyright (c) 2013-2026 Christophe Clienti
-//
-// This source describes Open Hardware and is licensed under the CERN-OHL-P v2.
-// You may redistribute and modify this file under the terms of the CERN-OHL-P v2
-// (https://ohwr.org/cern_ohl_p_v2.txt).
-//
-// This source is distributed WITHOUT ANY EXPRESS OR IMPLIED WARRANTY, INCLUDING
-// OF MERCHANTABILITY, SATISFACTORY QUALITY AND FITNESS FOR A PARTICULAR PURPOSE.
-// Please see the CERN-OHL-P v2 for applicable conditions.
-
-
-
+//-----------------------------------------------------------------------------
+// Title         : RMII MAC Receiver (Fast Ethernet)
+//-----------------------------------------------------------------------------
+// File          : rmii_mac_rx.sv
+// Author        : Christophe Clienti <cclienti@wavecruncher.net>
+// Created       : 2025-07-28
+// Last modified : 2025/08/05
+//-----------------------------------------------------------------------------
+// Description: This module implements a simple RMII MAC receiver for Fast
+// Ethernet. It receives data from the PHY and outputs Ethernet frame as a AXI
+// stream data. The preamble and SFD are not sent to the AXI stream, only the
+// payload is.
+//-----------------------------------------------------------------------------
+// Copyright (c) 2025 by Christophe Clienti. This model is the confidential and
+// proprietary property of Christophe Clienti and the possession or use of this
+// file requires a written license from Christophe Clienti.
+//------------------------------------------------------------------------------
 
 `timescale 1 ns / 100 ps
 
@@ -67,7 +71,7 @@ module rmii_mac_rx (
     logic sfd_detected;
     // Should be 0xD5 but we want also to detect 0xD6 to handle the
     // case where the PHY sends a 0xD6 instead of 0xD5.
-    always_ff @(posedge clock or posedge srst) begin
+    always_ff @(posedge clock) begin
         if (srst) begin
             sfd_detected <= 1'b0;
         end else begin
@@ -86,7 +90,7 @@ module rmii_mac_rx (
         IDLE, START, DATA, LAST, ERROR, DROP
     } state, next_state;
 
-    always_ff @(posedge clock or posedge srst) begin
+    always_ff @(posedge clock) begin
         if (srst) begin
             state <= IDLE;
         end else begin
