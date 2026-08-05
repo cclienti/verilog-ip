@@ -32,6 +32,7 @@ module dpmemwf_tb();
 
    integer          cpta = 0;
    integer          cptb = 0;
+   integer          errors = 0;
 
 
    dpmemwf #(.DEPTH(DEPTH), .WIDTH(WIDTH),
@@ -65,15 +66,24 @@ module dpmemwf_tb();
       cptb <= cptb + 1;
    end
 
+   // The case-0 arms of the stimulus below never executed: the
+   // counters start at 0 and always @(counter) waits for a change, so
+   // the first arm to run is 1. The enables therefore stayed X for the
+   // whole simulation, the DUT never wrote, and every checked output
+   // was X -- which the old != comparisons reported as Ok.
+   initial begin
+      ena   = 1;
+      wea   = 0;
+      dia   = 0;
+      addra = 0;
+      enb   = 1;
+      web   = 0;
+      dib   = 0;
+      addrb = 0;
+   end
+
    always @ (cpta) begin
       case (cpta)
-        0: begin
-           ena = 1;
-           wea = 0;
-           dia = 0;
-           addra = 0;
-        end
-
         1: begin
            wea = 1;
            dia = 32'h11223344;
@@ -99,6 +109,10 @@ module dpmemwf_tb();
         end
 
          10: begin
+            if (errors == 0)
+              $display("dpmemwf_tb: ALL TESTS PASSED");
+            else
+              $display("dpmemwf_tb: %0d ERROR(S)", errors);
             $finish;
          end
       endcase
@@ -106,13 +120,6 @@ module dpmemwf_tb();
 
    always @ (cptb) begin
       case (cptb)
-        0: begin
-           enb = 1;
-           web = 0;
-           dib = 0;
-           addrb = 0;
-        end
-
         3: begin
            web = 1;
            dib = 32'hCAFEDECA;
@@ -133,19 +140,22 @@ module dpmemwf_tb();
    always @ (posedge clka) begin
       case (cpta)
          3: begin
-            if (doa != 32'h11223344) begin
+            if (doa !== 32'h11223344) begin
+               errors = errors + 1;
                $display("Error: cpta(%0d) doa(32'h%08h) ref(32'h11223344)", cpta, doa);
             end
          end
 
          4, 5: begin
-            if (doa != 32'h55667788) begin
+            if (doa !== 32'h55667788) begin
+               errors = errors + 1;
                $display("Error: cpta(%0d) doa(32'h%08h) ref(32'h55667788)", cpta, doa);
             end
          end
 
          6: begin
-            if (doa != 32'hCAFEDECA) begin
+            if (doa !== 32'hCAFEDECA) begin
+               errors = errors + 1;
                $display("Error: cpta(%0d) doa(32'h%08h) ref(32'hCAFEDECA)", cpta, doa);
             end
          end
@@ -155,7 +165,8 @@ module dpmemwf_tb();
    always @ (posedge clkb) begin
       case (cptb)
          4: begin
-            if (dob != 32'hCAFEDECA) begin
+            if (dob !== 32'hCAFEDECA) begin
+               errors = errors + 1;
                $display("Error: cptb(%0d) dob(32'h%08h) ref(32'hCAFEDECA)", cptb, dob);
             end
          end

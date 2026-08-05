@@ -61,6 +61,7 @@ module prra_lut_tb();
    // Test vectors
    //----------------------------------------------------------------
    integer cpt;
+   integer errors = 0;
 
    initial begin
       request = 0;
@@ -71,6 +72,10 @@ module prra_lut_tb();
       cpt <= cpt + 1;
       request <= request + 1;
       if (cpt == 16) begin
+         if (errors == 0)
+           $display("prra_lut_tb: ALL TESTS PASSED");
+         else
+           $display("prra_lut_tb: %0d ERROR(S)", errors);
          $finish;
       end
    end
@@ -103,7 +108,8 @@ module prra_lut_tb();
 
    always @(posedge clk) begin
       $write("request(%04b) state(%04b) ref(%04b)", request, state, state_ref);
-      if (state != state_ref) begin
+      if (state !== state_ref) begin
+         errors = errors + 1;
          $display(" -> Error");
       end
       else begin

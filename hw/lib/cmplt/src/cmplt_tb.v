@@ -144,7 +144,7 @@ module cmplt_tb () ;
          $write("cpt(%0d) signed(%0d) a(%0d) < b(%0d) = out(%0d) # out_ref(%0d)",
                 cpt, is_signed, a, b, out, out_ref);
       end
-      if (out != out_ref) begin
+      if (out !== out_ref) begin
          errors = errors + 1;
          $display(" -> Error");
       end

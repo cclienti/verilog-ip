@@ -217,7 +217,7 @@ module dclkfifolut_tb;
 
          $write("rcpt(%0d) rdata(h'%0h) ref(h'%0h)", rcpt, rdata, rcheck_data);
 
-         if (rcheck_data != rdata) begin
+         if (rcheck_data !== rdata) begin
             $display(" -> Error");
          end
          else begin

@@ -107,7 +107,9 @@ module smalldiv_test #(parameter DIVIDER_VALUE         = 5,
 
    wire [DIVIDEND_WIDTH-1:0] quotient_ref = dividend_delayed[0] / DIVIDER_VALUE;
    wire [DIVIDER_WIDTH-1:0] remainder_ref = dividend_delayed[0] % DIVIDER_VALUE;
-   wire test_ok = (quotient_ref == quotient) && (remainder_ref == remainder);
+   // Case equality: with ==, an X on either output compares as "maybe
+   // equal" and the bench prints nothing -- an undriven DUT passed.
+   wire test_ok = (quotient_ref === quotient) && (remainder_ref === remainder);
 
    always @(posedge clock) begin
       if (enable) begin

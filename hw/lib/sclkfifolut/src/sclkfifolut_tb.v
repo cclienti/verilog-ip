@@ -44,6 +44,7 @@ module sclkfifolut_tb;
 
    // counter
    integer                  cpt;
+   integer                  errors = 0;
 
    //----------------------------------------------------------------
    // DUT
@@ -176,6 +177,8 @@ module sclkfifolut_tb;
         if (level !== level_check) begin
            $display("Error: %m: bad 'level' at cpt=%3d", cpt-1);
            $display("  --> obtained 0x%08X instead of 0x%08X", level, level_check);
+           errors = errors + 1;
+           $display("sclkfifolut_tb: %0d ERROR(S)", errors);
            $finish;
         end
         else begin
@@ -191,6 +194,8 @@ module sclkfifolut_tb;
         if (rdata_reg !== rdata_check) begin
            $display("%m: Error: bad 'rdata' at cpt=%3d", cpt-1);
            $display("  --> obtained 0x%08X instead of 0x%08X", rdata_reg, rdata_check);
+           errors = errors + 1;
+           $display("sclkfifolut_tb: %0d ERROR(S)", errors);
            $finish;
         end
         else begin
@@ -249,6 +254,10 @@ module sclkfifolut_tb;
          wdata     <= cpt;
       end
       else if (cpt>40) begin
+         if (errors == 0)
+           $display("sclkfifolut_tb: ALL TESTS PASSED");
+         else
+           $display("sclkfifolut_tb: %0d ERROR(S)", errors);
          $finish;
       end
       else begin
@@ -291,6 +300,8 @@ module sclkfifolut_tb;
            $display("%m: Error: OUTPUT_REG=1 flags differ at cpt=%3d", cpt-1);
            $display("  --> level %0d/%0d rempty %b/%b wfull %b/%b (reg/fwft)",
                     level_reg, level, rempty_reg, rempty, wfull_reg, wfull);
+           errors = errors + 1;
+           $display("sclkfifolut_tb: %0d ERROR(S)", errors);
            $finish;
         end
 
@@ -302,6 +313,8 @@ module sclkfifolut_tb;
         if (rdata_reg !== rdata_reg_check) begin
            $display("%m: Error: bad registered 'rdata' at cpt=%3d", cpt-1);
            $display("  --> obtained 0x%08X instead of 0x%08X", rdata_reg, rdata_reg_check);
+           errors = errors + 1;
+           $display("sclkfifolut_tb: %0d ERROR(S)", errors);
            $finish;
         end
         else begin

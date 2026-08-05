@@ -133,7 +133,7 @@ module simple_uart_tb;
             $display("Error: bad stop bit at %0t", $time);
          end
 
-         if (value != pattern_ref[recv_pattern_idx]) begin
+         if (value !== pattern_ref[recv_pattern_idx]) begin
             $display("Error: bad received value (0x%02h), reference (0x%02h)",
                      value, pattern_ref[recv_pattern_idx]);
          end

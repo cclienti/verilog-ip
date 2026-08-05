@@ -159,11 +159,11 @@ module adderc_tb () ;
    //-------------------------------------------------
 
    always @ (cpt) begin
-      if (out != out_ref) begin
+      if (out !== out_ref) begin
          errors = errors + 1;
          $display("Error at cpt(%0d), out=%0d, out_ref=%0d", cpt, out, out_ref_i);
       end
-      if (cout != cout_ref) begin
+      if (cout !== cout_ref) begin
          errors = errors + 1;
          $display("Error at cpt(%0d), cout=%0d, cout_ref=%0d", cpt, cout, cout_ref_i);
       end

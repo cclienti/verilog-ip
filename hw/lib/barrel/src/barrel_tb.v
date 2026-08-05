@@ -151,7 +151,7 @@ module barrel_tb();
    assign ref_out_v = (IS_REG_IN == 0) ? ref_out_0 : ref_out_1;
 
    always @(posedge clk) begin
-      if (ref_out_v != out) begin
+      if (ref_out_v !== out) begin
          errors = errors + 1;
          $display("Error: ref is 32'h%08h, obtained 32'h%08h", ref_out_v, out);
       end

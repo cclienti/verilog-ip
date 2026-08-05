@@ -99,7 +99,7 @@ module rdselh_tb();
    always @(posedge clk) begin
       $write("cpt(%0d) out(32'h%08h) out_ref(32'h%08h)", cpt, out, out_ref);
 
-      if (out != out_ref) begin
+      if (out !== out_ref) begin
          $display(" -> Error");
       end
       else begin

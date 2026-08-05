@@ -123,8 +123,11 @@ module prra_tb();
 
    assign grant_check = grant_ref_reg[PIPELINE];
 
+   integer errors = 0;
+
    always @(negedge clk) begin
       if (grant_check !== grant) begin
+         errors = errors + 1;
          $display("Error: %m: bad GRANT signal at cpt=%3d", cpt-1);
          $display("  --> obtained 0x%04X instead of 0x%04X", grant, grant_check);
          //$finish;
@@ -135,8 +138,14 @@ module prra_tb();
    // Test vectors
    //----------------------------------------------------------------
 
-   initial
-     #400 $finish;
+   initial begin
+     #400;
+     if (errors == 0)
+       $display("prra_tb: ALL TESTS PASSED");
+     else
+       $display("prra_tb: %0d ERROR(S)", errors);
+     $finish;
+   end
 
    always @(posedge clk) begin
      if(srst == 1'b1) begin

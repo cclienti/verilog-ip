@@ -34,12 +34,13 @@ module sclkfiforeg_tb;
    wire             wfull;
 
    // ref signals
-   reg [WIDTH-1:0]  rdata_ref [127:0];
    reg [WIDTH-1:0]  rdata_check;
-   integer          rdata_ref_ptr;
+   reg              rdata_check_valid = 0;
+   reg              level_ref = 0;
 
    // counter
-   integer          cpt;
+   integer          cpt = 0;
+   integer          errors = 0;
 
    //----------------------------------------------------------------
    // DUT
@@ -70,11 +71,47 @@ module sclkfiforeg_tb;
    //----------------------------------------------------------------
    // Checks
    //----------------------------------------------------------------
+   // The checker below existed but never ran: cpt was declared and
+   // never incremented, so `cpt > 2` compared X and was always false,
+   // and rdata_check was never assigned. The reference model here is
+   // written from the interface contract, not from the tables in the
+   // DUT: a one-deep fifo is a level bit -- a lone write raises it, a
+   // lone read clears it, write and read together leave it unchanged,
+   // including both strobes hitting an empty fifo, which cancel out.
+   // The datapath contract is that rdata mirrors the written word one
+   // cycle after wen.
    always @(posedge clk) begin
-      if (cpt > 2)
+      cpt <= cpt + 1;
+      rdata_check       <= wdata;
+      rdata_check_valid <= wen && !srst;
+      if (srst) begin
+         level_ref <= 0;
+      end
+      else begin
+         if (wen && !ren)      level_ref <= 1;
+         else if (ren && !wen) level_ref <= 0;
+      end
+   end
+
+   always @(posedge clk) begin
+      if (!srst && cpt > 2) begin
+         if (wfull !== level_ref || rempty !== ~level_ref) begin
+            errors = errors + 1;
+            $display("%m: Error: flags at cpt=%3d: wfull %b (ref %b) rempty %b (ref %b)",
+                     cpt, wfull, level_ref, rempty, ~level_ref);
+            $display("sclkfiforeg_tb: %0d ERROR(S)", errors);
+            $finish;
+         end
+      end
+   end
+
+   always @(posedge clk) begin
+      if (rdata_check_valid)
         if (rdata !== rdata_check) begin
            $display("%m: Error: bad 'rdata' at cpt=%3d", cpt-1);
            $display("  --> obtained 0x%08X instead of 0x%08X", rdata, rdata_check);
+           errors = errors + 1;
+           $display("sclkfiforeg_tb: %0d ERROR(S)", errors);
            $finish;
         end
         else begin
@@ -114,11 +151,22 @@ module sclkfiforeg_tb;
    end
 
    initial begin
-      #10000 $finish;
+      #10000;
+      if (errors == 0)
+        $display("sclkfiforeg_tb: ALL TESTS PASSED");
+      else
+        $display("sclkfiforeg_tb: %0d ERROR(S)", errors);
+      $finish;
    end
 
    always @(*) begin
-      if (wdata > 128) $finish;
+      if (wdata > 128) begin
+         if (errors == 0)
+           $display("sclkfiforeg_tb: ALL TESTS PASSED");
+         else
+           $display("sclkfiforeg_tb: %0d ERROR(S)", errors);
+         $finish;
+      end
    end
 
 endmodule

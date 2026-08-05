@@ -67,7 +67,7 @@ module gray2bin_tb;
    initial begin
       for (idx=0; idx<16; idx=idx+1) begin
          #1 gray = idx;
-         #1 if (bin != ref[idx]) begin
+         #1 if (bin !== ref[idx]) begin
             $display("Error: out=4'b%04b - ref=4'b%04b", bin, ref[idx]);
          end
       end

@@ -116,7 +116,7 @@ module multiplier_tb();
 
    always @(*) begin
       $write("out(h'%0h) out_ref(h'%0h)", out, out_ref);
-      if (out_ref != out) begin
+      if (out_ref !== out) begin
          errors = errors + 1;
          $display(" -> Error");
       end

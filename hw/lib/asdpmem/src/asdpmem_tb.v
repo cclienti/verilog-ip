@@ -26,6 +26,7 @@ module asdpmem_tb();
    wire [WIDTH-1:0] dob;
 
    integer          cpt = 0;
+   integer errors = 0;
 
 
    asdpmem #(.DEPTH(DEPTH), .WIDTH(WIDTH))
@@ -51,16 +52,18 @@ module asdpmem_tb();
       cpt <= cpt + 1;
    end
 
+   // See dpmemwf_tb: the case-0 arm never executed, leaving ena X and
+   // every checked output X. Initialised here instead.
+   initial begin
+      ena   = 1;
+      wea   = 0;
+      dia   = 0;
+      addra = 0;
+      addrb = 1;
+   end
+
    always @ (cpt) begin
       case (cpt)
-         0: begin
-            ena = 1;
-            wea = 0;
-            dia = 0;
-            addra = 0;
-            addrb = 1;
-         end
-
          2: begin
             wea = 1;
             dia = 32'h11223344;
@@ -85,27 +88,38 @@ module asdpmem_tb();
    //----------------------------------------------------------------
    // Reference
    //----------------------------------------------------------------
-   always @ (cpt) begin
+   // Sampled on the falling edge: the stimulus is another always block
+   // triggered by the same cpt event, so checking on @(cpt) raced it --
+   // at cpt==4 the check could read dob before addrb had moved. The X
+   // the old != comparison waved through hid exactly that race.
+   always @ (negedge clka) begin
       case (cpt)
          3: begin
-            if (dob != 32'h11223344) begin
+            if (dob !== 32'h11223344) begin
+               errors = errors + 1;
                $display("Error: dob obtained (32'h%08h) - reference (32'h11223344)", dob);
             end
          end
 
          4: begin
-            if (dob != 32'h55667788) begin
+            if (dob !== 32'h55667788) begin
+               errors = errors + 1;
                $display("Error: dob obtained (32'h%08h) - reference (32'h55667788)", dob);
             end
          end
 
          5: begin
-            if (dob != 32'h55667788) begin
+            if (dob !== 32'h55667788) begin
+               errors = errors + 1;
                $display("Error: dob obtained (32'h%08h) - reference (32'h55667788)", dob);
             end
          end
 
          6: begin
+            if (errors == 0)
+              $display("asdpmem_tb: ALL TESTS PASSED");
+            else
+              $display("asdpmem_tb: %0d ERROR(S)", errors);
             $finish();
          end
       endcase
