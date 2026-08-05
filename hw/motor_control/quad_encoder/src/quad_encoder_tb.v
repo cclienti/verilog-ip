@@ -123,6 +123,7 @@ module quad_encoder_tb;
    end
 
    integer count_ref;
+   integer errors = 0;
 
    task rotate(input reg direction, input reg [SAMPLING_WIDTH-1:0] delay);
       begin
@@ -132,6 +133,7 @@ module quad_encoder_tb;
          count_ref = count_ref + (direction ? 1 : -1);
          $write("count = %0d, count_ref = %0d", count, count_ref / 2);
          if (count != count_ref / 2) begin
+            errors = errors + 1;
             $display(" -> Error");
          end
          else begin
@@ -152,7 +154,12 @@ module quad_encoder_tb;
       count_ref = count_ref - 1;
       repeat(20) rotate(0, 20);
       repeat(20) rotate(0, 40);
-      #100 $finish;
+      #100;
+      if (errors == 0)
+        $display("quad_encoder_tb: ALL TESTS PASSED");
+      else
+        $display("quad_encoder_tb: %0d ERROR(S)", errors);
+      $finish;
    end
 
 endmodule

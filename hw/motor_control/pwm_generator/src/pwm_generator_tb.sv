@@ -62,6 +62,8 @@ module pwm_generator_tb;
    // Helpers
    //----------------------------------------------------------------
 
+   integer errors = 0;
+
    task check_pwm_state(input logic state, input integer expected_period);
       integer counter;
       begin
@@ -71,6 +73,7 @@ module pwm_generator_tb;
          end
          $write("state %0b, measured period = %0d, expected period = %0d", state, counter, expected_period);
          if (counter != expected_period) begin
+            errors = errors + 1;
             $display(" -> Error");
          end
          else begin
@@ -106,7 +109,20 @@ module pwm_generator_tb;
       end
 
       // End
-      #100 $finish;
+      #100;
+      if (errors == 0)
+        $display("pwm_generator_tb: ALL TESTS PASSED");
+      else
+        $display("pwm_generator_tb: %0d ERROR(S)", errors);
+      $finish;
    end
 
+   // The wait loops above spin on pwm_output edges: a dead output used
+   // to hang the bench forever instead of failing it.
+   initial begin
+      #40_000_000;
+      $display("pwm_generator_tb: TIMEOUT - pwm_output never toggled as expected");
+      $display("pwm_generator_tb: 1 ERROR(S)");
+      $finish;
+   end
 endmodule

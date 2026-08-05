@@ -157,6 +157,7 @@ module uart_reg_if_tb;
    //----------------------------------------------------------------
 
    integer cpt;
+   integer errors = 0;
    reg [NUM_BYTES_PER_REG-1:0][7:0] send_value;
    reg [NUM_BYTES_PER_REG-1:0][7:0] read_value;
 
@@ -173,6 +174,7 @@ module uart_reg_if_tb;
             $display("sent value: 0x%04h, read value: 0x%04h --> Ok", send_value, read_value);
          end
          else begin
+            errors = errors + 1;
             $display("sent value: 0x%04h, read value: 0x%04h --> Error", send_value, read_value);
          end
 
@@ -182,7 +184,12 @@ module uart_reg_if_tb;
 
    always @(*) begin
       if (cpt == NUM_REGISTERS) begin
-         #100 $finish();
+         #100;
+         if (errors == 0)
+           $display("uart_reg_if_tb: ALL TESTS PASSED (%0d registers)", NUM_REGISTERS);
+         else
+           $display("uart_reg_if_tb: %0d ERROR(S)", errors);
+         $finish();
       end
    end
 
