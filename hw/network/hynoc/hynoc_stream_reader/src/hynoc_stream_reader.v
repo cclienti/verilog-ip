@@ -195,6 +195,10 @@ module hynoc_stream_reader
    localparam CHECK_PAYLOAD = 1;
 
    integer checker_state = 0;
+
+   // Summed hierarchically by the benches for their verdict: every
+   // $error below also counts here.
+   integer errors = 0;
    integer nbflits, nbflits_ref;
 
    integer header_counter;
@@ -225,6 +229,7 @@ module hynoc_stream_reader
                   if(header_counter == (NB_ADDRESS_FLITS - 1)) begin
                      header_counter <= 0;
                      if(data != {writerid, packetid}) begin
+                           errors = errors + 1;
                         $error("reader %0d: packet %0d: bad writerid, packetid: h%h (ref: h%h)",
                                READER_CHECKER_ID, packetid, data, {writerid, packetid});
                      end
@@ -246,16 +251,19 @@ module hynoc_stream_reader
                      data_ref = $random(seed);
                      nbflits <= nbflits + 1;
                      if (data != data_ref) begin
+                           errors = errors + 1;
                         $error("reader %0d: packet %0d: bad payload %0d: h%x (ref: h%x)",
                                READER_CHECKER_ID, packetid, nbflits, data, data_ref);
                      end
                   end
                   else if(header == 1'b1) begin
                      if(data != {writerid, packetid}) begin
+                           errors = errors + 1;
                         $error("reader %0d: packet %0d: bad writerid, packetid: h%h (ref: h%h)",
                                READER_CHECKER_ID, packetid, data, {writerid, packetid});
                      end
                      if (nbflits != nbflits_ref) begin
+                           errors = errors + 1;
                         $error("reader %0d: packet %0d: wrong number of flits received: %0d (ref: %0d)",
                                READER_CHECKER_ID, packetid, nbflits, nbflits_ref);
                      end
@@ -265,6 +273,7 @@ module hynoc_stream_reader
                      checker_state <= CHECK_HEADER;
                   end
                   else begin
+                        errors = errors + 1;
                      $error("reader %0d: packet %0d: bad header: %h",
                             READER_CHECKER_ID, packetid, header);
                   end

@@ -390,6 +390,20 @@ module hynoc_router_5p_tb3;
       address_flits = {1'b0, PROTO_ROUTING_UCAST_CIRCUIT_SWITCH, 28'b00_00_00_00_00_00_00_00_00_10_10_11_0010};
       wait(all_packets_sent);
       wait(all_packets_received);
+      if (hynoc_stream_reader_inst_3.errors == 0)
+        $display("hynoc_router_5p_tb3: ALL TESTS PASSED (%0d packets)", NB_PACKETS);
+      else
+        $display("hynoc_router_5p_tb3: %0d ERROR(S)", hynoc_stream_reader_inst_3.errors);
+      $finish;
+   end
+
+   // A dead path never raises the completion flags and the waits above
+   // then hold the simulation open forever. The natural end is 434 us;
+   // the watchdog is set an order of magnitude later.
+   initial begin
+      #5_000_000;
+      $display("hynoc_router_5p_tb3: TIMEOUT - completion never seen");
+      $display("hynoc_router_5p_tb3: 1 ERROR(S)");
       $finish;
    end
 

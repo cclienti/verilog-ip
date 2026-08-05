@@ -478,11 +478,34 @@ module hynoc_router_5p_tb5;
                                  28'b0000_0000_0000_0000_1000_1111_0001};
    end
 
+   integer total_errors;
+
    initial begin
       fork
          wait(writer_all_packets_sent == 3'b111);
          wait(reader_all_packets_received == 8'b11111111);
       join
+      total_errors = hynoc_stream_reader_inst_0.errors +
+                   hynoc_stream_reader_inst_1.errors +
+                   hynoc_stream_reader_inst_2.errors +
+                   hynoc_stream_reader_inst_3.errors +
+                   hynoc_stream_reader_inst_4.errors +
+                   hynoc_stream_reader_inst_5.errors +
+                   hynoc_stream_reader_inst_6.errors +
+                   hynoc_stream_reader_inst_7.errors;
+      if (total_errors == 0)
+        $display("hynoc_router_5p_tb5: ALL TESTS PASSED (%0d packets per stream)", NB_PACKETS);
+      else
+        $display("hynoc_router_5p_tb5: %0d ERROR(S)", total_errors);
+      $finish;
+   end
+
+   // A dead path never raises the completion flags and the waits above
+   // then hold the simulation open forever. The natural end is 11.7 ms simulated;
+   initial begin
+      #100_000_000;
+      $display("hynoc_router_5p_tb5: TIMEOUT - completion never seen");
+      $display("hynoc_router_5p_tb5: 1 ERROR(S)");
       $finish;
    end
 

@@ -99,6 +99,9 @@ module hynoc_router_5p_tb;
    wire [LOG2_FIFO_DEPTH:0] port4_egress_fifo_level;
 
    reg                      arst;
+   localparam integer RX_FLITS_REF = 943;
+   localparam [63:0]  RX_SUM_REF   = 64'h00000008675e8f31;
+
    integer                  cpt;
 
 
@@ -256,8 +259,37 @@ module hynoc_router_5p_tb;
    // Test vectors
    //----------------------------------------------------------------
 
-   initial
-     #8000 $finish;
+   //----------------------------------------------------------------
+   // Checker
+   //----------------------------------------------------------------
+   // The stimulus is a fixed hand-written flit sequence and the only
+   // observable is what the router delivers back on port 3. The count
+   // and sum of the delivered flits are blessed from the run this bench
+   // was eyeball-verified on -- its only mode until now. A failing
+   // value means the routing changed: re-bless deliberately, never to
+   // make the run pass.
+   integer   rx_flits = 0;
+   reg [63:0] rx_sum  = 0;
+
+   always @(posedge port3_ingress_clk) begin
+      if (port3_egress_write) begin
+         rx_flits <= rx_flits + 1;
+         rx_sum   <= rx_sum + port3_egress_data;
+      end
+   end
+
+   initial begin
+      #8000;
+      $display("rx_flits = %0d, rx_sum = 64'h%h", rx_flits, rx_sum);
+      if (rx_flits === RX_FLITS_REF && rx_sum === RX_SUM_REF)
+        $display("hynoc_router_5p_tb: ALL TESTS PASSED (%0d flits)", rx_flits);
+      else begin
+        $display("hynoc_router_5p_tb: delivered stream differs: %0d flits sum 64'h%h (ref %0d, 64'h%h)",
+                 rx_flits, rx_sum, RX_FLITS_REF, RX_SUM_REF);
+        $display("hynoc_router_5p_tb: 1 ERROR(S)");
+      end
+      $finish;
+   end
 
    always @(posedge port3_ingress_clk) begin
      if(port3_ingress_srst) begin

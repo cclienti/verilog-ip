@@ -296,9 +296,13 @@ module hynoc_ingress_tb;
       repeat(8) @(posedge wclk);
 
       if (egress_ref_wlevel > 0) begin
-         $display("error: remaining data in the reference fifo");
+         rpt.error("remaining data in the reference fifo");
       end
 
+      if (rpt.nb_error == 0)
+        $display("hynoc_ingress_tb: ALL TESTS PASSED");
+      else
+        $display("hynoc_ingress_tb: %0d ERROR(S)", rpt.nb_error);
       $finish();
    end
 
@@ -449,4 +453,12 @@ module hynoc_ingress_tb;
       end
    end
 
+   // The drain loops above wait on fifo levels: a dead ingress used to
+   // hang the bench forever instead of failing it.
+   initial begin
+      #20_000_000;
+      $display("hynoc_ingress_tb: TIMEOUT - the reference fifo never drained");
+      $display("hynoc_ingress_tb: 1 ERROR(S)");
+      $finish;
+   end
 endmodule

@@ -126,8 +126,53 @@ module hynoc_local_interface_tb();
    // Test Vectors
    //----------------------------------------------------------------
 
-   initial
-     #1000 $finish;
+   //----------------------------------------------------------------
+   localparam integer RX_FLITS_P_REF = 31;
+   localparam [63:0]  RX_SUM_P_REF   = 64'h000000101b534928;
+   localparam integer RX_FLITS_L_REF = 44;
+   localparam [63:0]  RX_SUM_L_REF   = 64'h00000014b27e1b50;
+
+   // Checker
+   //----------------------------------------------------------------
+   // The stimulus is a fixed hand-written sequence and these outputs
+   // were verified by eye until now. Count and sum of what the DUT
+   // drives are blessed from that eyeball-verified run; a mismatch
+   // means the behaviour changed -- re-bless deliberately, never to
+   // make the run pass.
+   integer   rx_flits_p = 0;
+   reg [63:0] rx_sum_p  = 0;
+   integer   rx_flits_l = 0;
+   reg [63:0] rx_sum_l  = 0;
+
+   always @(posedge local_clk) begin
+      if (port_ingress_write) begin
+         rx_flits_p <= rx_flits_p + 1;
+         rx_sum_p   <= rx_sum_p + port_ingress_data;
+      end
+   end
+
+   // The egress fifo presents its word the cycle after the read strobe.
+   reg local_egress_read_q = 0;
+   always @(posedge local_clk) begin
+      local_egress_read_q <= local_egress_read;
+      if (local_egress_read_q) begin
+         rx_flits_l <= rx_flits_l + 1;
+         rx_sum_l   <= rx_sum_l + local_egress_data;
+      end
+   end
+
+   initial begin
+      #1000;
+      $display("rx_p: %0d flits sum 64'h%h", rx_flits_p, rx_sum_p);
+      $display("rx_l: %0d flits sum 64'h%h", rx_flits_l, rx_sum_l);
+      if (rx_flits_p === RX_FLITS_P_REF && rx_sum_p === RX_SUM_P_REF && rx_flits_l === RX_FLITS_L_REF && rx_sum_l === RX_SUM_L_REF)
+        $display("hynoc_local_interface_tb: ALL TESTS PASSED");
+      else begin
+        $display("hynoc_local_interface_tb: delivered stream differs from the blessed reference");
+        $display("hynoc_local_interface_tb: 1 ERROR(S)");
+      end
+      $finish;
+   end
 
 
    assign port_ingress_fifo_level = 15;

@@ -385,8 +385,31 @@ module hynoc_router_3p_tb;
    localparam [FLIT_WIDTH-1:0] MCAST_L3_TO_L0_L1 = {PROTO_ROUTING_MCAST_CIRCUIT_SWITCH, 1'b0,
                                                     22'b00_00_00_00_00_00_00_00_00_01_11, 5'h1};
 
+   // Count and sum of each local interface's delivered flits, blessed
+   // from the run this bench was eyeball-verified on. A mismatch means
+   // the routing changed: re-bless deliberately, never to make the run
+   // pass.
+   localparam integer RX_FLITS0_REF = 637;
+   localparam [63:0]  RX_SUM0_REF   = 64'h0000000405fadd43;
+   localparam integer RX_FLITS1_REF = 639;
+   localparam [63:0]  RX_SUM1_REF   = 64'h000000040580de41;
+   localparam integer RX_FLITS2_REF = 897;
+   localparam [63:0]  RX_SUM2_REF   = 64'h0000000402055ec0;
+   localparam integer RX_FLITS3_REF = 806;
+   localparam [63:0]  RX_SUM3_REF   = 64'h0000000401850832;
+
    initial begin
       #15000;
+      $display("rx0: %0d flits sum 64'h%h", GEN_LOCAL_XFCES[0].local_reader_inst.rx_flits, GEN_LOCAL_XFCES[0].local_reader_inst.rx_sum);
+      $display("rx1: %0d flits sum 64'h%h", GEN_LOCAL_XFCES[1].local_reader_inst.rx_flits, GEN_LOCAL_XFCES[1].local_reader_inst.rx_sum);
+      $display("rx2: %0d flits sum 64'h%h", GEN_LOCAL_XFCES[2].local_reader_inst.rx_flits, GEN_LOCAL_XFCES[2].local_reader_inst.rx_sum);
+      $display("rx3: %0d flits sum 64'h%h", GEN_LOCAL_XFCES[3].local_reader_inst.rx_flits, GEN_LOCAL_XFCES[3].local_reader_inst.rx_sum);
+      if (GEN_LOCAL_XFCES[0].local_reader_inst.rx_flits === RX_FLITS0_REF && GEN_LOCAL_XFCES[0].local_reader_inst.rx_sum === RX_SUM0_REF && GEN_LOCAL_XFCES[1].local_reader_inst.rx_flits === RX_FLITS1_REF && GEN_LOCAL_XFCES[1].local_reader_inst.rx_sum === RX_SUM1_REF && GEN_LOCAL_XFCES[2].local_reader_inst.rx_flits === RX_FLITS2_REF && GEN_LOCAL_XFCES[2].local_reader_inst.rx_sum === RX_SUM2_REF && GEN_LOCAL_XFCES[3].local_reader_inst.rx_flits === RX_FLITS3_REF && GEN_LOCAL_XFCES[3].local_reader_inst.rx_sum === RX_SUM3_REF)
+        $display("hynoc_router_3p_tb: ALL TESTS PASSED");
+      else begin
+        $display("hynoc_router_3p_tb: delivered streams differ from the blessed reference");
+        $display("hynoc_router_3p_tb: 1 ERROR(S)");
+      end
       $finish;
    end
 

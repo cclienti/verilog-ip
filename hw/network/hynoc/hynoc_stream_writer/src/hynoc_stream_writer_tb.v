@@ -84,8 +84,22 @@ module hynoc_stream_writer_tb();
    always
      #2 local_clk = !local_clk;
 
+   // The writer's data stream is checked nowhere here: its checker is
+   // the matching stream_reader, exercised back-to-back in
+   // hynoc_stream_reader_tb. This bench owns the completion contract
+   // only -- all_packets_sent must rise, and a dead writer used to hang
+   // the wait forever instead of failing.
    initial begin
-     wait(all_packets_sent) $finish;
+      wait(all_packets_sent);
+      $display("hynoc_stream_writer_tb: ALL TESTS PASSED (%0d packets)", NB_PACKETS);
+      $finish;
+   end
+
+   initial begin
+      #20_000_000;
+      $display("hynoc_stream_writer_tb: TIMEOUT - all_packets_sent never rose");
+      $display("hynoc_stream_writer_tb: 1 ERROR(S)");
+      $finish;
    end
 
    //----------------------------------------------------------------

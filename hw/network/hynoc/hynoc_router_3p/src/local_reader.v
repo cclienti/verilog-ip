@@ -48,6 +48,17 @@ module local_reader
       end
    end
 
+   // Read hierarchically by the bench for its verdict.
+   integer   rx_flits = 0;
+   reg [63:0] rx_sum  = 0;
+
+   always @(posedge clk) begin
+      if (read_reg == 1'b1) begin
+         rx_flits <= rx_flits + 1;
+         rx_sum   <= rx_sum + data;
+      end
+   end
+
    always @(posedge clk) begin
       if (read_reg == 1'b1) begin
          if (start == 1'b1) begin

@@ -151,6 +151,21 @@ module hynoc_stream_reader_tb();
       address_flits = {{1'b0, 32'h01234567}, {1'b0, 32'h09abcdef}};
       wait(all_packets_sent);
       wait(all_packets_received);
+      if (hynoc_stream_reader_inst.errors == 0)
+        $display("hynoc_stream_reader_tb: ALL TESTS PASSED (%0d packets)", NB_PACKETS);
+      else
+        $display("hynoc_stream_reader_tb: %0d ERROR(S)",
+                 hynoc_stream_reader_inst.errors);
+      $finish;
+   end
+
+   // A dead path never raises the completion flags, and the wait above
+   // then holds the simulation open forever: the watchdog turns that
+   // hang into a verdict.
+   initial begin
+      #20_000_000;
+      $display("hynoc_stream_reader_tb: TIMEOUT - completion never seen");
+      $display("hynoc_stream_reader_tb: 1 ERROR(S)");
       $finish;
    end
 

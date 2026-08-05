@@ -264,8 +264,60 @@ module hynoc_router_5p_tb2;
    // Test Vectors
    //----------------------------------------------------------------
 
-   initial
-     #2000 $finish;
+   //----------------------------------------------------------------
+   // Checker
+   //----------------------------------------------------------------
+   // Multicast: one packet in on port 3 must come out on the terminal
+   // ports below. Count and sum per port, blessed from the run this
+   // bench was eyeball-verified on. A mismatch means the routing
+   // changed: re-bless deliberately, never to make the run pass.
+   localparam integer RX_FLITS_P0_REF = 160;
+   localparam [63:0]  RX_SUM_P0_REF   = 64'h0000001566f61fe7;
+   localparam integer RX_FLITS_P3_REF = 0;
+   localparam [63:0]  RX_SUM_P3_REF   = 64'h0;
+   localparam integer RX_FLITS_P4_REF = 0;
+   localparam [63:0]  RX_SUM_P4_REF   = 64'h0;
+   integer   rx_flits_p0 = 0;
+   reg [63:0] rx_sum_p0  = 0;
+   integer   rx_flits_p3 = 0;
+   reg [63:0] rx_sum_p3  = 0;
+   integer   rx_flits_p4 = 0;
+   reg [63:0] rx_sum_p4  = 0;
+
+   always @(posedge port0_egress_clk) begin
+      if (port0_egress_write) begin
+         rx_flits_p0 <= rx_flits_p0 + 1;
+         rx_sum_p0   <= rx_sum_p0 + port0_egress_data;
+      end
+   end
+
+   always @(posedge port3_egress_clk) begin
+      if (port3_egress_write) begin
+         rx_flits_p3 <= rx_flits_p3 + 1;
+         rx_sum_p3   <= rx_sum_p3 + port3_egress_data;
+      end
+   end
+
+   always @(posedge port4_egress_clk) begin
+      if (port4_egress_write) begin
+         rx_flits_p4 <= rx_flits_p4 + 1;
+         rx_sum_p4   <= rx_sum_p4 + port4_egress_data;
+      end
+   end
+
+   initial begin
+      #2000;
+      $display("rx_p0: %0d flits sum 64'h%h", rx_flits_p0, rx_sum_p0);
+      $display("rx_p3: %0d flits sum 64'h%h", rx_flits_p3, rx_sum_p3);
+      $display("rx_p4: %0d flits sum 64'h%h", rx_flits_p4, rx_sum_p4);
+      if (rx_flits_p0 === RX_FLITS_P0_REF && rx_sum_p0 === RX_SUM_P0_REF && rx_flits_p3 === RX_FLITS_P3_REF && rx_sum_p3 === RX_SUM_P3_REF && rx_flits_p4 === RX_FLITS_P4_REF && rx_sum_p4 === RX_SUM_P4_REF)
+        $display("hynoc_router_5p_tb2: ALL TESTS PASSED");
+      else begin
+        $display("hynoc_router_5p_tb2: delivered streams differ from the blessed reference");
+        $display("hynoc_router_5p_tb2: 1 ERROR(S)");
+      end
+      $finish;
+   end
 
    always @(posedge port3_ingress_clk) begin
      if(port3_ingress_srst) begin
