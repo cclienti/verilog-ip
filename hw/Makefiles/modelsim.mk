@@ -64,22 +64,19 @@ HELP_ENTRIES += 'work.modelsim|map the work library'
 sim.modelsim: build.modelsim
 	$(MODELSIM_VSIM) -c -do 'run -all' $(VSIM_FLAGS) $(TESTBENCH_MODULE)
 
-# The view here is the tcl script, not the save file the iverilog trace
-# uses: the save file names its rows from the dump, and vsim bit-blasts
-# instance ports in its VCD -- dia becomes 32 one-bit variables -- so
-# those names never resolve as vectors. A tcl script names no dump and
-# loads regardless. The dump is not passed to wavedisp for the same
-# reason: validation against a bit-blasted VCD fails on every instance
-# port.
+# No wavedisp view is loaded here, unlike the iverilog trace targets:
+# vsim bit-blasts instance ports in its VCD -- dia becomes 32 one-bit
+# variables -- so the hierarchical vector names wavedisp generates do not
+# match what this dump contains, and a view with silently missing rows is
+# worse than none. The viewer opens on the bare VCD. Revisit if wavedisp
+# learns to reassemble bit-blasted vectors in its dump reader.
 trace.modelsim-gtkwave: build.modelsim
 	$(MODELSIM_VSIM) -c -do '$(MODELSIM_VCD_DO) run -all; quit -f' $(VSIM_FLAGS) $(TESTBENCH_MODULE)
-	$(if $(WAVEDISP_GTKWAVE_TCL),$(MAKE) $(WAVEDISP_GTKWAVE_TCL))
-	$(GTKWAVE) $(if $(WAVEDISP_GTKWAVE_TCL),-S $(WAVEDISP_GTKWAVE_TCL)) $(VCD_FILE)
+	$(GTKWAVE) $(VCD_FILE)
 
 trace.modelsim-surfer: build.modelsim
 	$(MODELSIM_VSIM) -c -do '$(MODELSIM_VCD_DO) run -all; quit -f' $(VSIM_FLAGS) $(TESTBENCH_MODULE)
-	$(if $(WAVEDISP_SURFER_FILE),$(MAKE) $(WAVEDISP_SURFER_FILE))
-	$(SURFER) $(VCD_FILE) $(SURFER_COMMANDS)
+	$(SURFER) $(VCD_FILE)
 
 # The same verdict rule as check.iverilog, but the failure predicate
 # cannot be the same: vsim ends every run, passing ones included, with an
