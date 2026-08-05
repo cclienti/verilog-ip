@@ -127,13 +127,12 @@ endif
 POST_SYNTH_GTKWAVE_SCRIPT  = $(if $(POST_SYNTH_GTKWAVE_TCL),-S $(POST_SYNTH_GTKWAVE_TCL))
 POST_SYNTH_SURFER_COMMANDS = $(if $(POST_SYNTH_SURFER_FILE),--command-file $(POST_SYNTH_SURFER_FILE))
 
-.PHONY: sim.iverilog check.iverilog check-one.iverilog trace.gtkwave trace.surfer
+.PHONY: sim.iverilog check.iverilog trace.gtkwave trace.surfer
 .PHONY: sim-post-syn.iverilog trace-post-syn.gtkwave trace-post-syn.surfer
 .PHONY: clean.iverilog
 
 HELP_ENTRIES += 'sim.iverilog|simulate the design'
-HELP_ENTRIES += 'check.iverilog|run every declared testbench, fail on an error or a missing verdict'
-HELP_ENTRIES += 'check@<testbench>|run that one testbench, the name check.iverilog reports on failure'
+HELP_ENTRIES += 'check.iverilog|simulate without dumping, fail on any error or a missing verdict'
 HELP_ENTRIES += 'trace.gtkwave|simulate, then show the waveform with gtkwave'
 HELP_ENTRIES += 'trace.surfer|simulate, then show the waveform with surfer'
 HELP_ENTRIES += 'sim-post-syn.iverilog|simulate the post-synthesis netlist'
@@ -192,31 +191,6 @@ trace.surfer: sim.iverilog
 
 sim.iverilog: $(DUMP_FILE)
 
-# check covers every testbench the project declares, not just the one
-# sim and trace act on: hynoc_router_5p ships five and only the selected
-# one was ever run, leaving three that pass in seconds permanently
-# outside verification.
-#
-# One make target per testbench rather than a shell loop, because make
-# parallelises targets, not recipes: a loop is a single job whatever -j
-# says. With a target each, `make check.iverilog -j5` spreads them, `-k`
-# reports every failure instead of stopping at the first, and
-# `--output-sync=target` keeps the report readable. Do not force -j from
-# here; that fights the caller's jobserver.
-#
-# Recursing is what makes each run correct, not just convenient:
-# TESTBENCH_FILE and the source list derive from TESTBENCH_MODULE, so a
-# sibling testbench has to be built by a make that was told its name.
-TESTBENCH_MODULES ?= $(TESTBENCH_MODULE)
-
-check.iverilog: $(addprefix check@,$(TESTBENCH_MODULES))
-
-# Deliberately not .PHONY: make excludes phony targets from implicit rule
-# search, so declaring these would stop the pattern rule from matching and
-# `check` would silently do nothing.
-check@%:
-	@$(MAKE) --no-print-directory check-one.iverilog TESTBENCH_MODULE=$*
-
 # The dump is written and never read here, so suppress it entirely: it
 # makes the long testbenches noticeably faster.
 #
@@ -224,13 +198,17 @@ check@%:
 # pattern has to cover more than the capital-E form -- grep Error alone
 # let "FAIL: 3 error(s) found" through and reported success. No passing
 # testbench prints either word.
-# A bench that prints no verdict is not verified: inferring success from
-# the absence of the word "error" passes a design that never ran. The
-# hynoc benches printed nothing of their own and ended on a fixed `#8000
-# $finish`, so a router dropping every packet reported green -- the
-# readers never reached the checks that would have complained. A missing
-# verdict is therefore a failure, as CLAUDE.md has always required.
-check-one.iverilog: $(TESTBENCH_MODULE)
+#
+# A missing verdict is a failure, not a pass: silence only proves the
+# bench printed nothing, and a design that never ran produces exactly
+# that -- a bench whose checks fire per received event reports no error
+# when no event ever arrives. Hence the second grep: the run must state
+# its success, in one of the two verdict forms the testbenches use.
+#
+# Like sim and trace, this acts on the one bench TESTBENCH_MODULE names.
+# A project with several testbenches is an isolated case and owns its own
+# aggregation -- see hynoc_router_5p/project/Makefile.
+check.iverilog: $(TESTBENCH_MODULE)
 	@out=$$(IVERILOG_DUMPER=none $(VVP) ./$< 2>&1); status=$$?; \
 	echo "$$out"; \
 	if [ $$status -ne 0 ] || echo "$$out" | grep -qiE 'error|fail'; then \
@@ -273,10 +251,6 @@ $(POST_SYNTH_TB_EXE): $(POST_SYNTH_FILE) $(POST_SYNTH_TB_FILE) $(POST_SYNTH_TB_D
 
 clean:: clean.iverilog
 
-# Every declared testbench, not just the selected one: a project with
-# several leaves the others' executables and dumps behind on every build,
-# and they were invisible to both clean and .gitignore.
 clean.iverilog:
 	rm -rf $(DUMP_FILE) $(DUMP_FILE).hier $(TESTBENCH_MODULE)
-	rm -rf $(foreach tb,$(TESTBENCH_MODULES),$(tb) $(tb).$(IVERILOG_DUMPER) $(tb).$(IVERILOG_DUMPER).hier)
 	rm -rf $(POST_SYNTH_DUMP) $(POST_SYNTH_DUMP).hier $(POST_SYNTH_TB_EXE)
