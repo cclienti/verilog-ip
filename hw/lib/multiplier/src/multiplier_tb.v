@@ -23,6 +23,8 @@ module multiplier_tb();
    reg                        enable;
    reg                        is_signed;
 
+   integer                    errors = 0;
+
    reg [WIDTH_A-1:0]          a;
    reg [WIDTH_B-1:0]          b;
 
@@ -51,7 +53,12 @@ module multiplier_tb();
    //----------------------------------------------------------------
    initial begin
       clk = 1'b1;
-      # 10000 $finish;
+      # 10000;
+      if (errors == 0)
+        $display("multiplier_tb: ALL TESTS PASSED");
+      else
+        $display("multiplier_tb: %0d ERROR(S)", errors);
+      $finish;
    end
 
    always begin
@@ -110,6 +117,7 @@ module multiplier_tb();
    always @(*) begin
       $write("out(h'%0h) out_ref(h'%0h)", out, out_ref);
       if (out_ref != out) begin
+         errors = errors + 1;
          $display(" -> Error");
       end
       else begin

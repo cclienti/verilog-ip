@@ -23,6 +23,7 @@ module cmplt_tb () ;
    reg                     out_ref;
 
    integer                 cpt;
+   integer                 errors = 0;
 
 
    cmplt #(.WIDTH(WIDTH))
@@ -120,7 +121,13 @@ module cmplt_tb () ;
             is_signed = 0;
             out_ref = 0;
          end
-         13: $finish;
+         13: begin
+            if (errors == 0)
+              $display("cmplt_tb: ALL TESTS PASSED");
+            else
+              $display("cmplt_tb: %0d ERROR(S)", errors);
+            $finish;
+         end
       endcase
    end
 
@@ -138,6 +145,7 @@ module cmplt_tb () ;
                 cpt, is_signed, a, b, out, out_ref);
       end
       if (out != out_ref) begin
+         errors = errors + 1;
          $display(" -> Error");
       end
       else begin

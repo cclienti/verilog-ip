@@ -48,12 +48,19 @@ module smalldiv_test #(parameter DIVIDER_VALUE         = 5,
       .remainder (remainder)
    );
 
+   integer errors = 0;
+
    //----------------------------------------------------------------
    // Clock generation
    //----------------------------------------------------------------
    initial begin
       clock = 1'b1;
-      # 1000000 $finish;
+      # 1000000;
+      if (errors == 0)
+        $display("smalldiv_tb: ALL TESTS PASSED");
+      else
+        $display("smalldiv_tb: %0d ERROR(S)", errors);
+      $finish;
    end
 
    always begin
@@ -105,9 +112,11 @@ module smalldiv_test #(parameter DIVIDER_VALUE         = 5,
    always @(posedge clock) begin
       if (enable) begin
          if (!test_ok) begin
+            errors = errors + 1;
             $display({"Error in %m: dividend: %0d, quotient ref: %0d - obtained: %0d, ",
                       "remainder ref: %0d - obtained: %0d"},
                      dividend_delayed[0], quotient_ref, quotient, remainder_ref, remainder);
+            $display("smalldiv_tb: %0d ERROR(S)", errors);
             $finish;
          end
       end

@@ -56,6 +56,7 @@ module barrel_tb();
    reg [WIDTH-1:0] ref_out;
 
    integer cpt = 0;
+   integer errors = 0;
 
    always @(posedge clk) begin
       cpt <= cpt + 1;
@@ -127,6 +128,10 @@ module barrel_tb();
          end
 
          10: begin
+            if (errors == 0)
+              $display("barrel_tb: ALL TESTS PASSED");
+            else
+              $display("barrel_tb: %0d ERROR(S)", errors);
             $finish;
          end
       endcase
@@ -147,6 +152,7 @@ module barrel_tb();
 
    always @(posedge clk) begin
       if (ref_out_v != out) begin
+         errors = errors + 1;
          $display("Error: ref is 32'h%08h, obtained 32'h%08h", ref_out_v, out);
       end
    end

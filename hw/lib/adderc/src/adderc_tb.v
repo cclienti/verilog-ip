@@ -37,6 +37,7 @@ module adderc_tb () ;
    reg              cout_ref, cout_ref_i;
 
    integer          cpt=0;
+   integer          errors=0;
 
 
    adderc #(.IS_REG_OUT(IS_REG_OUT),
@@ -120,6 +121,10 @@ module adderc_tb () ;
             cout_ref_i = 1;
          end
          10: begin
+            if (errors == 0)
+              $display("adderc_tb: ALL TESTS PASSED");
+            else
+              $display("adderc_tb: %0d ERROR(S)", errors);
             $finish;
          end
       endcase
@@ -155,9 +160,11 @@ module adderc_tb () ;
 
    always @ (cpt) begin
       if (out != out_ref) begin
+         errors = errors + 1;
          $display("Error at cpt(%0d), out=%0d, out_ref=%0d", cpt, out, out_ref_i);
       end
       if (cout != cout_ref) begin
+         errors = errors + 1;
          $display("Error at cpt(%0d), cout=%0d, cout_ref=%0d", cpt, cout, cout_ref_i);
       end
    end
