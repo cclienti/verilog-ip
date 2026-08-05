@@ -52,8 +52,9 @@ module asdpmem_tb();
       cpt <= cpt + 1;
    end
 
-   // See dpmemwf_tb: the case-0 arm never executed, leaving ena X and
-   // every checked output X. Initialised here instead.
+   // Initial values live here, not in a case-0 arm: cpt starts at 0 and
+   // always @(cpt) waits for a change, so a case-0 arm never executes.
+   // See dpmemwf_tb.
    initial begin
       ena   = 1;
       wea   = 0;
@@ -89,9 +90,8 @@ module asdpmem_tb();
    // Reference
    //----------------------------------------------------------------
    // Sampled on the falling edge: the stimulus is another always block
-   // triggered by the same cpt event, so checking on @(cpt) raced it --
-   // at cpt==4 the check could read dob before addrb had moved. The X
-   // the old != comparison waved through hid exactly that race.
+   // triggered by the same cpt event, and a checker on @(cpt) races it --
+   // at cpt==4 it can read dob before addrb has moved.
    always @ (negedge clka) begin
       case (cpt)
          3: begin

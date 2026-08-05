@@ -268,9 +268,10 @@ module hynoc_router_5p_tb2;
    // Checker
    //----------------------------------------------------------------
    // Multicast: one packet in on port 3 must come out on the terminal
-   // ports below. Count and sum per port, blessed from the run this
-   // bench was eyeball-verified on. A mismatch means the routing
-   // changed: re-bless deliberately, never to make the run pass.
+   // ports below. Count and sum per port, compared against values
+   // blessed from a run verified by inspection. A mismatch means the
+   // routing changed -- re-bless deliberately, never to make the run
+   // pass.
    localparam integer RX_FLITS_P0_REF = 160;
    localparam [63:0]  RX_SUM_P0_REF   = 64'h0000001566f61fe7;
    localparam integer RX_FLITS_P3_REF = 0;

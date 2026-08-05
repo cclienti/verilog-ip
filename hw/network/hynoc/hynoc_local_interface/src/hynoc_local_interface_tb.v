@@ -134,11 +134,10 @@ module hynoc_local_interface_tb();
 
    // Checker
    //----------------------------------------------------------------
-   // The stimulus is a fixed hand-written sequence and these outputs
-   // were verified by eye until now. Count and sum of what the DUT
-   // drives are blessed from that eyeball-verified run; a mismatch
-   // means the behaviour changed -- re-bless deliberately, never to
-   // make the run pass.
+   // The stimulus is a fixed hand-written sequence: count and sum of
+   // what the DUT drives, compared against values blessed from a run
+   // verified by inspection. A mismatch means the behaviour changed --
+   // re-bless deliberately, never to make the run pass.
    integer   rx_flits_p = 0;
    reg [63:0] rx_sum_p  = 0;
    integer   rx_flits_l = 0;

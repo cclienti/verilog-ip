@@ -263,11 +263,10 @@ module hynoc_router_5p_tb;
    // Checker
    //----------------------------------------------------------------
    // The stimulus is a fixed hand-written flit sequence and the only
-   // observable is what the router delivers back on port 3. The count
-   // and sum of the delivered flits are blessed from the run this bench
-   // was eyeball-verified on -- its only mode until now. A failing
-   // value means the routing changed: re-bless deliberately, never to
-   // make the run pass.
+   // observable is what the router delivers back on port 3: count and
+   // sum of the delivered flits, compared against values blessed from a
+   // run verified by inspection. A mismatch means the routing changed --
+   // re-bless deliberately, never to make the run pass.
    integer   rx_flits = 0;
    reg [63:0] rx_sum  = 0;
 

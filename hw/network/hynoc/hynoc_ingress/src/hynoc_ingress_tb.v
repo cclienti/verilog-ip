@@ -453,8 +453,8 @@ module hynoc_ingress_tb;
       end
    end
 
-   // The drain loops above wait on fifo levels: a dead ingress used to
-   // hang the bench forever instead of failing it.
+   // The drain loops above wait on fifo levels, which a dead ingress
+   // never moves: the watchdog turns that hang into a verdict.
    initial begin
       #20_000_000;
       $display("hynoc_ingress_tb: TIMEOUT - the reference fifo never drained");

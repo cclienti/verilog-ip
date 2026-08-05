@@ -71,15 +71,12 @@ module sclkfiforeg_tb;
    //----------------------------------------------------------------
    // Checks
    //----------------------------------------------------------------
-   // The checker below existed but never ran: cpt was declared and
-   // never incremented, so `cpt > 2` compared X and was always false,
-   // and rdata_check was never assigned. The reference model here is
-   // written from the interface contract, not from the tables in the
-   // DUT: a one-deep fifo is a level bit -- a lone write raises it, a
-   // lone read clears it, write and read together leave it unchanged,
-   // including both strobes hitting an empty fifo, which cancel out.
-   // The datapath contract is that rdata mirrors the written word one
-   // cycle after wen.
+   // Reference model, written from the interface contract rather than
+   // from the tables in the DUT: a one-deep fifo is a level bit -- a
+   // lone write raises it, a lone read clears it, write and read
+   // together leave it unchanged, including both strobes hitting an
+   // empty fifo, which cancel out. The datapath contract is that rdata
+   // mirrors the written word one cycle after wen.
    always @(posedge clk) begin
       cpt <= cpt + 1;
       rdata_check       <= wdata;

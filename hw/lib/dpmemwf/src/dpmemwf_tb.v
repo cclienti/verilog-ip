@@ -66,11 +66,10 @@ module dpmemwf_tb();
       cptb <= cptb + 1;
    end
 
-   // The case-0 arms of the stimulus below never executed: the
-   // counters start at 0 and always @(counter) waits for a change, so
-   // the first arm to run is 1. The enables therefore stayed X for the
-   // whole simulation, the DUT never wrote, and every checked output
-   // was X -- which the old != comparisons reported as Ok.
+   // Initial values live here, not in a case-0 arm of the stimulus:
+   // the counters start at 0 and always @(counter) waits for a change,
+   // so a case-0 arm never executes and anything only it drives stays X
+   // for the whole simulation.
    initial begin
       ena   = 1;
       wea   = 0;

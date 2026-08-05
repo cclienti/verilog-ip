@@ -124,16 +124,15 @@ module shmemif_tb();
    endgenerate
 `endif
 
-   // This loop used to print the memory and compare nothing -- 4096
-   // lines to eyeball, sliced to ADDR_WIDTH bits, which is exactly the
-   // window that made the content look right. Each interface starts at
-   // quadrant*1024 with datain equal to the address, but interfaces 1-3
-   // stop at absolute address 1023: they wrap through the whole space
-   // and sweep quadrant 0 again with data offset by 4096. All three
-   // carry the same value there, so the final state is deterministic
-   // whatever the arbitration order: ram[a] is a+4096 below 1024 and a
-   // above. The 12-bit slice of the old print folded a+4096 back onto a,
-   // which is why the dump always looked clean.
+   // Expected memory content. Each interface starts at quadrant*1024
+   // with datain equal to the address, and interfaces 1-3 stop at
+   // absolute address 1023: they wrap through the whole space and sweep
+   // quadrant 0 again with data offset by 4096. All three write the same
+   // value there, so the final state is deterministic whatever the
+   // arbitration order: ram[a] is a+4096 below 1024 and a above.
+   //
+   // Compare full words: through an ADDR_WIDTH-bit slice, a+4096 folds
+   // back onto a and the offset is invisible.
    integer x1,x2,x3,x4;
    integer errors = 0;
    initial begin

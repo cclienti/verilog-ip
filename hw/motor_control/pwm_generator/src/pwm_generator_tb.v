@@ -116,8 +116,8 @@ module pwm_generator_tb;
       $finish;
    end
 
-   // The wait loops spin on pwm_output edges: a dead output used to
-   // hang the bench forever instead of failing it.
+   // The measurement loops spin on pwm_output edges, which a dead
+   // output never produces: the watchdog turns that hang into a verdict.
    initial begin
       #40_000_000;
       $display("pwm_generator_tb: TIMEOUT - pwm_output never toggled as expected");
