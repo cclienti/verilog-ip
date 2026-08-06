@@ -15,36 +15,33 @@ VERILATOR_ENV_DIR      ?= $(VERILATOR_MK_DIR)/.verilator-env
 VERILATOR_ENV_BIN       = $(VERILATOR_ENV_DIR)/bin/verilator
 VERILATOR              ?= $(MAMBA) run -p $(VERILATOR_ENV_DIR) verilator
 
-# Warnings a project waives, by name -- set VERILATOR_WNO in the
-# project Makefile and every verilator target honours it, lint
-# included. MULTIDRIVEN on a dual-port memory is the archetype: both
-# ports write the same ram by design. For file- or line-precise
-# waivers, verilator also reads a .vlt configuration file listed among
-# the sources.
-VERILATOR_WNO      ?=
-VERILATOR_WNO_FLAGS = $(addprefix -Wno-,$(VERILATOR_WNO))
+VERILATOR_LIB_DIR   ?= verilator/lib
+VERILATOR_CHECK_DIR ?= verilator/check
+VERILATOR_LIB        = $(VERILATOR_LIB_DIR)/V$(TOP_MODULE)__ALL.a
+VERILATOR_MAKE       = V$(TOP_MODULE).mk
 
-VERILATOR_FLAGS    += $(VERILATOR_WNO_FLAGS)
-VERILATOR_FLAGS    += -Mdir $(VERILATOR_LIB_DIR) $(foreach DIR,$(ALL_TOP_FILES),+incdir+$(dir $(DIR)))
-# Forward parameter overrides (NAME=VALUE) to the top module as -GNAME=VALUE,
-# mirroring iverilog.mk (-P) and modelsim.mk (-G).
-VERILATOR_FLAGS    += $(foreach PARAM,$(TESTBENCH_PARAMS),-G$(PARAM))
-VERILATOR_LIB_DIR  ?= verilator/lib
+# Warnings a project waives, by name -- set VERILATOR_WNO in the project
+# Makefile and every verilator target honours it, lint included.
+# MULTIDRIVEN on a dual-port memory is the archetype: both ports write
+# the same ram by design. For file- or line-precise waivers, verilator
+# also reads a .vlt configuration file listed among the sources.
+VERILATOR_WNO       ?=
 
-VERILATOR_LIB       = $(VERILATOR_LIB_DIR)/V$(TOP_MODULE)__ALL.a
-VERILATOR_MAKE      = V$(TOP_MODULE).mk
+# Shared by every invocation: the waivers, the include paths, and the
+# parameter overrides -- NAME=VALUE forwarded to the top module as
+# -GNAME=VALUE, mirroring iverilog.mk (-P) and modelsim.mk (-G).
+VERILATOR_COMMON_FLAGS  = $(addprefix -Wno-,$(VERILATOR_WNO))
+VERILATOR_COMMON_FLAGS += $(foreach DIR,$(ALL_TOP_FILES),+incdir+$(dir $(DIR)))
+VERILATOR_COMMON_FLAGS += $(foreach PARAM,$(TESTBENCH_PARAMS),-G$(PARAM))
+
+VERILATOR_FLAGS     += $(VERILATOR_COMMON_FLAGS) -Mdir $(VERILATOR_LIB_DIR)
 
 # check.verilator runs the testbench itself, with --timing to honour the
-# delays and event controls a bench is made of.
-VERILATOR_CHECK_DIR    ?= verilator/check
-# -Wno-fatal: the benches trip lint-class warnings -- width truncation
-# in reference computations, MULTIDRIVEN on dual-port memories -- and
-# check's job is to run them, not to lint them; lint.verilator does
-# that. The warnings still print.
-VERILATOR_CHECK_FLAGS  += $(VERILATOR_WNO_FLAGS)
+# delays and event controls a bench is made of. -Wno-fatal because the
+# benches trip lint-class warnings and check's job is to run them, not
+# to lint them -- lint.verilator does that; the warnings still print.
+VERILATOR_CHECK_FLAGS  += $(VERILATOR_COMMON_FLAGS)
 VERILATOR_CHECK_FLAGS  += --binary --timing -j 0 -Wno-fatal -Mdir $(VERILATOR_CHECK_DIR)
-VERILATOR_CHECK_FLAGS  += $(foreach DIR,$(ALL_TOP_FILES),+incdir+$(dir $(DIR)))
-VERILATOR_CHECK_FLAGS  += $(foreach PARAM,$(TESTBENCH_PARAMS),-G$(PARAM))
 
 .PHONY: build.verilator lint.verilator check.verilator env.verilator version.verilator clean.verilator
 
@@ -74,7 +71,12 @@ env.verilator: $(VERILATOR_ENV_BIN)
 # command it resolved, instead of linting or simulating with it. The env
 # is only created when VERILATOR actually points into it.
 version.verilator: $(if $(findstring $(VERILATOR_ENV_DIR),$(VERILATOR)),$(VERILATOR_ENV_BIN))
-	@v=$$($(VERILATOR) --version 2>/dev/null | awk '{print $$2}'); 	if [ -z "$$v" ]; then 	  echo "verilator not runnable via: $(VERILATOR)"; exit 1; fi; 	if [ "$$(printf '%s\n' $(VERILATOR_MIN_VERSION) $$v | sort -V | head -1)" != "$(VERILATOR_MIN_VERSION)" ]; then 	  echo "verilator $$v is older than the required $(VERILATOR_MIN_VERSION) (resolved: $(VERILATOR))"; 	  exit 1; fi
+	@v=$$($(VERILATOR) --version 2>/dev/null | awk '{print $$2}'); \
+	if [ -z "$$v" ]; then \
+	  echo "verilator not runnable via: $(VERILATOR)"; exit 1; fi; \
+	if [ "$$(printf '%s\n' $(VERILATOR_MIN_VERSION) $$v | sort -V | head -1)" != "$(VERILATOR_MIN_VERSION)" ]; then \
+	  echo "verilator $$v is older than the required $(VERILATOR_MIN_VERSION) (resolved: $(VERILATOR))"; \
+	  exit 1; fi
 
 # The same verdict rule as check.iverilog: fail on any reported error,
 # fail on a missing verdict. Verilator's own runtime messages fit the
