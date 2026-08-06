@@ -86,7 +86,12 @@ module smalldiv_test #(parameter DIVIDER_VALUE         = 5,
    // Check
    //----------------------------------------------------------------
 
-   localparam DELAY=(REGISTER_IN != 0) + (REGISTER_OUT != 0);
+   // Typed integer, and each term widened explicitly: the sum of two
+   // 1-bit comparison results is evaluated in 1-bit width by Verilator
+   // (1+1 overflows to 0), while iverilog widens it -- with DELAY 0 the
+   // reference pipeline degenerates to a wire and every registered
+   // configuration miscompares.
+   localparam integer DELAY = (REGISTER_IN != 0 ? 1 : 0) + (REGISTER_OUT != 0 ? 1 : 0);
 
    reg [DIVIDEND_WIDTH-1:0] dividend_delayed [DELAY:0];
 
@@ -111,8 +116,29 @@ module smalldiv_test #(parameter DIVIDER_VALUE         = 5,
    // equal" and the bench prints nothing -- an undriven DUT passed.
    wire test_ok = (quotient_ref === quotient) && (remainder_ref === remainder);
 
+   // The reference pipeline needs DELAY+1 enabled cycles before its
+   // output and the DUT's refer to the same dividend: the head of the
+   // reference chain is combinational, so the first enabled edge from
+   // cold captures it one cycle before the DUT's input register holds
+   // real data. Under a four-state simulator the warm-up self-masks --
+   // both pipelines hold X and X === X passes -- but under Verilator's
+   // two-state semantics everything starts at zero and the skew shows,
+   // so the warm-up is skipped explicitly.
+   integer warmup = 0;
+
    always @(posedge clock) begin
-      if (enable) begin
+      if (enable && warmup <= DELAY+1) begin
+         warmup <= warmup + 1;
+      end
+   end
+
+   // Sampled on the falling edge: dividend advances at the posedge, and
+   // in the combinational configuration both the reference and the DUT
+   // are direct functions of it -- a posedge checker races that update,
+   // and which value it reads differs between simulators. Mid-cycle,
+   // everything is settled.
+   always @(negedge clock) begin
+      if (enable && warmup > DELAY+1) begin
          if (!test_ok) begin
             errors = errors + 1;
             $display({"Error in %m: dividend: %0d, quotient ref: %0d - obtained: %0d, ",
