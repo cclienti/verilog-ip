@@ -9,8 +9,6 @@ IVSTD              ?= -g2012
 IVFLAGS            += -Wall -Wno-sensitivity-entire-array $(IVSTD)
 IVFLAGS            += $(foreach DIR,$(ALL_TOP_FILES),-I$(dir $(DIR)))
 IVFLAGS            += $(foreach PARAM,$(TESTBENCH_PARAMS),-P$(TESTBENCH_MODULE).$(PARAM))
-GTKWAVE            ?= gtkwave --rcvar "fontname_signals Monospace 10" --rcvar "fontname_waves Monospace 10"
-SURFER             ?= surfer
 
 # vvp takes the dump format from an extended argument or, in its absence,
 # from IVERILOG_DUMPER. Deriving the file extension from that same

@@ -29,6 +29,12 @@ ALL_TEST_FILES   := $(call get-file,$(TESTBENCH_FILE),$(TESTBENCH_DEPS),ALL_TOP_
 ALL_SOURCE_FILES := $(sort $(ALL_TOP_FILES) $(ALL_TEST_FILES))
 
 
+# The waveform viewers, shared by the iverilog and modelsim trace
+# targets. Defined once: a second ?= elsewhere with a plainer value used
+# to shadow the fonts whenever it was read first.
+GTKWAVE ?= gtkwave --rcvar "fontname_signals Monospace 10" --rcvar "fontname_waves Monospace 10"
+SURFER  ?= surfer
+
 .PHONY: help clean distclean
 
 # Targets are named <action>.<tool>: the action is what you want done,

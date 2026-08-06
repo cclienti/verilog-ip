@@ -38,9 +38,6 @@ MODELSIM_COVER_VSIM = $(if $(filter 1,$(MODELSIM_COVERAGE)),-coverage)
 VLOG_FLAGS         += -sv -lint $(MODELSIM_COVER_VLOG) $(foreach DIR,$(ALL_TOP_FILES),+incdir+$(dir $(DIR)))
 VSIM_FLAGS         += -t ps $(foreach PARAM,$(TESTBENCH_PARAMS),-G $(PARAM))
 
-GTKWAVE            ?= gtkwave
-SURFER             ?= surfer
-
 # vsim's native wave format is wlf, which no external viewer reads. For
 # the external-viewer targets below the dump is a VCD, driven from the do
 # script: the bench needs no $dumpvars of its own, the same policy as the
