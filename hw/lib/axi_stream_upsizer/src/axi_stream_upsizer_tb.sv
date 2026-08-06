@@ -17,6 +17,8 @@
 
 module axi_stream_upsizer_tb;
 
+    integer errors = 0;
+
     localparam int             UPSIZE_RATIO   = 4;
     localparam int             IN_DATA_WIDTH  = 2;
     localparam int             IN_USER_WIDTH  = 1;
@@ -78,13 +80,6 @@ module axi_stream_upsizer_tb;
     always
         #10 clock = !clock;
 
-    //----------------------------------------------
-    // Value Change Dump
-    //----------------------------------------------
-    initial  begin
-        $dumpfile ("axi_stream_upsizer_tb.vcd");
-        $dumpvars;
-    end
 
 
     //----------------------------------------------------------------
@@ -153,7 +148,13 @@ module axi_stream_upsizer_tb;
             // End of simulation
             25: begin s_axi_tdata = 2'b00; s_axi_tuser = 1'b0; s_axi_tvalid = 1'b0; s_axi_tlast  = 1'b0; end
             26: begin s_axi_tdata = 2'b00; s_axi_tuser = 1'b0; s_axi_tvalid = 1'b0; s_axi_tlast  = 1'b0; end
-            default: $finish;
+            default: begin
+                if (errors == 0)
+                  $display("axi_stream_upsizer_tb: ALL TESTS PASSED");
+                else
+                  $display("axi_stream_upsizer_tb: %0d ERROR(S)", errors);
+                $finish;
+            end
         endcase
     end
 
@@ -166,59 +167,59 @@ module axi_stream_upsizer_tb;
             case (cpt)
                 // First packet (4 beats)
                 5: begin
-                    assert(m_axi_tvalid == 1'b1);
-                    assert(m_axi_tdata == 8'b11100100);
-                    assert(m_axi_tuser == 4'b0001);
-                    assert(m_axi_tlast == 1'b1);
-                    assert(m_axi_tkeep == 4'b1111);
+                    assert(m_axi_tvalid == 1'b1) else begin errors = errors + 1; $error("assertion failed"); end
+                    assert(m_axi_tdata == 8'b11100100) else begin errors = errors + 1; $error("assertion failed"); end
+                    assert(m_axi_tuser == 4'b0001) else begin errors = errors + 1; $error("assertion failed"); end
+                    assert(m_axi_tlast == 1'b1) else begin errors = errors + 1; $error("assertion failed"); end
+                    assert(m_axi_tkeep == 4'b1111) else begin errors = errors + 1; $error("assertion failed"); end
                 end
                 // Second packet (1 beat)
                 6: begin
-                    assert(m_axi_tvalid == 1'b1);
-                    assert(m_axi_tdata == 8'b00000010);
-                    assert(m_axi_tuser == 4'b0000);
-                    assert(m_axi_tlast == 1'b1);
-                    assert(m_axi_tkeep == 4'b0001);
+                    assert(m_axi_tvalid == 1'b1) else begin errors = errors + 1; $error("assertion failed"); end
+                    assert(m_axi_tdata == 8'b00000010) else begin errors = errors + 1; $error("assertion failed"); end
+                    assert(m_axi_tuser == 4'b0000) else begin errors = errors + 1; $error("assertion failed"); end
+                    assert(m_axi_tlast == 1'b1) else begin errors = errors + 1; $error("assertion failed"); end
+                    assert(m_axi_tkeep == 4'b0001) else begin errors = errors + 1; $error("assertion failed"); end
                 end
                 // Third packet (3 beats)
                 10: begin
-                    assert(m_axi_tvalid == 1'b1);
-                    assert(m_axi_tdata == 8'b00010011);
-                    assert(m_axi_tuser == 4'b0010);
-                    assert(m_axi_tlast == 1'b1);
-                    assert(m_axi_tkeep == 4'b0111);
+                    assert(m_axi_tvalid == 1'b1) else begin errors = errors + 1; $error("assertion failed"); end
+                    assert(m_axi_tdata == 8'b00010011) else begin errors = errors + 1; $error("assertion failed"); end
+                    assert(m_axi_tuser == 4'b0010) else begin errors = errors + 1; $error("assertion failed"); end
+                    assert(m_axi_tlast == 1'b1) else begin errors = errors + 1; $error("assertion failed"); end
+                    assert(m_axi_tkeep == 4'b0111) else begin errors = errors + 1; $error("assertion failed"); end
                 end
                 // Fourth packet (8 beats)
                 14: begin
-                    assert(m_axi_tvalid == 1'b1);
-                    assert(m_axi_tdata == 8'b11100100);
-                    assert(m_axi_tuser == 4'b0000);
-                    assert(m_axi_tlast == 1'b0);
-                    assert(m_axi_tkeep == 4'b1111);
+                    assert(m_axi_tvalid == 1'b1) else begin errors = errors + 1; $error("assertion failed"); end
+                    assert(m_axi_tdata == 8'b11100100) else begin errors = errors + 1; $error("assertion failed"); end
+                    assert(m_axi_tuser == 4'b0000) else begin errors = errors + 1; $error("assertion failed"); end
+                    assert(m_axi_tlast == 1'b0) else begin errors = errors + 1; $error("assertion failed"); end
+                    assert(m_axi_tkeep == 4'b1111) else begin errors = errors + 1; $error("assertion failed"); end
                 end
                 18: begin
-                    assert(m_axi_tvalid == 1'b1);
-                    assert(m_axi_tdata == 8'b00011011);
-                    assert(m_axi_tuser == 4'b0000);
-                    assert(m_axi_tlast == 1'b1);
-                    assert(m_axi_tkeep == 4'b1111);
+                    assert(m_axi_tvalid == 1'b1) else begin errors = errors + 1; $error("assertion failed"); end
+                    assert(m_axi_tdata == 8'b00011011) else begin errors = errors + 1; $error("assertion failed"); end
+                    assert(m_axi_tuser == 4'b0000) else begin errors = errors + 1; $error("assertion failed"); end
+                    assert(m_axi_tlast == 1'b1) else begin errors = errors + 1; $error("assertion failed"); end
+                    assert(m_axi_tkeep == 4'b1111) else begin errors = errors + 1; $error("assertion failed"); end
                 end
                 // Fifth packet (7 beats)
                 22: begin
-                    assert(m_axi_tvalid == 1'b1);
-                    assert(m_axi_tdata == 8'b11100100);
-                    assert(m_axi_tuser == 4'b1111);
-                    assert(m_axi_tlast == 1'b0);
-                    assert(m_axi_tkeep == 4'b1111);
+                    assert(m_axi_tvalid == 1'b1) else begin errors = errors + 1; $error("assertion failed"); end
+                    assert(m_axi_tdata == 8'b11100100) else begin errors = errors + 1; $error("assertion failed"); end
+                    assert(m_axi_tuser == 4'b1111) else begin errors = errors + 1; $error("assertion failed"); end
+                    assert(m_axi_tlast == 1'b0) else begin errors = errors + 1; $error("assertion failed"); end
+                    assert(m_axi_tkeep == 4'b1111) else begin errors = errors + 1; $error("assertion failed"); end
                 end
                 25: begin
-                    assert(m_axi_tvalid == 1'b1);
-                    assert(m_axi_tdata == 8'b00111011);
-                    assert(m_axi_tuser == 4'b0100);
-                    assert(m_axi_tlast == 1'b1);
-                    assert(m_axi_tkeep == 4'b0111);
+                    assert(m_axi_tvalid == 1'b1) else begin errors = errors + 1; $error("assertion failed"); end
+                    assert(m_axi_tdata == 8'b00111011) else begin errors = errors + 1; $error("assertion failed"); end
+                    assert(m_axi_tuser == 4'b0100) else begin errors = errors + 1; $error("assertion failed"); end
+                    assert(m_axi_tlast == 1'b1) else begin errors = errors + 1; $error("assertion failed"); end
+                    assert(m_axi_tkeep == 4'b0111) else begin errors = errors + 1; $error("assertion failed"); end
                 end
-                default: assert(m_axi_tvalid == 1'b0);
+                default: assert(m_axi_tvalid == 1'b0) else begin errors = errors + 1; $error("assertion failed"); end
             endcase
         end
     end
