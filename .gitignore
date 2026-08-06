@@ -53,6 +53,10 @@ doc/logo/*png
 # Verilator
 ##################
 **/project/obj_dir/
+**/project/verilator/lib/
+**/project/verilator/check/
+# micromamba prefix env holding the pinned verilator (env.verilator)
+hw/Makefiles/.verilator-env/
 *.o
 *.a
 *.d
