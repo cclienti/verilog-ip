@@ -46,6 +46,11 @@ module simple_uart_tb;
    initial begin
       clock  = 0;
       arst   = 1;
+      // A uart line idles high. Left uninitialised it reads X under a
+      // four-state simulator, which the receiver ignores, but 0 under
+      // two-state semantics -- a phantom start bit at t=0, and every
+      // following frame arrives slipped by one bit.
+      rx_bit = 1;
       #200 arst = 0;
    end
 
@@ -123,9 +128,15 @@ module simple_uart_tb;
          for (cnt=0; cnt<BAUD_COUNTER_HALF-1; cnt=cnt+1) @(posedge clock);
 
          // Sample
+         // Blocking assignment on purpose: with value[i] <= tx_bit the
+         // left-hand index of the non-blocking write is evaluated at
+         // commit time by Verilator, after the loop has advanced i, and
+         // every sample lands one bit position high -- each frame came
+         // back rotated. A task-local sample has no reason to be
+         // non-blocking in the first place.
          for (i=0; i<8; i=i+1) begin
             for (cnt=0; cnt<BAUD_COUNTER_MAX-1; cnt=cnt+1) @(posedge clock);
-            value[i] <= tx_bit;
+            value[i] = tx_bit;
          end
 
          // Detect stop bit
