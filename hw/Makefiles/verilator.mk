@@ -52,15 +52,28 @@ HELP_ENTRIES += 'env.verilator|create the micromamba env holding verilator >= $(
 
 build.verilator: $(VERILATOR_LIB)
 
-$(VERILATOR_LIB): version.verilator $(ALL_TOP_FILES) $(VERILATOR_LIB_DIR)
+# Two rebuild traps on a file target: the directory's mtime moves every
+# time a file lands in it, so it is order-only; and version.verilator is
+# phony, and a phony prerequisite marks a file target permanently out of
+# date, so the guard runs from the recipe instead.
+$(VERILATOR_LIB): $(ALL_TOP_FILES) | $(VERILATOR_LIB_DIR)
+	@$(MAKE) --no-print-directory version.verilator
 	$(VERILATOR) $(VERILATOR_FLAGS) --cc $(ALL_TOP_FILES) --top-module $(TOP_MODULE)
-	$(MAKE) -C $(VERILATOR_LIB_DIR) -f $(VERILATOR_MAKE)
+	# The archive is named explicitly -- the generated makefile's default
+	# target stops at the objects -- and the sub-make runs inside the env:
+	# the generated rules write the compiler as an absolute path but reach
+	# the archiver through PATH, and only the env holds the conda-prefixed
+	# ar.
+	$(MAMBA) run -p $(VERILATOR_ENV_DIR) $(MAKE) -C $(VERILATOR_LIB_DIR) -f $(VERILATOR_MAKE) $(notdir $(VERILATOR_LIB))
 
 lint.verilator: version.verilator $(ALL_TOP_FILES)
 	$(VERILATOR) $(VERILATOR_FLAGS) --lint-only $(ALL_TOP_FILES) --top-module $(TOP_MODULE)
 
 $(VERILATOR_ENV_BIN):
-	$(MAMBA) create -y -p $(VERILATOR_ENV_DIR) -c conda-forge 'verilator>=$(VERILATOR_MIN_VERSION)'
+	# binutils comes along because verilator's generated makefiles archive
+	# with the conda toolchain's prefixed ar, which the verilator package
+	# pulls the compiler for but not the archiver.
+	$(MAMBA) create -y -p $(VERILATOR_ENV_DIR) -c conda-forge 'verilator>=$(VERILATOR_MIN_VERSION)' binutils
 
 env.verilator: $(VERILATOR_ENV_BIN)
 
