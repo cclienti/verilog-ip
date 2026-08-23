@@ -106,8 +106,6 @@ Communication
 +==============================================================+==============================================+
 | `simple_uart <hw/lib/simple_uart/README.rst>`_               | Simple UART (TX/RX)                          |
 +--------------------------------------------------------------+----------------------------------------------+
-| `rmii_mac_rx <hw/lib/rmii_mac_rx/README.rst>`_               | Fast Ethernet RMII MAC Receiver              |
-+--------------------------------------------------------------+----------------------------------------------+
 
 Utilities
 ~~~~~~~~~
@@ -145,6 +143,13 @@ Network-on-Chip (HyNoC)
 featuring static and dynamic source routing, wormhole switching, and distributed arbitration.
 See `hw/network/hynoc/README.rst <hw/network/hynoc/README.rst>`_ for full documentation.
 
+Fast Ethernet (RMII)
+--------------------
+
+Building blocks for a Fast Ethernet endpoint on an RMII PHY: MAC receiver and transmitter,
+FCS generator and checker.
+See `hw/network/ethernet/README.rst <hw/network/ethernet/README.rst>`_ for the module list.
+
 Directory Structure
 -------------------
 
@@ -155,7 +160,7 @@ Directory Structure
    ├── lib/            Reusable Verilog IP cores
    ├── Makefiles/      Shared build and simulation scripts
    ├── motor_control/  Motor control subsystem and DE0-Nano example
-   └── network/        Network-on-Chip (HyNoC)
+   └── network/        Networking (HyNoC, Fast Ethernet)
 
 Getting Started
 ---------------

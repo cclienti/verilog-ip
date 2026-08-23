@@ -8,7 +8,7 @@ TESTBENCH_MODULE  ?= rmii_mac_rx_tb
 TESTBENCH_FILE    ?= ../src/rmii_mac_rx_tb.sv
 
 
-include ../../../Makefiles/common.mk
-include ../../../Makefiles/wavedisp.mk
-include ../../../Makefiles/iverilog.mk
-include ../../../Makefiles/verilator.mk
+include ../../../../Makefiles/common.mk
+include ../../../../Makefiles/wavedisp.mk
+include ../../../../Makefiles/iverilog.mk
+include ../../../../Makefiles/verilator.mk
