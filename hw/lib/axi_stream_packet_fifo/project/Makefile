@@ -8,6 +8,8 @@ TESTBENCH_MODULE  ?= axi_stream_packet_fifo_tb
 TESTBENCH_FILE    ?= ../src/axi_stream_packet_fifo_tb.sv
 TESTBENCH_DEPS    ?=
 
+VIVADO_BOARDFILE  ?= axi_stream_packet_fifo.xdc
+
 
 include ../../../Makefiles/common.mk
 include ../../../Makefiles/wavedisp.mk
