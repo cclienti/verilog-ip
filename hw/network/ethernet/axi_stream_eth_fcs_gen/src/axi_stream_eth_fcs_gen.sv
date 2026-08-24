@@ -48,34 +48,22 @@ module axi_stream_eth_fcs_gen #(
 );
 
     //-------------------------------------------
-    // CRC-32 (IEEE 802.3), byte step, reflected
-    //-------------------------------------------
-    function automatic logic [31:0] crc32_step(input logic [31:0] crc,
-                                               input logic [7:0]  data);
-        logic [31:0] c;
-        c = crc;
-        for (int i = 0; i < 8; i++) begin
-            if (c[0] ^ data[i]) begin
-                c = (c >> 1) ^ 32'hEDB88320;
-            end
-            else begin
-                c = c >> 1;
-            end
-        end
-        return c;
-    endfunction
-
-    //-------------------------------------------
     // State machine
     //-------------------------------------------
     enum logic [1:0] {
         PAYLOAD, PAD, FCS
     } state, next_state;
 
-    logic [15:0] count;   // frame bytes sent, saturates at MIN_FRAME_BYTES
-    logic [1:0]  fcs_idx;
-    logic [31:0] crc;
-    logic        aborted;
+    // Wide enough to hold MIN_FRAME_BYTES itself, the saturation value
+    localparam int CNT_WIDTH = (MIN_FRAME_BYTES < 2) ? 1 : $clog2(MIN_FRAME_BYTES + 1);
+    localparam bit PAD_EN    = MIN_FRAME_BYTES > 0;
+
+    logic [CNT_WIDTH-1:0] count; // frame bytes sent, saturates at MIN_FRAME_BYTES
+    logic [1:0]           fcs_idx;
+    logic [31:0]          crc;
+    logic [31:0]          crc_next;
+    logic [7:0]           crc_data;
+    logic                 aborted;
 
     always_ff @(posedge clock) begin
         if (sreset) begin
@@ -94,7 +82,7 @@ module axi_stream_eth_fcs_gen #(
                         next_state = PAYLOAD; // dead frame passes through
                     end
                     else if (s_axi_tlast) begin
-                        if ({16'd0, count} + 32'd1 < 32'(MIN_FRAME_BYTES)) begin
+                        if (PAD_EN && count < CNT_WIDTH'(MIN_FRAME_BYTES - 1)) begin
                             next_state = PAD;
                         end
                         else begin
@@ -105,7 +93,7 @@ module axi_stream_eth_fcs_gen #(
             end
 
             PAD: begin
-                if (m_axi_tready && ({16'd0, count} + 32'd1 == 32'(MIN_FRAME_BYTES))) begin
+                if (m_axi_tready && count == CNT_WIDTH'(MIN_FRAME_BYTES - 1)) begin
                     next_state = FCS;
                 end
                 else begin
@@ -123,6 +111,19 @@ module axi_stream_eth_fcs_gen #(
             end
         endcase
     end
+
+    //-------------------------------------------
+    // CRC-32 (IEEE 802.3), shared step unit
+    //-------------------------------------------
+    // PAYLOAD and PAD are exclusive and feed the same register, so the
+    // data is muxed into one step unit instead of elaborating two
+    assign crc_data = (state == PAD) ? 8'h00 : s_axi_tdata;
+
+    crc32 crc32_inst (
+        .crc_in  (crc),
+        .data    (crc_data),
+        .crc_out (crc_next)
+    );
 
     //-------------------------------------------
     // Frame byte counter, CRC and FCS index
@@ -149,9 +150,9 @@ module axi_stream_eth_fcs_gen #(
                             end
                         end
                         else begin
-                            crc <= crc32_step(crc, s_axi_tdata);
-                            if (count < 16'(MIN_FRAME_BYTES)) begin
-                                count <= count + 16'd1;
+                            crc <= crc_next;
+                            if (count < CNT_WIDTH'(MIN_FRAME_BYTES)) begin
+                                count <= count + CNT_WIDTH'(1);
                             end
                         end
                     end
@@ -159,8 +160,8 @@ module axi_stream_eth_fcs_gen #(
 
                 PAD: begin
                     if (m_axi_tready) begin
-                        crc   <= crc32_step(crc, 8'h00);
-                        count <= count + 16'd1;
+                        crc   <= crc_next;
+                        count <= count + CNT_WIDTH'(1);
                     end
                 end
 

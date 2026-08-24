@@ -2,7 +2,7 @@
 
 TOP_MODULE        ?= axi_stream_eth_fcs_gen
 TOP_FILE          ?= ../src/axi_stream_eth_fcs_gen.sv
-TOP_DEPS          ?=
+TOP_DEPS          ?= ../../../../lib/crc32
 
 TESTBENCH_MODULE  ?= axi_stream_eth_fcs_gen_tb
 TESTBENCH_FILE    ?= ../src/axi_stream_eth_fcs_gen_tb.sv
