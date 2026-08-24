@@ -637,7 +637,7 @@ module axi_stream_eth_fcs_check_tb;
     end
 
     always @(posedge clock) begin
-        if (sreset === 1'b0 && cc_m_tvalid === 1'b1) begin
+        if (sreset === 1'b0 && cc_m_tvalid === 1'b1 && cc_m_tready === 1'b1) begin
             if (cc_mon_idx >= exp_cc_count) begin
                 errors = errors + 1;
                 $error("unexpected chain beat %02x at index %0d", cc_m_tdata, cc_mon_idx);
@@ -666,6 +666,10 @@ module axi_stream_eth_fcs_check_tb;
                     $error("FIFO beat %0d: got last=%b data=%02x, expected last=%b data=%02x",
                            pf_mon_idx, pf_m_tlast, pf_m_tdata,
                            exp_pf[pf_mon_idx][8], exp_pf[pf_mon_idx][7:0]);
+                end
+                if (pf_m_info !== 1'b0) begin
+                    errors = errors + 1;
+                    $error("FIFO frame %0d: info raised, input is tied low", pf_frame_idx);
                 end
                 if (pf_m_length !== 9'(exp_pf_len[pf_frame_idx])) begin
                     errors = errors + 1;
