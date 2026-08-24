@@ -18,7 +18,10 @@
 // frame is truncated on the wire (the receiver will drop it on FCS) and the
 // remaining beats are consumed and discarded up to axi_tlast. Asserting
 // axi_tuser on a beat aborts the frame the same way: that beat is not
-// transmitted, and the rest of the frame is discarded.
+// transmitted, and the rest of the frame is discarded. A frame whose very
+// first beat carries axi_tuser is drained without even a preamble, so a
+// dead frame forwarded by an upstream FCS generator never puts a bare
+// preamble/SFD burst on the wire.
 //-----------------------------------------------------------------------------
 // Copyright (c) 2026 by Christophe Clienti. This model is the confidential and
 // proprietary property of Christophe Clienti and the possession or use of this
@@ -79,7 +82,12 @@ module rmii_mac_tx (
         case (state)
             default: begin
                 if (axi_tvalid) begin
-                    next_state = PREAMBLE;
+                    if (axi_tuser) begin
+                        next_state = DRAIN; // Frame dead on arrival, no preamble
+                    end
+                    else begin
+                        next_state = PREAMBLE;
+                    end
                 end
                 else begin
                     next_state = IDLE;
@@ -99,16 +107,11 @@ module rmii_mac_tx (
                 if (!axi_tvalid) begin
                     next_state = DRAIN; // Underflow, the frame is truncated
                 end
-                else if (axi_tuser) begin
-                    if (axi_tlast) begin
-                        next_state = IFG; // Aborted on its last beat
-                    end
-                    else begin
-                        next_state = DRAIN; // Aborted by the source
-                    end
-                end
                 else if (axi_tlast) begin
-                    next_state = IFG; // End of frame
+                    next_state = IFG; // End of frame, aborted or not
+                end
+                else if (axi_tuser) begin
+                    next_state = DRAIN; // Aborted by the source
                 end
                 else begin
                     next_state = DATA; // Continue sending data

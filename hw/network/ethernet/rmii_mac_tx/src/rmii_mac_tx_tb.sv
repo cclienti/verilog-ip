@@ -160,18 +160,26 @@ module rmii_mac_tx_tb;
         axi_tlast  <= 1'b0;
     endtask
 
+    // Preamble expectations plus count clean dibits valued 2'(k + offset),
+    // the last one closing the recovered frame. Every degraded-frame test
+    // starts this way, so the expectation recording lives in one place
+    // and only the degraded tail stays in each caller.
+    task automatic send_clean_prefix(input integer count, input integer offset);
+        logic [1:0] dibit;
+        push_preamble();
+        for (int k = 0; k < count; k++) begin
+            dibit = 2'(k + offset);
+            push_wire(dibit);
+            push_loop(k == count-1, dibit);
+            send_beat(dibit, 1'b0, 1'b0);
+        end
+    endtask
+
     // Source underflow: 5 dibits sent, a stall, then the rest of the
     // frame, which the DUT must consume and discard
     task automatic send_underflow_frame;
-        logic [1:0] dibit;
-        push_preamble();
-        for (int k = 0; k < 5; k++) begin
-            dibit = 2'(k + 1);
-            push_wire(dibit);
-            push_loop(k == 4, dibit); // the wire frame ends at the stall
-            send_beat(dibit, 1'b0, 1'b0);
-        end
-        idle_beats(4);
+        send_clean_prefix(5, 1);
+        idle_beats(4); // the wire frame ends at the stall
         for (int k = 5; k < 12; k++) begin
             send_beat(2'(k), k == 11, 1'b0); // discarded, must not reach TXD
         end
@@ -181,14 +189,7 @@ module rmii_mac_tx_tb;
 
     // Source abort: tuser mid-frame kills the frame from that beat on
     task automatic send_abort_frame;
-        logic [1:0] dibit;
-        push_preamble();
-        for (int k = 0; k < 4; k++) begin
-            dibit = 2'(k);
-            push_wire(dibit);
-            push_loop(k == 3, dibit);
-            send_beat(dibit, 1'b0, 1'b0);
-        end
+        send_clean_prefix(4, 0);
         send_beat(2'b11, 1'b0, 1'b1); // aborted beat, not transmitted
         for (int k = 0; k < 6; k++) begin
             send_beat(2'b10, k == 5, 1'b0); // discarded, must not reach TXD
@@ -199,17 +200,21 @@ module rmii_mac_tx_tb;
 
     // Source abort on the very last beat of the frame
     task automatic send_abort_last_frame;
-        logic [1:0] dibit;
-        push_preamble();
-        for (int k = 0; k < 6; k++) begin
-            dibit = 2'(k + 2);
-            push_wire(dibit);
-            push_loop(k == 5, dibit);
-            send_beat(dibit, 1'b0, 1'b0);
-        end
+        send_clean_prefix(6, 2);
         send_beat(2'b01, 1'b1, 1'b1); // aborted beat, ends the frame
         axi_tvalid <= 1'b0;
         axi_tlast  <= 1'b0;
+    endtask
+
+    // Frame dead on arrival: tuser already on the first beat. No
+    // expectation is recorded, TXEN must never rise.
+    task automatic send_dead_frame(input integer nbeats);
+        for (int k = 0; k < nbeats; k++) begin
+            send_beat(2'(k), k == nbeats-1, k == 0);
+        end
+        axi_tvalid <= 1'b0;
+        axi_tlast  <= 1'b0;
+        axi_tuser  <= 1'b0;
     endtask
 
     //----------------------------------------------------------------
@@ -248,6 +253,13 @@ module rmii_mac_tx_tb;
         idle_beats(2*IFG_CLOCKS);
 
         send_abort_last_frame();
+        idle_beats(2*IFG_CLOCKS);
+
+        // Frames dead on their very first beat, single and multi beat:
+        // drained without even a preamble on the wire
+        send_dead_frame(1);
+        idle_beats(2*IFG_CLOCKS);
+        send_dead_frame(8);
         idle_beats(2*IFG_CLOCKS);
 
         // Recovery after the degraded frames
