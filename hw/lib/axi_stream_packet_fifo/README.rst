@@ -26,7 +26,9 @@ Two overflow policies:
 - ``DROP_ON_FULL = 0`` backpressures and never loses a frame.
   ``s_axi_tready`` is combinational on ``s_axi_tuser`` (a doomed beat
   needs no room and is always consumed). Every frame must fit in the
-  FIFO, or the writer deadlocks until the reader drains.
+  FIFO: a larger one deadlocks the writer — permanently once no older
+  committed frame is left for the reader to drain, since the oversize
+  frame itself can never commit.
 - ``DROP_ON_FULL = 1`` never backpressures (``s_axi_tready`` is constant
   one, for line-rate sources like a MAC receiver): a frame that meets a
   full data or info FIFO is dropped whole, committed frames untouched,

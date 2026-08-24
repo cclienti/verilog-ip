@@ -287,6 +287,20 @@ module axi_stream_packet_fifo_tb;
         dr_s_tlast  <= 1'b0;
     endtask
 
+    task automatic nw_send_beat(input logic [1:0] data, input logic last, input logic user);
+        @(negedge clock);
+        nw_s_tvalid = 1'b1;
+        nw_s_tdata  = data;
+        nw_s_tlast  = last;
+        nw_s_tuser  = user;
+        #1;
+        while (nw_s_tready !== 1'b1) begin
+            @(negedge clock);
+            #1;
+        end
+        @(posedge clock);
+    endtask
+
     task automatic nw_send_frame(input integer nbeats, input integer base);
         for (int i = 0; i < nbeats; i++) begin
             nw_exp[nw_exp_count] = {i == nbeats-1, 2'(base + i)};
@@ -295,17 +309,7 @@ module axi_stream_packet_fifo_tb;
         nw_exp_len[nw_exp_frames] = nbeats;
         nw_exp_frames = nw_exp_frames + 1;
         for (int i = 0; i < nbeats; i++) begin
-            @(negedge clock);
-            nw_s_tvalid = 1'b1;
-            nw_s_tdata  = 2'(base + i);
-            nw_s_tlast  = (i == nbeats-1);
-            nw_s_tuser  = 1'b0;
-            #1;
-            while (nw_s_tready !== 1'b1) begin
-                @(negedge clock);
-                #1;
-            end
-            @(posedge clock);
+            nw_send_beat(2'(base + i), i == nbeats-1, 1'b0);
         end
         nw_s_tvalid <= 1'b0;
         nw_s_tlast  <= 1'b0;
@@ -322,12 +326,21 @@ module axi_stream_packet_fifo_tb;
         wait (stall1);
         repeat (60) @(posedge clock);
         mn_reader_en = 1'b1;
-    end
-
-    initial begin
         wait (stall2);
         repeat (60) @(posedge clock);
         mn_reader_en = 1'b1;
+    end
+
+    // Both stall scenarios must actually block the writer: a beat held
+    // with tready low. Without this the sequences pass even if the full
+    // detection is broken, since every frame still flows.
+    integer mn_stall_count = 0;
+    integer stall_mark = 0;
+
+    always @(posedge clock) begin
+        if (sreset === 1'b0 && mn_s_tvalid === 1'b1 && mn_s_tready === 1'b0) begin
+            mn_stall_count = mn_stall_count + 1;
+        end
     end
 
     //----------------------------------------------------------------
@@ -384,7 +397,12 @@ module axi_stream_packet_fifo_tb;
         mn_send_frame(4, 8'h90, 4'h2);
         mn_send_frame(4, 8'hB0, 4'h3);
         stall1 = 1'b1;
+        stall_mark = mn_stall_count;
         mn_send_frame(8, 8'hC0, 4'h4);
+        if (mn_stall_count == stall_mark) begin
+            errors = errors + 1;
+            $error("the data-full scenario never stalled the writer");
+        end
 
         // Writer stall on a full info FIFO: four one-beat frames fill
         // the frame capacity, the fifth blocks until the reader drains
@@ -396,7 +414,12 @@ module axi_stream_packet_fifo_tb;
         mn_send_frame(1, 8'h53, 4'h7);
         mn_send_frame(1, 8'h54, 4'h8);
         stall2 = 1'b1;
+        stall_mark = mn_stall_count;
         mn_send_frame(1, 8'h55, 4'h9);
+        if (mn_stall_count == stall_mark) begin
+            errors = errors + 1;
+            $error("the info-full scenario never stalled the writer");
+        end
         repeat (60) @(posedge clock);
 
         // Reader caught up with tready held high: a one-beat frame lands
@@ -424,7 +447,24 @@ module axi_stream_packet_fifo_tb;
         // Oversize frame with the reader running: dropped by the same
         // path, the next frame passes
         dr_send_frame(24, 8'h00, 4'hD, 1'b0); // larger than the FIFO
+        dr_send_frame(17, 8'h48, 4'hF, 1'b0); // one beat past capacity: dropped
         dr_send_frame(5, 8'hE8, 4'hE, 1'b1);
+        repeat (60) @(posedge clock);
+
+        // A burst of one-beat frames against a full INFO FIFO: the data
+        // FIFO has plenty of room, the fifth and sixth frame meet
+        // !info_room and must vanish whole
+        dr_reader_en = 1'b0;
+        repeat (5) @(posedge clock);
+        dr_send_frame(1, 8'h11, 4'h1, 1'b1);
+        dr_send_frame(1, 8'h22, 4'h2, 1'b1);
+        dr_send_frame(1, 8'h33, 4'h3, 1'b1);
+        dr_send_frame(1, 8'h44, 4'h4, 1'b1);
+        dr_send_frame(1, 8'h55, 4'h5, 1'b0); // dropped: info FIFO full
+        dr_send_frame(1, 8'h66, 4'h6, 1'b0); // dropped: info FIFO full
+        dr_reader_en = 1'b1;
+        repeat (60) @(posedge clock);
+        dr_send_frame(2, 8'h77, 4'h7, 1'b1); // recovery after the drops
         repeat (60) @(posedge clock);
 
         //--- Narrow instance -----------------------------------------
@@ -549,6 +589,10 @@ module axi_stream_packet_fifo_tb;
                     $error("narrow beat %0d: got last=%b data=%b, expected last=%b data=%b",
                            nw_mon_idx, nw_m_tlast, nw_m_tdata,
                            nw_exp[nw_mon_idx][2], nw_exp[nw_mon_idx][1:0]);
+                end
+                if (nw_m_info !== 1'b0) begin
+                    errors = errors + 1;
+                    $error("narrow frame %0d: info raised, input is tied low", nw_frame_idx);
                 end
                 if (nw_m_length !== 6'(nw_exp_len[nw_frame_idx])) begin
                     errors = errors + 1;

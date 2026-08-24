@@ -31,7 +31,5 @@ def generator():
     internal.add(Disp("cptr"))
     internal.add(Disp("rptr"))
     internal.add(Disp("doomed"))
-    internal.add(Disp("iwptr"))
-    internal.add(Disp("irptr"))
 
     return blk

@@ -2,7 +2,7 @@
 
 TOP_MODULE        ?= axi_stream_packet_fifo
 TOP_FILE          ?= ../src/axi_stream_packet_fifo.sv
-TOP_DEPS          ?= ../../dpmemrf
+TOP_DEPS          ?= ../../dpmemrf ../../sclkfifolut
 
 TESTBENCH_MODULE  ?= axi_stream_packet_fifo_tb
 TESTBENCH_FILE    ?= ../src/axi_stream_packet_fifo_tb.sv
