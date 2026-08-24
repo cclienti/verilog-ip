@@ -14,7 +14,9 @@ compared against the CRC computed over the emitted bytes.
 
 ``m_axi_tuser`` raised with ``m_axi_tlast`` marks a frame to drop: the
 FCS did not match, or the source flagged the frame with ``s_axi_tuser``
-on any beat (which is how ``rmii_mac_rx`` reports its own errors). A
+on any beat (which is how ``rmii_mac_rx`` reports its own errors —
+coming through the upsizer that flag is one bit per dibit, so reduce it
+with an OR into this port, as the family README shows). A
 frame of four bytes or fewer has no payload at all and is dropped
 silently — nothing is emitted.
 

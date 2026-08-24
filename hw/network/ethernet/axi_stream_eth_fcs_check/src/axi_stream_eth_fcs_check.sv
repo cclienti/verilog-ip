@@ -45,24 +45,6 @@ module axi_stream_eth_fcs_check (
 );
 
     //-------------------------------------------
-    // CRC-32 (IEEE 802.3), byte step, reflected
-    //-------------------------------------------
-    function automatic logic [31:0] crc32_step(input logic [31:0] crc,
-                                               input logic [7:0]  data);
-        logic [31:0] c;
-        c = crc;
-        for (int i = 0; i < 8; i++) begin
-            if (c[0] ^ data[i]) begin
-                c = (c >> 1) ^ 32'hEDB88320;
-            end
-            else begin
-                c = c >> 1;
-            end
-        end
-        return c;
-    endfunction
-
-    //-------------------------------------------
     // Four-byte delay line
     //-------------------------------------------
     logic [7:0]  pipe [0:3];  // pipe[0] newest, pipe[3] oldest
@@ -88,8 +70,13 @@ module axi_stream_eth_fcs_check (
     logic        fcs_ok;
 
     // CRC over every emitted byte, the one leaving the pipe included
-    assign crc_next = crc32_step(crc, pipe[3]);
-    assign fcs_val  = ~crc_next;
+    crc32 crc32_inst (
+        .crc_in  (crc),
+        .data    (pipe[3]),
+        .crc_out (crc_next)
+    );
+
+    assign fcs_val = ~crc_next;
 
     // On the tlast beat the received FCS is pipe[2] (oldest, first on
     // the wire) up to the incoming byte (last on the wire)

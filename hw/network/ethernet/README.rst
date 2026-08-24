@@ -11,6 +11,16 @@ A frame is flagged for dropping by ``tuser`` raised together with
 ``tlast`` on every stream of the chain; on a transmit stream, ``tuser``
 on any beat aborts the frame.
 
+The resizers carry one ``tuser`` bit per sub-word while the MAC and FCS
+modules use a single bit, so the seams need glue — wiring the ports
+directly would silently truncate the error flag to bit 0. On the
+transmit side replicate it (``{4{tuser}}`` into the downsizer, whose
+``tkeep`` input is tied full since frames are whole bytes); on the
+receive side reduce it and fold in an incomplete last byte:
+``|m_axi_tuser || (m_axi_tlast && m_axi_tkeep != '1)`` into the checker.
+The checker testbench instantiates this exact chain and keeps it
+working.
+
 +---------------------------------------------------------------------+----------------------------------------------+
 | Module                                                              | Description                                  |
 +=====================================================================+==============================================+

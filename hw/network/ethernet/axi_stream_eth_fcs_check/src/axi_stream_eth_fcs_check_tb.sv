@@ -13,7 +13,11 @@
 // output beat, tlast and tuser included, under random backpressure. A
 // second checker chained behind an axi_stream_eth_fcs_gen instance closes
 // the loop: random frames of assorted lengths must come back exactly as
-// generated (padding included) with tuser never raised.
+// generated (padding included) with tuser never raised. Finally the full
+// RMII chain of the family README (generator, downsizer, MAC tx, MAC rx,
+// upsizer, checker) is instantiated with its documented tuser/tkeep glue:
+// clean frames must survive it byte for byte and a frame aborted
+// mid-chain must come back flagged.
 //-----------------------------------------------------------------------------
 // Copyright (c) 2026 by Christophe Clienti. This model is the confidential and
 // proprietary property of Christophe Clienti and the possession or use of this
@@ -120,6 +124,160 @@ module axi_stream_eth_fcs_check_tb;
         .m_axi_tvalid (lp_m_tvalid),
         .m_axi_tlast  (lp_m_tlast),
         .m_axi_tready (lp_m_tready)
+    );
+
+    //----------------------------------------------------------------
+    // Full RMII chain: generator -> downsizer -> MAC tx -> MAC rx ->
+    // upsizer -> checker, glued exactly as the family README documents
+    //----------------------------------------------------------------
+    logic [7:0] ch_s_tdata;
+    logic       ch_s_tuser;
+    logic       ch_s_tvalid;
+    logic       ch_s_tlast;
+    logic       ch_s_tready;
+
+    logic [7:0] cg_m_tdata;
+    logic       cg_m_tuser;
+    logic       cg_m_tvalid;
+    logic       cg_m_tlast;
+    logic       cg_m_tready;
+
+    logic [1:0] dz_m_tdata;
+    logic       dz_m_tuser;
+    logic       dz_m_tvalid;
+    logic       dz_m_tlast;
+    logic       dz_m_tready;
+
+    logic [1:0] txd;
+    logic       txen;
+
+    logic [1:0] rx_m_tdata;
+    logic       rx_m_tuser;
+    logic       rx_m_tvalid;
+    logic       rx_m_tlast;
+    logic       rx_m_tready;
+
+    logic [7:0] up_m_tdata;
+    logic [3:0] up_m_tuser;
+    logic [3:0] up_m_tkeep;
+    logic       up_m_tvalid;
+    logic       up_m_tlast;
+    logic       up_m_tready;
+
+    logic       chain_check_tuser;
+    logic [7:0] cc_m_tdata;
+    logic       cc_m_tuser;
+    logic       cc_m_tvalid;
+    logic       cc_m_tlast;
+
+    axi_stream_eth_fcs_gen
+    #(
+        .MIN_FRAME_BYTES (MIN_FRAME_BYTES)
+    )
+    chain_gen_inst
+    (
+        .clock        (clock),
+        .sreset       (sreset),
+        .s_axi_tdata  (ch_s_tdata),
+        .s_axi_tuser  (ch_s_tuser),
+        .s_axi_tvalid (ch_s_tvalid),
+        .s_axi_tlast  (ch_s_tlast),
+        .s_axi_tready (ch_s_tready),
+        .m_axi_tdata  (cg_m_tdata),
+        .m_axi_tuser  (cg_m_tuser),
+        .m_axi_tvalid (cg_m_tvalid),
+        .m_axi_tlast  (cg_m_tlast),
+        .m_axi_tready (cg_m_tready)
+    );
+
+    axi_stream_downsizer
+    #(
+        .DOWNSIZE_RATIO (4),
+        .OUT_DATA_WIDTH (2),
+        .OUT_USER_WIDTH (1)
+    )
+    chain_downsizer_inst
+    (
+        .clock        (clock),
+        .sreset       (sreset),
+        .s_axi_tdata  (cg_m_tdata),
+        .s_axi_tuser  ({4{cg_m_tuser}}), // one error bit replicated per dibit
+        .s_axi_tvalid (cg_m_tvalid),
+        .s_axi_tlast  (cg_m_tlast),
+        .s_axi_tkeep  (4'b1111),         // frames are whole bytes
+        .s_axi_tready (cg_m_tready),
+        .m_axi_tdata  (dz_m_tdata),
+        .m_axi_tuser  (dz_m_tuser),
+        .m_axi_tvalid (dz_m_tvalid),
+        .m_axi_tlast  (dz_m_tlast),
+        .m_axi_tready (dz_m_tready)
+    );
+
+    rmii_mac_tx chain_mac_tx_inst (
+        .clock      (clock),
+        .srst       (sreset),
+        .axi_tvalid (dz_m_tvalid),
+        .axi_tlast  (dz_m_tlast),
+        .axi_tdata  (dz_m_tdata),
+        .axi_tuser  (dz_m_tuser),
+        .axi_tready (dz_m_tready),
+        .txd        (txd),
+        .txen       (txen)
+    );
+
+    rmii_mac_rx chain_mac_rx_inst (
+        .clock      (clock),
+        .srst       (sreset),
+        .rxd        (txd),
+        .rxen       (txen),
+        .axi_tvalid (rx_m_tvalid),
+        .axi_tlast  (rx_m_tlast),
+        .axi_tdata  (rx_m_tdata),
+        .axi_tuser  (rx_m_tuser),
+        .axi_tready (rx_m_tready)
+    );
+
+    axi_stream_upsizer
+    #(
+        .UPSIZE_RATIO  (4),
+        .IN_DATA_WIDTH (2),
+        .IN_USER_WIDTH (1)
+    )
+    chain_upsizer_inst
+    (
+        .clock        (clock),
+        .sreset       (sreset),
+        .s_axi_tdata  (rx_m_tdata),
+        .s_axi_tuser  (rx_m_tuser),
+        .s_axi_tvalid (rx_m_tvalid),
+        .s_axi_tlast  (rx_m_tlast),
+        .s_axi_tready (rx_m_tready),
+        .m_axi_tdata  (up_m_tdata),
+        .m_axi_tuser  (up_m_tuser),
+        .m_axi_tvalid (up_m_tvalid),
+        .m_axi_tlast  (up_m_tlast),
+        .m_axi_tkeep  (up_m_tkeep),
+        .m_axi_tready (up_m_tready)
+    );
+
+    // The glue the family README documents: the per-dibit error bits
+    // reduce to one flag, and a frame whose last byte came back
+    // incomplete from the wire is flagged as well
+    assign chain_check_tuser = |up_m_tuser || (up_m_tlast && up_m_tkeep != 4'b1111);
+
+    axi_stream_eth_fcs_check chain_check_inst (
+        .clock        (clock),
+        .sreset       (sreset),
+        .s_axi_tdata  (up_m_tdata),
+        .s_axi_tuser  (chain_check_tuser),
+        .s_axi_tvalid (up_m_tvalid),
+        .s_axi_tlast  (up_m_tlast),
+        .s_axi_tready (up_m_tready),
+        .m_axi_tdata  (cc_m_tdata),
+        .m_axi_tuser  (cc_m_tuser),
+        .m_axi_tvalid (cc_m_tvalid),
+        .m_axi_tlast  (cc_m_tlast),
+        .m_axi_tready (1'b1)             // the MAC rx path cannot stall
     );
 
     //----------------------------------------------------------------
@@ -240,6 +398,42 @@ module axi_stream_eth_fcs_check_tb;
     endtask
 
     //----------------------------------------------------------------
+    // Full-chain driver
+    //----------------------------------------------------------------
+    logic [9:0] exp_cc [0:MAX_BEATS-1];
+    integer     exp_cc_count = 0;
+    integer     cc_mon_idx = 0;
+
+    task automatic push_cc(input logic last, input logic user, input logic [7:0] data);
+        exp_cc[exp_cc_count] = {last, user, data};
+        exp_cc_count = exp_cc_count + 1;
+    endtask
+
+    task automatic ch_send_beat(input logic [7:0] data, input logic last, input logic user);
+        ch_s_tvalid <= 1'b1;
+        ch_s_tdata  <= data;
+        ch_s_tlast  <= last;
+        ch_s_tuser  <= user;
+        @(posedge clock);
+        while (ch_s_tready !== 1'b1) @(posedge clock);
+    endtask
+
+    // A clean frame through the whole chain comes back zero-padded to
+    // MIN_FRAME_BYTES with tuser never raised
+    task automatic ch_send_frame(input integer nbytes);
+        integer nout;
+        nout = (nbytes < MIN_FRAME_BYTES) ? MIN_FRAME_BYTES : nbytes;
+        for (int i = 0; i < nout; i++) begin
+            push_cc(i == nout-1, 1'b0, (i < nbytes) ? lp_bytes[i] : 8'h00);
+        end
+        for (int i = 0; i < nbytes; i++) begin
+            ch_send_beat(lp_bytes[i], i == nbytes-1, 1'b0);
+        end
+        ch_s_tvalid <= 1'b0;
+        ch_s_tlast  <= 1'b0;
+    endtask
+
+    //----------------------------------------------------------------
     // Test sequence
     //----------------------------------------------------------------
     initial begin
@@ -251,6 +445,10 @@ module axi_stream_eth_fcs_check_tb;
         gen_s_tdata  = 8'h00;
         gen_s_tlast  = 1'b0;
         gen_s_tuser  = 1'b0;
+        ch_s_tvalid  = 1'b0;
+        ch_s_tdata   = 8'h00;
+        ch_s_tlast   = 1'b0;
+        ch_s_tuser   = 1'b0;
 
         wait (sreset === 1'b0);
         @(posedge clock);
@@ -300,7 +498,29 @@ module axi_stream_eth_fcs_check_tb;
         lp_send_frame(61);
         lp_send_frame(100);
         gen_s_tvalid <= 1'b0;
-        chk_idle(400);
+
+        // Full RMII chain: clean frames on both sides of the padding
+        // threshold, then one aborted mid-frame, then a recovery frame
+        for (int i = 0; i < 18; i++) lp_bytes[i] = 8'(7*i + 1);
+        ch_send_frame(18);
+        for (int i = 0; i < 61; i++) lp_bytes[i] = 8'(3*i + 11);
+        ch_send_frame(61);
+
+        // Abort on beat 10 of 20: ten bytes reach the wire, the checker
+        // recovers six and must flag the frame, since the FCS slot
+        // holds payload bytes instead of a CRC
+        for (int i = 0; i < 20; i++) lp_bytes[i] = 8'(9*i + 2);
+        for (int i = 0; i < 6; i++) push_cc(i == 5, i == 5, lp_bytes[i]);
+        for (int i = 0; i < 20; i++) begin
+            ch_send_beat(lp_bytes[i], i == 19, i == 10);
+        end
+        ch_s_tvalid <= 1'b0;
+        ch_s_tlast  <= 1'b0;
+        ch_s_tuser  <= 1'b0;
+
+        for (int i = 0; i < 4; i++) lp_bytes[i] = 8'(8'hC0 + i);
+        ch_send_frame(4);
+        chk_idle(700);
 
         if (chk_mon_idx != exp_chk_count) begin
             errors = errors + 1;
@@ -311,6 +531,11 @@ module axi_stream_eth_fcs_check_tb;
             errors = errors + 1;
             $error("loopback stream incomplete: %0d beats seen, %0d expected",
                    lp_mon_idx, exp_lp_count);
+        end
+        if (cc_mon_idx != exp_cc_count) begin
+            errors = errors + 1;
+            $error("chain stream incomplete: %0d beats seen, %0d expected",
+                   cc_mon_idx, exp_cc_count);
         end
 
         if (errors == 0)
@@ -352,6 +577,22 @@ module axi_stream_eth_fcs_check_tb;
                        exp_lp[lp_mon_idx][9], exp_lp[lp_mon_idx][8], exp_lp[lp_mon_idx][7:0]);
             end
             lp_mon_idx = lp_mon_idx + 1;
+        end
+    end
+
+    always @(posedge clock) begin
+        if (sreset === 1'b0 && cc_m_tvalid === 1'b1) begin
+            if (cc_mon_idx >= exp_cc_count) begin
+                errors = errors + 1;
+                $error("unexpected chain beat %02x at index %0d", cc_m_tdata, cc_mon_idx);
+            end
+            else if ({cc_m_tlast, cc_m_tuser, cc_m_tdata} !== exp_cc[cc_mon_idx]) begin
+                errors = errors + 1;
+                $error("chain beat %0d: got last=%b user=%b data=%02x, expected last=%b user=%b data=%02x",
+                       cc_mon_idx, cc_m_tlast, cc_m_tuser, cc_m_tdata,
+                       exp_cc[cc_mon_idx][9], exp_cc[cc_mon_idx][8], exp_cc[cc_mon_idx][7:0]);
+            end
+            cc_mon_idx = cc_mon_idx + 1;
         end
     end
 
