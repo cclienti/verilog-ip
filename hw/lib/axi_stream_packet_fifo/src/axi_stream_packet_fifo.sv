@@ -36,7 +36,7 @@
 module axi_stream_packet_fifo #(
     parameter int DATA_WIDTH   = 8,
     parameter int LOG2_DEPTH   = 11, // data FIFO depth in beats, log2
-    parameter int LOG2_FRAMES  = 5,  // committed frames capacity, log2
+    parameter int LOG2_FRAMES  = 6,  // committed frames capacity, log2
     parameter int INFO_WIDTH   = 1,  // side-band word width
     parameter bit DROP_ON_FULL = 0   // 1: never stall, drop the losing frame
 )(

@@ -42,7 +42,10 @@ Parameters
 
 - ``DATA_WIDTH``: beat width (default 8).
 - ``LOG2_DEPTH``: data FIFO depth in beats, log2 (default 11 = 2048).
-- ``LOG2_FRAMES``: committed-frame capacity, log2 (default 5 = 32).
+- ``LOG2_FRAMES``: committed-frame capacity, log2 (default 6 = 64, so
+  with the default depth the data FIFO is the binding limit for any
+  frame of 32 bytes or more — the info FIFO never fills first for legal
+  Ethernet frames).
 - ``INFO_WIDTH``: side-band word width (default 1; tie ``s_info`` low
   and ignore ``m_info`` when unused).
 - ``DROP_ON_FULL``: overflow policy, see above (default 0).
