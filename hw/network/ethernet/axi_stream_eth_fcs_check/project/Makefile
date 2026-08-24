@@ -18,3 +18,4 @@ include ../../../../Makefiles/common.mk
 include ../../../../Makefiles/wavedisp.mk
 include ../../../../Makefiles/iverilog.mk
 include ../../../../Makefiles/verilator.mk
+include ../../../../Makefiles/vivado.mk
