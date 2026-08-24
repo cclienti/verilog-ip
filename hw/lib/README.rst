@@ -105,6 +105,9 @@ AXI Stream
 | `axi_stream_packet_fifo <axi_stream_packet_fifo/README.rst>`_ | Packet FIFO with commit/rollback, drops      |
 |                                                               | flagged frames, per-frame info and length    |
 +---------------------------------------------------------------+----------------------------------------------+
+| `axi_stream_reg_slice <axi_stream_reg_slice/README.rst>`_     | Register slice (skid buffer), registered     |
+|                                                               | tready, full throughput                      |
++---------------------------------------------------------------+----------------------------------------------+
 
 Utilities
 ---------

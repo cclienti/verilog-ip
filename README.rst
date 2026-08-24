@@ -121,6 +121,9 @@ AXI Stream
 | `axi_stream_packet_fifo                                      | Packet FIFO with commit/rollback             |
 | <hw/lib/axi_stream_packet_fifo/README.rst>`_                 |                                              |
 +--------------------------------------------------------------+----------------------------------------------+
+| `axi_stream_reg_slice                                        | Register slice (skid buffer)                 |
+| <hw/lib/axi_stream_reg_slice/README.rst>`_                   |                                              |
++--------------------------------------------------------------+----------------------------------------------+
 
 Utilities
 ~~~~~~~~~
