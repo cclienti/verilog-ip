@@ -92,6 +92,20 @@ Communication
 | `simple_uart <simple_uart/README.rst>`_                       | Simple UART (TX/RX, 8N1, parameterizable)    |
 +---------------------------------------------------------------+----------------------------------------------+
 
+AXI Stream
+----------
+
++---------------------------------------------------------------+----------------------------------------------+
+| Module                                                        | Description                                  |
++===============================================================+==============================================+
+| `axi_stream_upsizer <axi_stream_upsizer/README.rst>`_         | Widen an AXI stream (tkeep on partial beats) |
++---------------------------------------------------------------+----------------------------------------------+
+| `axi_stream_downsizer <axi_stream_downsizer/README.rst>`_     | Narrow an AXI stream (tkeep-aware)           |
++---------------------------------------------------------------+----------------------------------------------+
+| `axi_stream_packet_fifo <axi_stream_packet_fifo/README.rst>`_ | Packet FIFO with commit/rollback, drops      |
+|                                                               | flagged frames, per-frame info and length    |
++---------------------------------------------------------------+----------------------------------------------+
+
 Utilities
 ---------
 

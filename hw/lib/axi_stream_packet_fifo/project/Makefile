@@ -1,0 +1,15 @@
+# Copyright (C) 2013-2019 Christophe Clienti - All Rights Reserved
+
+TOP_MODULE        ?= axi_stream_packet_fifo
+TOP_FILE          ?= ../src/axi_stream_packet_fifo.sv
+TOP_DEPS          ?= ../../dpmemrf
+
+TESTBENCH_MODULE  ?= axi_stream_packet_fifo_tb
+TESTBENCH_FILE    ?= ../src/axi_stream_packet_fifo_tb.sv
+TESTBENCH_DEPS    ?=
+
+
+include ../../../Makefiles/common.mk
+include ../../../Makefiles/wavedisp.mk
+include ../../../Makefiles/iverilog.mk
+include ../../../Makefiles/verilator.mk
