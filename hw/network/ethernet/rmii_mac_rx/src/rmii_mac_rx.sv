@@ -48,7 +48,7 @@ module rmii_mac_rx (
             end
         end
         else begin
-            for(int i = 1; i <= SYNC_DEPTH; i++) begin
+            for(int i = 1; i < SYNC_DEPTH; i++) begin
                 rxd_d[i]  <= rxd_d[i-1];
                 rxen_d[i] <= rxen_d[i-1];
             end
