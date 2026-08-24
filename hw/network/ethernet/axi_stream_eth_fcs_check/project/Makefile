@@ -10,7 +10,8 @@ TESTBENCH_DEPS    ?= ../../axi_stream_eth_fcs_gen \
 			../../rmii_mac_tx \
 			../../rmii_mac_rx \
 			../../../../lib/axi_stream_downsizer \
-			../../../../lib/axi_stream_upsizer
+			../../../../lib/axi_stream_upsizer \
+			../../../../lib/axi_stream_packet_fifo
 
 
 include ../../../../Makefiles/common.mk

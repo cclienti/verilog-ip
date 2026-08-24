@@ -18,8 +18,11 @@ transmit side replicate it (``{4{tuser}}`` into the downsizer, whose
 ``tkeep`` input is tied full since frames are whole bytes); on the
 receive side reduce it and fold in an incomplete last byte:
 ``|m_axi_tuser || (m_axi_tlast && m_axi_tkeep != '1)`` into the checker.
-The checker testbench instantiates this exact chain and keeps it
-working.
+An `axi_stream_packet_fifo <../../lib/axi_stream_packet_fifo/README.rst>`_
+in DROP_ON_FULL mode ends the receive chain: frames the checker flags
+vanish there, so the protocol layer only ever parses complete valid
+frames, with the length delivered on the first beat. The checker
+testbench instantiates this exact chain and keeps it working.
 
 +---------------------------------------------------------------------+----------------------------------------------+
 | Module                                                              | Description                                  |

@@ -25,5 +25,6 @@ def generator():
     chain.add(Disp(["txd", "txen"]))
     chain.add(Disp(["up_m_tvalid", "up_m_tlast", "up_m_tdata", "up_m_tuser", "up_m_tkeep"]))
     chain.add(Disp(["cc_m_tvalid", "cc_m_tlast", "cc_m_tdata", "cc_m_tuser"]))
+    chain.add(Disp(["pf_m_tvalid", "pf_m_tlast", "pf_m_tdata", "pf_m_length"]))
 
     return testbench

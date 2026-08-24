@@ -15,9 +15,10 @@
 // the loop: random frames of assorted lengths must come back exactly as
 // generated (padding included) with tuser never raised. Finally the full
 // RMII chain of the family README (generator, downsizer, MAC tx, MAC rx,
-// upsizer, checker) is instantiated with its documented tuser/tkeep glue:
-// clean frames must survive it byte for byte and a frame aborted
-// mid-chain must come back flagged.
+// upsizer, checker, packet FIFO) is instantiated with its documented
+// tuser/tkeep glue: clean frames must survive it byte for byte, a frame
+// aborted mid-chain comes back flagged from the checker, and after the
+// packet FIFO it has vanished entirely.
 //-----------------------------------------------------------------------------
 // Copyright (c) 2026 by Christophe Clienti. This model is the confidential and
 // proprietary property of Christophe Clienti and the possession or use of this
@@ -169,6 +170,14 @@ module axi_stream_eth_fcs_check_tb;
     logic       cc_m_tuser;
     logic       cc_m_tvalid;
     logic       cc_m_tlast;
+    logic       cc_m_tready;
+
+    logic [7:0] pf_m_tdata;
+    logic       pf_m_tvalid;
+    logic       pf_m_tlast;
+    logic       pf_m_tready;
+    logic       pf_m_info;
+    logic [8:0] pf_m_length;
 
     axi_stream_eth_fcs_gen
     #(
@@ -277,7 +286,36 @@ module axi_stream_eth_fcs_check_tb;
         .m_axi_tuser  (cc_m_tuser),
         .m_axi_tvalid (cc_m_tvalid),
         .m_axi_tlast  (cc_m_tlast),
-        .m_axi_tready (1'b1)             // the MAC rx path cannot stall
+        .m_axi_tready (cc_m_tready)
+    );
+
+    // The packet FIFO ends the receive chain: flagged frames vanish and
+    // the consumer only ever parses complete valid frames. DROP_ON_FULL
+    // keeps its tready at one, which the MAC rx path requires.
+    axi_stream_packet_fifo
+    #(
+        .DATA_WIDTH   (8),
+        .LOG2_DEPTH   (8),
+        .LOG2_FRAMES  (3),
+        .INFO_WIDTH   (1),
+        .DROP_ON_FULL (1)
+    )
+    chain_packet_fifo_inst
+    (
+        .clock        (clock),
+        .sreset       (sreset),
+        .s_axi_tdata  (cc_m_tdata),
+        .s_axi_tuser  (cc_m_tuser),
+        .s_axi_tvalid (cc_m_tvalid),
+        .s_axi_tlast  (cc_m_tlast),
+        .s_axi_tready (cc_m_tready),
+        .s_info       (1'b0),
+        .m_axi_tdata  (pf_m_tdata),
+        .m_axi_tvalid (pf_m_tvalid),
+        .m_axi_tlast  (pf_m_tlast),
+        .m_axi_tready (pf_m_tready),
+        .m_info       (pf_m_info),
+        .m_length     (pf_m_length)
     );
 
     //----------------------------------------------------------------
@@ -299,10 +337,12 @@ module axi_stream_eth_fcs_check_tb;
         if (sreset) begin
             chk_m_tready <= 1'b1;
             lp_m_tready  <= 1'b1;
+            pf_m_tready  <= 1'b1;
         end
         else begin
             chk_m_tready <= $urandom_range(0, 1) == 1 ? 1'b1 : 1'b0;
             lp_m_tready  <= $urandom_range(0, 1) == 1 ? 1'b1 : 1'b0;
+            pf_m_tready  <= $urandom_range(0, 1) == 1 ? 1'b1 : 1'b0;
         end
     end
 
@@ -409,6 +449,13 @@ module axi_stream_eth_fcs_check_tb;
         exp_cc_count = exp_cc_count + 1;
     endtask
 
+    logic [8:0] exp_pf [0:MAX_BEATS-1];
+    integer     exp_pf_len [0:15];
+    integer     exp_pf_count = 0;
+    integer     exp_pf_frames = 0;
+    integer     pf_mon_idx = 0;
+    integer     pf_frame_idx = 0;
+
     task automatic ch_send_beat(input logic [7:0] data, input logic last, input logic user);
         ch_s_tvalid <= 1'b1;
         ch_s_tdata  <= data;
@@ -425,7 +472,11 @@ module axi_stream_eth_fcs_check_tb;
         nout = (nbytes < MIN_FRAME_BYTES) ? MIN_FRAME_BYTES : nbytes;
         for (int i = 0; i < nout; i++) begin
             push_cc(i == nout-1, 1'b0, (i < nbytes) ? lp_bytes[i] : 8'h00);
+            exp_pf[exp_pf_count] = {i == nout-1, (i < nbytes) ? lp_bytes[i] : 8'h00};
+            exp_pf_count = exp_pf_count + 1;
         end
+        exp_pf_len[exp_pf_frames] = nout;
+        exp_pf_frames = exp_pf_frames + 1;
         for (int i = 0; i < nbytes; i++) begin
             ch_send_beat(lp_bytes[i], i == nbytes-1, 1'b0);
         end
@@ -537,6 +588,11 @@ module axi_stream_eth_fcs_check_tb;
             $error("chain stream incomplete: %0d beats seen, %0d expected",
                    cc_mon_idx, exp_cc_count);
         end
+        if (pf_mon_idx != exp_pf_count || pf_frame_idx != exp_pf_frames) begin
+            errors = errors + 1;
+            $error("packet FIFO stream incomplete: %0d/%0d beats, %0d/%0d frames",
+                   pf_mon_idx, exp_pf_count, pf_frame_idx, exp_pf_frames);
+        end
 
         if (errors == 0)
           $display("axi_stream_eth_fcs_check_tb: ALL TESTS PASSED");
@@ -593,6 +649,32 @@ module axi_stream_eth_fcs_check_tb;
                        exp_cc[cc_mon_idx][9], exp_cc[cc_mon_idx][8], exp_cc[cc_mon_idx][7:0]);
             end
             cc_mon_idx = cc_mon_idx + 1;
+        end
+    end
+
+    // After the packet FIFO only the clean frames remain, the aborted
+    // one has vanished whole, and the length rides with each frame
+    always @(posedge clock) begin
+        if (sreset === 1'b0 && pf_m_tvalid === 1'b1 && pf_m_tready === 1'b1) begin
+            if (pf_mon_idx >= exp_pf_count) begin
+                errors = errors + 1;
+                $error("unexpected FIFO beat %02x at index %0d", pf_m_tdata, pf_mon_idx);
+            end
+            else begin
+                if ({pf_m_tlast, pf_m_tdata} !== exp_pf[pf_mon_idx]) begin
+                    errors = errors + 1;
+                    $error("FIFO beat %0d: got last=%b data=%02x, expected last=%b data=%02x",
+                           pf_mon_idx, pf_m_tlast, pf_m_tdata,
+                           exp_pf[pf_mon_idx][8], exp_pf[pf_mon_idx][7:0]);
+                end
+                if (pf_m_length !== 9'(exp_pf_len[pf_frame_idx])) begin
+                    errors = errors + 1;
+                    $error("FIFO frame %0d: got length %0d, expected %0d",
+                           pf_frame_idx, pf_m_length, exp_pf_len[pf_frame_idx]);
+                end
+            end
+            pf_mon_idx = pf_mon_idx + 1;
+            if (pf_m_tlast === 1'b1) pf_frame_idx = pf_frame_idx + 1;
         end
     end
 
