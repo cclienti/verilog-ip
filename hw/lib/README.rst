@@ -108,6 +108,11 @@ AXI Stream
 | `axi_stream_reg_slice <axi_stream_reg_slice/README.rst>`_     | Register slice (skid buffer), registered     |
 |                                                               | tready, full throughput                      |
 +---------------------------------------------------------------+----------------------------------------------+
+| `axi_stream_packet_mux <axi_stream_packet_mux/README.rst>`_   | Frame-atomic round-robin merge of N streams  |
++---------------------------------------------------------------+----------------------------------------------+
+| `axi_stream_packet_demux                                      | Frame-atomic route to N streams, side-band   |
+| <axi_stream_packet_demux/README.rst>`_                        | select, discard code                         |
++---------------------------------------------------------------+----------------------------------------------+
 
 Utilities
 ---------

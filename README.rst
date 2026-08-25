@@ -124,6 +124,12 @@ AXI Stream
 | `axi_stream_reg_slice                                        | Register slice (skid buffer)                 |
 | <hw/lib/axi_stream_reg_slice/README.rst>`_                   |                                              |
 +--------------------------------------------------------------+----------------------------------------------+
+| `axi_stream_packet_mux                                       | Frame-atomic round-robin merge               |
+| <hw/lib/axi_stream_packet_mux/README.rst>`_                  |                                              |
++--------------------------------------------------------------+----------------------------------------------+
+| `axi_stream_packet_demux                                     | Frame-atomic route with side-band select     |
+| <hw/lib/axi_stream_packet_demux/README.rst>`_                |                                              |
++--------------------------------------------------------------+----------------------------------------------+
 
 Utilities
 ~~~~~~~~~
