@@ -14,8 +14,11 @@
 // cycle -- which is exactly what a two-slot slice with a registered
 // ready looks like from outside, and fails for any combinational
 // passthrough or mis-sized variant -- and a forced full-rate window
-// must accept one beat per clock with no bubble. A second instance
-// sweeps the width parameters (2-bit data, 4-bit user).
+// must accept one beat per clock with no bubble. A long soak at
+// contrasting ready duty cycles (mostly stalled, then balanced) hunts
+// for handshake deadlocks: a lost beat parks the driver and trips the
+// watchdog. A second instance sweeps the width parameters (2-bit data,
+// 4-bit user).
 //-----------------------------------------------------------------------------
 // Copyright (c) 2026 by Christophe Clienti. This model is the confidential and
 // proprietary property of Christophe Clienti and the possession or use of this
@@ -59,7 +62,7 @@ module axi_stream_reg_slice_tb;
     logic       mn_m_tvalid;
     logic       mn_m_tlast;
     logic       mn_m_tready;
-    logic [1:0] mn_ready_mode; // 0: random, 1: always ready, 2: stalled
+    logic [1:0] mn_ready_mode; // 0: random, 1: ready, 2: stalled, 3: mostly stalled
 
     axi_stream_reg_slice
     #(
@@ -129,6 +132,7 @@ module axi_stream_reg_slice_tb;
             case (mn_ready_mode)
                 2'd1:    mn_m_tready <= 1'b1;
                 2'd2:    mn_m_tready <= 1'b0;
+                2'd3:    mn_m_tready <= $urandom_range(0, 7) == 0; // mostly stalled
                 default: mn_m_tready <= $urandom_range(0, 1) == 1;
             endcase
             alt_m_tready <= $urandom_range(0, 1) == 1;
@@ -138,7 +142,7 @@ module axi_stream_reg_slice_tb;
     //----------------------------------------------------------------
     // Expected beats: {user, last, data}
     //----------------------------------------------------------------
-    logic [9:0] mn_exp [0:511];
+    logic [9:0] mn_exp [0:4095];
     integer     mn_exp_count = 0;
     integer     mn_mon_idx = 0;
 
@@ -212,23 +216,40 @@ module axi_stream_reg_slice_tb;
         // register, stall the sink, and launch the beat the registered
         // ready still announces room for -- it must land in the skid
         // and come out in order once the sink resumes
-        mn_ready_mode = 2'd2;
+        mn_ready_mode <= 2'd2;
         mn_idle(3);
         mn_send_beat(8'hA1, 1'b0, 1'b0); // into the output register
         mn_send_beat(8'hA2, 1'b0, 1'b1); // the exposed beat, into the skid
-        mn_s_tvalid <= 1'b0;
-        repeat (5) @(posedge clock);
-        mn_ready_mode = 2'd1;
+        mn_idle(5);
+        mn_ready_mode <= 2'd1;
         mn_idle(5);
 
         // Random gaps against random backpressure
-        mn_ready_mode = 2'd0;
+        mn_ready_mode <= 2'd0;
         for (int i = 0; i < 200; i++) begin
             mn_send_beat(8'($urandom), $urandom_range(0, 7) == 0, 1'($urandom));
             if ($urandom_range(0, 3) == 0) begin
                 mn_idle($urandom_range(1, 3));
             end
         end
+        mn_idle(30);
+
+        // Deadlock soak: a long run at contrasting ready duty cycles.
+        // Any lost beat or handshake deadlock parks the driver in its
+        // wait loop and trips the watchdog; the counters then show how
+        // far the stream got.
+        mn_ready_mode <= 2'd3; // sink mostly stalled
+        for (int i = 0; i < 400; i++) begin
+            mn_send_beat(8'($urandom), $urandom_range(0, 7) == 0, 1'($urandom));
+        end
+        mn_ready_mode <= 2'd0;
+        for (int i = 0; i < 1000; i++) begin
+            mn_send_beat(8'($urandom), $urandom_range(0, 7) == 0, 1'($urandom));
+            if ($urandom_range(0, 7) == 0) begin
+                mn_idle($urandom_range(1, 2));
+            end
+        end
+        mn_ready_mode <= 2'd1; // drain fast
         mn_idle(30);
 
         // Width-sweep instance under random backpressure
@@ -259,7 +280,7 @@ module axi_stream_reg_slice_tb;
 
     // Watchdog: a lost beat leaves the driver waiting forever
     initial begin
-        #200000;
+        #2000000;
         errors = errors + 1;
         $error("watchdog: test sequence did not finish (%0d/%0d, %0d/%0d)",
                mn_mon_idx, mn_exp_count, alt_mon_idx, alt_exp_count);
