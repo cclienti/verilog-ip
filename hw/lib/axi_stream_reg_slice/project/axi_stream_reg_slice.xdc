@@ -16,4 +16,6 @@ set_output_delay -clock clock 0.000 [get_ports {m_axi_tdata[*] m_axi_tuser*}]
 # OOC hold artifact: input ports have no clock tree, so zero-value input
 # delays produce spurious hold violations on every port-launched path.
 # Hold is re-timed for real when the block is integrated in context.
-set_false_path -hold -from [all_inputs]
+# The clock port(s) are excluded: a clock-source startpoint expands the
+# waiver to every register-launched path, silencing real hold analysis.
+set_false_path -hold -from [remove_from_collection [all_inputs] [get_ports clock]]
