@@ -7,6 +7,8 @@ TOP_DEPS          ?=
 TESTBENCH_MODULE  ?= rmii_mac_rx_tb
 TESTBENCH_FILE    ?= ../src/rmii_mac_rx_tb.sv
 
+VIVADO_BOARDFILE  ?= rmii_mac_rx.xdc
+VIVADO_PROJECT_OOC ?= 1
 
 include ../../../../Makefiles/common.mk
 include ../../../../Makefiles/wavedisp.mk

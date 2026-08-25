@@ -13,6 +13,8 @@ TESTBENCH_DEPS    ?= ../../axi_stream_eth_fcs_gen \
 			../../../../lib/axi_stream_upsizer \
 			../../../../lib/axi_stream_packet_fifo
 
+VIVADO_BOARDFILE  ?= axi_stream_eth_fcs_check.xdc
+VIVADO_PROJECT_OOC ?= 1
 
 include ../../../../Makefiles/common.mk
 include ../../../../Makefiles/wavedisp.mk

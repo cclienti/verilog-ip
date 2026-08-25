@@ -8,6 +8,8 @@ TESTBENCH_MODULE  ?= rmii_mac_tx_tb
 TESTBENCH_FILE    ?= ../src/rmii_mac_tx_tb.sv
 TESTBENCH_DEPS    ?= ../../rmii_mac_rx/src/rmii_mac_rx.sv
 
+VIVADO_BOARDFILE  ?= rmii_mac_tx.xdc
+VIVADO_PROJECT_OOC ?= 1
 
 include ../../../../Makefiles/common.mk
 include ../../../../Makefiles/wavedisp.mk

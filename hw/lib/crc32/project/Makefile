@@ -8,6 +8,8 @@ TESTBENCH_MODULE  ?= crc32_tb
 TESTBENCH_FILE    ?= ../src/crc32_tb.sv
 TESTBENCH_DEPS    ?=
 
+VIVADO_BOARDFILE  ?= crc32.xdc
+VIVADO_PROJECT_OOC ?= 1
 
 include ../../../Makefiles/common.mk
 include ../../../Makefiles/wavedisp.mk

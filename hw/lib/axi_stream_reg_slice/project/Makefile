@@ -10,6 +10,7 @@ TESTBENCH_DEPS    ?=
 
 VIVADO_BOARDFILE  ?= axi_stream_reg_slice.xdc
 
+VIVADO_PROJECT_OOC ?= 1
 
 include ../../../Makefiles/common.mk
 include ../../../Makefiles/wavedisp.mk

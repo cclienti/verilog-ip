@@ -8,6 +8,8 @@ TESTBENCH_MODULE  ?= axi_stream_eth_fcs_gen_tb
 TESTBENCH_FILE    ?= ../src/axi_stream_eth_fcs_gen_tb.sv
 TESTBENCH_DEPS    ?=
 
+VIVADO_BOARDFILE  ?= axi_stream_eth_fcs_gen.xdc
+VIVADO_PROJECT_OOC ?= 1
 
 include ../../../../Makefiles/common.mk
 include ../../../../Makefiles/wavedisp.mk
