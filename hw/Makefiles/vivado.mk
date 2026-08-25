@@ -55,7 +55,11 @@ vivado-project.tcl: $(ALL_TOP_FILES)
 	@for f in $(ALL_TOP_FILES); do echo "  $$f" >> $@; done
 	@echo "}" >> $@
 	@echo "set_property top $(TOP_MODULE) [current_fileset]" >> $@
-	@echo "add_files -fileset constrs_1 $(abspath $(VIVADO_BOARDFILE))" >> $@
+	@if [ -n "$(VIVADO_BOARDFILE)" ] && [ -f "$(VIVADO_BOARDFILE)" ]; then \
+		echo "add_files -fileset constrs_1 $(abspath $(VIVADO_BOARDFILE))" >> $@; \
+	else \
+		echo 'puts "WARNING: boardfile $(VIVADO_BOARDFILE) not found: project has NO constraints"' >> $@; \
+	fi
 	@if [ "$(VIVADO_PROJECT_OOC)" = "1" ]; then \
 		echo "set_property -name {STEPS.SYNTH_DESIGN.ARGS.MORE OPTIONS} -value {-mode out_of_context} -objects [get_runs synth_1]" >> $@; \
 	fi
@@ -72,9 +76,13 @@ vivado-gen-post-syn.tcl: $(ALL_TOP_FILES)
 	@echo "read_verilog {" >> $@
 	@for f in $(ALL_TOP_FILES); do echo "  $$f" >> $@; done
 	@echo "}" >> $@
+	@if [ -n "$(VIVADO_BOARDFILE)" ] && [ -f "$(VIVADO_BOARDFILE)" ]; then \
+		echo "read_xdc $(abspath $(VIVADO_BOARDFILE))" >> $@; \
+	else \
+		echo 'puts "WARNING: boardfile $(VIVADO_BOARDFILE) not found: running UNCONSTRAINED, timing numbers are meaningless"' >> $@; \
+	fi
 	@echo "synth_design -top $(TOP_MODULE) -part $(VIVADO_PART) $(VIVADO_SYNTH_OPTIONS) -include_dirs \"$(INCLUDE_DIRS)\"" >> $@
 	@echo "write_verilog -force -include_xilinx_libs -mode funcsim $(TOP_MODULE)_syn.v" >> $@
-	@if [ -n "$(VIVADO_BOARDFILE)" ] && [ -f "$(VIVADO_BOARDFILE)" ]; then echo "read_xdc $(abspath $(VIVADO_BOARDFILE))" >> $@; fi
 	@echo "report_utilization -file post_synth_util.rpt" >> $@
 	@echo "report_timing_summary -file post_synth_timing.rpt" >> $@
 	@echo "exit" >> $@
@@ -90,8 +98,12 @@ vivado-gen-post-impl.tcl: $(ALL_TOP_FILES)
 	@echo "read_verilog {" >> $@
 	@for f in $(ALL_TOP_FILES); do echo "  $$f" >> $@; done
 	@echo "}" >> $@
+	@if [ -n "$(VIVADO_BOARDFILE)" ] && [ -f "$(VIVADO_BOARDFILE)" ]; then \
+		echo "read_xdc $(abspath $(VIVADO_BOARDFILE))" >> $@; \
+	else \
+		echo 'puts "WARNING: boardfile $(VIVADO_BOARDFILE) not found: running UNCONSTRAINED, timing numbers are meaningless"' >> $@; \
+	fi
 	@echo "synth_design -top $(TOP_MODULE) -part $(VIVADO_PART) $(VIVADO_SYNTH_OPTIONS) -include_dirs \"$(INCLUDE_DIRS)\"" >> $@
-	@if [ -n "$(VIVADO_BOARDFILE)" ] && [ -f "$(VIVADO_BOARDFILE)" ]; then echo "read_xdc $(abspath $(VIVADO_BOARDFILE))" >> $@; fi
 	@echo "opt_design" >> $@
 	@echo "place_design" >> $@
 	@echo "route_design" >> $@
