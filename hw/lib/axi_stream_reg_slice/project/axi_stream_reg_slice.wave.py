@@ -8,7 +8,7 @@ from wavedisp.ast import Disp
 from wavedisp.ast import Divider
 
 
-def generator():
+def generator(internals=False):
     """Generator for module axi_stream_reg_slice."""
     blk = Block()
     blk.add(Disp("clock"))
@@ -24,9 +24,10 @@ def generator():
     blk.add(Disp("m_axi_tuser"))
     blk.add(Disp("m_axi_tready"))
 
-    internal = blk.add(Group("Internal"))
-    internal.add(Disp("o_valid"))
-    internal.add(Disp("k_valid"))
-    internal.add(Disp("o_load"))
+    if internals:
+        internal = blk.add(Group("Internal"))
+        internal.add(Disp("o_valid"))
+        internal.add(Disp("k_valid"))
+        internal.add(Disp("o_load"))
 
     return blk

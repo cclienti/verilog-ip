@@ -11,7 +11,7 @@ through the output register, ``tready`` by the skid-occupied flag alone
 one anywhere a chain of modules passes ``tready`` through
 combinationally (resizers, the FCS modules, the packet FIFO's lossless
 mode) to cut the accumulated ready path, at the cost of one cycle of
-latency and zero throughput.
+latency and no throughput penalty.
 
 A registered ``tready`` announces last cycle's willingness, so there is
 always one exposed cycle where the master launches a beat into a slice

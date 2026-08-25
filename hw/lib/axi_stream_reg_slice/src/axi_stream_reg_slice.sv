@@ -78,8 +78,13 @@ module axi_stream_reg_slice #(
         end
         else begin
             if (o_load) begin
-                // The skid drains first: it holds the older beat
-                o_pay   <= k_valid ? k_pay : s_pay;
+                // The skid drains first: it holds the older beat. The
+                // payload only loads when a beat actually moves in, so
+                // an idle slice does not chase the master's tdata
+                // toggling with all its output flops.
+                if (k_valid || s_accept) begin
+                    o_pay <= k_valid ? k_pay : s_pay;
+                end
                 o_valid <= k_valid || s_accept;
                 k_valid <= 1'b0;
             end

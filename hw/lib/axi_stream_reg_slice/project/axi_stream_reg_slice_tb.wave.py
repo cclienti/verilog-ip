@@ -13,7 +13,7 @@ def generator():
     testbench = Hierarchy("axi_stream_reg_slice_tb")
 
     inst = testbench.add(Hierarchy("axi_stream_reg_slice_mn_inst"))
-    inst.include("axi_stream_reg_slice.wave.py")
+    inst.include("axi_stream_reg_slice.wave.py", internals=True)
 
     alt = testbench.add(Hierarchy("axi_stream_reg_slice_alt_inst"))
     alt.add(Disp(["s_axi_tvalid", "s_axi_tlast", "s_axi_tdata", "s_axi_tuser",
