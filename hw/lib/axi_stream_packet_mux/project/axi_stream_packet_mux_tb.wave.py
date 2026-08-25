@@ -1,0 +1,16 @@
+# -*- python -*-
+"""Wavedisp file for module axi_stream_packet_mux_tb."""
+
+from wavedisp.ast import Hierarchy
+from wavedisp.ast import Group
+from wavedisp.ast import Block
+from wavedisp.ast import Disp
+from wavedisp.ast import Divider
+
+
+def generator():
+    """Generator for module axi_stream_packet_mux_tb."""
+    testbench = Hierarchy("axi_stream_packet_mux_tb")
+    inst = testbench.add(Hierarchy("axi_stream_packet_mux_inst"))
+    inst.include("axi_stream_packet_mux.wave.py", internals=True)
+    return testbench
