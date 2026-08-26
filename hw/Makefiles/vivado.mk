@@ -27,7 +27,14 @@ VIVADO_TOP_MODULE      ?= $(TOP_MODULE)
 VIVADO_PROJECT_NAME    ?= $(VIVADO_TOP_MODULE)
 VIVADO_PART            ?= "xc7z020clg484-1"
 VIVADO_SYNTH_OPTIONS   ?= -flatten_hierarchy full -no_iobuf
-VIVADO_BOARDFILE       ?= ../../../boards/zedboard/zedboard.xdc
+
+# Anchored to this makefile's own location rather than a depth-relative
+# path: projects include vivado.mk from three levels down (hw/lib) or
+# four (hw/network/<family>), and a ../../../ default silently resolved
+# to a nonexistent file for the deeper ones, running them unconstrained.
+# Pure make, so it also works outside a git checkout.
+VIVADO_MK_DIR          := $(dir $(lastword $(MAKEFILE_LIST)))
+VIVADO_BOARDFILE       ?= $(abspath $(VIVADO_MK_DIR)../boards/zedboard/zedboard.xdc)
 
 # Set to 1 for module-level (out-of-context) projects: synth_1 runs with
 # -mode out_of_context, so no IOBUFs are inserted and implementation does
