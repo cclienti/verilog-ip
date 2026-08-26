@@ -31,10 +31,6 @@ IVFLAGS            += $(foreach PARAM,$(TESTBENCH_PARAMS),-P$(TESTBENCH_MODULE).
 IVERILOG_DUMPER    ?= fst
 export IVERILOG_DUMPER
 
-ifeq ($(IVERILOG_DUMPER),none)
-$(error IVERILOG_DUMPER=none suppresses every dump; use `make check` instead)
-endif
-
 DUMP_FILE          ?= $(TESTBENCH_MODULE).$(IVERILOG_DUMPER)
 
 # Dump driver elaborated as a second root module, so that no testbench
