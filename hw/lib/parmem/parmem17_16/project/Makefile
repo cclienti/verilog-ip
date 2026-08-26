@@ -21,6 +21,10 @@ VIVADO_PROJECT_OOC ?= 1
 #     -no_iobuf -generic OUTREGA=1 -generic OUTREGB=1 -generic ADRREG=1"
 
 
+# The banks are dual-port rams written from both clocks by design;
+# verilator flags that as MULTIDRIVEN.
+VERILATOR_WNO     ?= MULTIDRIVEN
+
 include ../../../../Makefiles/common.mk
 include ../../../../Makefiles/iverilog.mk
 include ../../../../Makefiles/verilator.mk
