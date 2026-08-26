@@ -5,7 +5,7 @@ from the tree.
 
 ## House rules
 
-- **Never launch Vivado uninvited, and never pattern-kill.** No `pkill
+- **Ask before launch Vivado, and never pattern-kill.** No `pkill
   -f`, ever — it killed User's running sessions once. List PIDs and
   kill only processes you started. He runs synthesis; you prepare it
   and read the reports, unless he asks you to run it.
@@ -14,6 +14,9 @@ from the tree.
 - **Commit messages carry the reasoning**: the measurements that decided
   it, and the alternatives tried and rejected. Several decisions here
   were reversed after measurement...
+- **Commit messages use the Conventional Commits format**.
+- **Commit messages must embeds the model used only**, no references
+  to session, review, or model vendor email.
 - **Say which numbers are measured and which are estimated.** Estimates
   from primitive counts have been wrong by 2× more than once.
 - **Never edit a file in place to test a variant.** Copy to `/tmp`,
