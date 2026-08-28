@@ -83,17 +83,17 @@ module axi_stream_eth_parser #(
 
     localparam int HDR_BYTES = 14;
 
-    logic                    in_payload;
-    logic [3:0]              hdr_cnt;
-    logic                    hdr_last;
-    logic                    s_accept;
-    logic [103:0]            hdr_q;
-    logic [111:0]            hdr_full;
-    logic [LENGTH_WIDTH-1:0] len_q;
-    logic [47:0]             cur_dst;
-    logic [15:0]             cur_ethertype;
-    logic [SEL_W-1:0]        type_sel;
-    logic                    da_ok;
+    logic                    in_payload;    // header consumed, payload passes through
+    logic [3:0]              hdr_cnt;       // header byte index, 0..13
+    logic                    hdr_last;      // accepting the last header byte
+    logic                    s_accept;      // input beat accepted this cycle
+    logic [103:0]            hdr_q;         // first 13 header bytes, oldest in the MSBs
+    logic [111:0]            hdr_full;      // whole header, live byte appended
+    logic [LENGTH_WIDTH-1:0] len_q;         // s_length sampled on the first beat
+    logic [47:0]             cur_dst;       // destination MAC, live view
+    logic [15:0]             cur_ethertype; // EtherType, live view
+    logic [SEL_W-1:0]        type_sel;      // matched EtherType index or discard
+    logic                    da_ok;         // destination filter verdict
 
     //-------------------------------------------
     // Handshake: the header is consumed at full

@@ -115,8 +115,7 @@ module axi_stream_eth_arp (
 
     // The whole verdict on the closing beat: nothing bad so far or
     // live, no error flag, and the 28 ARP bytes all seen
-    assign frame_ok = !bad_q && !byte_bad && !err_q && !s_axi_tuser
-                   && rx_cnt >= 5'd27;
+    assign frame_ok = !bad_q && !byte_bad && !err_q && !s_axi_tuser && rx_cnt >= 5'd27;
 
     //-------------------------------------------
     // Receive, decide, emit
