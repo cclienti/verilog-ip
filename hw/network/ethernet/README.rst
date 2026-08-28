@@ -24,6 +24,14 @@ vanish there, so the protocol layer only ever parses complete valid
 frames, with the length delivered on the first beat. The checker
 testbench instantiates this exact chain and keeps it working.
 
+Behind the FIFO, the `parser <axi_stream_eth_parser/README.rst>`_
+strips the Ethernet header and turns the EtherType into the select of
+an `axi_stream_packet_demux
+<../../lib/axi_stream_packet_demux/README.rst>`_, one output per
+protocol; unknown EtherTypes and foreign destination MACs are steered
+at the demux discard code and vanish without a beat. The parser
+testbench instantiates the parser → demux pair.
+
 +---------------------------------------------------------------------+----------------------------------------------+
 | Module                                                              | Description                                  |
 +=====================================================================+==============================================+
@@ -34,4 +42,6 @@ testbench instantiates this exact chain and keeps it working.
 | `axi_stream_eth_fcs_gen <axi_stream_eth_fcs_gen/README.rst>`_       | FCS generator with minimum-frame padding     |
 +---------------------------------------------------------------------+----------------------------------------------+
 | `axi_stream_eth_fcs_check <axi_stream_eth_fcs_check/README.rst>`_   | FCS checker and stripper                     |
++---------------------------------------------------------------------+----------------------------------------------+
+| `axi_stream_eth_parser <axi_stream_eth_parser/README.rst>`_         | Header parser, EtherType select for the demux|
 +---------------------------------------------------------------------+----------------------------------------------+
