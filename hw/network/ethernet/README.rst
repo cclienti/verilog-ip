@@ -30,7 +30,11 @@ an `axi_stream_packet_demux
 <../../lib/axi_stream_packet_demux/README.rst>`_, one output per
 protocol; unknown EtherTypes and foreign destination MACs are steered
 at the demux discard code and vanish without a beat. The parser
-testbench instantiates the parser → demux pair.
+testbench instantiates the parser → demux pair. On the demux's ARP
+output, the `responder <axi_stream_eth_arp/README.rst>`_ answers
+requests for the local IP with complete Ethernet frames, ready for the
+`packet mux <../../lib/axi_stream_packet_mux/README.rst>`_ merging the
+transmit path back into the FCS generator.
 
 +---------------------------------------------------------------------+----------------------------------------------+
 | Module                                                              | Description                                  |
@@ -44,4 +48,6 @@ testbench instantiates the parser → demux pair.
 | `axi_stream_eth_fcs_check <axi_stream_eth_fcs_check/README.rst>`_   | FCS checker and stripper                     |
 +---------------------------------------------------------------------+----------------------------------------------+
 | `axi_stream_eth_parser <axi_stream_eth_parser/README.rst>`_         | Header parser, EtherType select for the demux|
++---------------------------------------------------------------------+----------------------------------------------+
+| `axi_stream_eth_arp <axi_stream_eth_arp/README.rst>`_               | ARP responder with a learn side-band         |
 +---------------------------------------------------------------------+----------------------------------------------+
