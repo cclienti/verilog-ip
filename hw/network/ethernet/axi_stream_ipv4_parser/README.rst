@@ -24,7 +24,14 @@ The Ethernet minimum frame pads short IP packets, so the payload is
 cut at ``total_length``: ``m_axi_tlast`` fires on the last real
 payload byte and the padding is consumed silently. A frame that ends
 before ``total_length`` is aborted with ``tuser`` on its final beat,
-the receive drop convention. A frame with no L4 payload
+the receive drop convention. That convention is only complete with
+the drop FIFO upstream: the FCS checker flags a bad frame on its
+*wire*-final beat, which for every padded (short) packet is a padding
+beat — by then the payload has already left with a clean ``tlast``
+and the flag can no longer be honored, so FCS-flagged frames must be
+removed before the parser, which the documented `packet FIFO
+<../../../lib/axi_stream_packet_fifo/README.rst>`_ in DROP_ON_FULL
+mode does. A frame with no L4 payload
 (``total_length`` of 20 or less, or ending inside the header) emits
 nothing, so a zero-beat frame can never reach the demux. Source and
 destination IP, protocol and payload length are registered before the

@@ -382,6 +382,12 @@ module axi_stream_ipv4_parser_tb;
         send_ip(1'b0, REMOTE_IP, LOCAL_IP, 8'h11, 1'b0, 8, 46, 0, -1);
         send_ip(1'b0, REMOTE_IP, LOCAL_IP, 8'h01, 1'b0, 8, 46, 0, 5);
 
+        // A header-rejected frame with no padding exits through the
+        // PAYLOAD tlast branch: its sticky drop must not leak into
+        // the accepted frame that follows
+        send_ip(1'b0, REMOTE_IP, LOCAL_IP, 8'h01, 1'b0, 8, 28, 1, -1);
+        send_ip(1'b0, REMOTE_IP, LOCAL_IP, 8'h01, 1'b0, 8, 46, 0, -1);
+
         // Nothing at all: no L4 payload, death inside the header
         send_ip(1'b0, REMOTE_IP, LOCAL_IP, 8'h01, 1'b0, 0, 46, 0, -1);
         send_ip(1'b0, REMOTE_IP, LOCAL_IP, 8'h01, 1'b0, 28, 12, 0, -1);

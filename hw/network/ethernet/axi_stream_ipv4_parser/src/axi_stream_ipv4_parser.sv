@@ -35,8 +35,14 @@
 // cut at total_length: m_axi_tlast fires on the last real payload byte
 // and the padding is consumed silently. A frame that ends before
 // total_length is aborted with tuser on its final beat, the receive
-// drop convention. A frame with no L4 payload (total_length <= 20, or
-// ending inside the header) emits nothing, so a zero-beat frame can
+// drop convention -- with one blind spot the cut creates: a tuser
+// arriving on a padding beat (the FCS checker flags bad frames on the
+// wire-final beat, a padding beat for every short packet) lands after
+// the payload already left clean and cannot be honored, so FCS-flagged
+// frames must be removed upstream, which the drop FIFO of the
+// documented receive chain does. A frame with no L4 payload
+// (total_length <= 20, or ending inside the header) emits nothing, so
+// a zero-beat frame can
 // never reach the demux. src/dst IP, protocol and payload length are
 // registered before the first payload beat and stable to the last,
 // the packet FIFO convention.
@@ -80,8 +86,7 @@ module axi_stream_ipv4_parser #(
 
     logic [4:0]              hdr_cnt;       // header byte index, 0..19
     logic                    s_accept;      // input beat accepted this cycle
-    logic                    bad_q;         // sticky header field mismatch
-    logic                    err_q;         // sticky input tuser
+    logic                    drop_q;        // sticky drop, field mismatch or tuser
     logic [31:0]             my_ip_q;       // identity sample of the frame start
     logic [15:0]             total_q;       // captured total_length
     logic [7:0]              proto_q;       // captured protocol
@@ -145,7 +150,7 @@ module axi_stream_ipv4_parser #(
     assign dst_full = {dst_q, s_axi_tdata};
     assign dst_ok   = dst_full == my_ip_q || dst_full == 32'hFFFF_FFFF;
 
-    assign frame_good = !bad_q && !err_q && !s_axi_tuser && csum_ok && dst_ok;
+    assign frame_good = !drop_q && !s_axi_tuser && csum_ok && dst_ok;
 
     assign pay_len = total_q - 16'd20;
 
@@ -169,8 +174,7 @@ module axi_stream_ipv4_parser #(
         if (sreset) begin
             state   <= HEADER;
             hdr_cnt <= '0;
-            bad_q   <= 1'b0;
-            err_q   <= 1'b0;
+            drop_q  <= 1'b0;
             sum_q   <= '0;
         end
         else if (s_accept) begin
@@ -193,15 +197,14 @@ module axi_stream_ipv4_parser #(
                     else begin
                         even_q <= s_axi_tdata;
                     end
-                    if (byte_bad)     bad_q <= 1'b1;
-                    if (s_axi_tuser)  err_q <= 1'b1;
+                    if (byte_bad || s_axi_tuser) begin
+                        drop_q <= 1'b1;
+                    end
 
                     if (s_axi_tlast) begin
                         // Died inside its header: swallowed
-                        state   <= HEADER;
                         hdr_cnt <= '0;
-                        bad_q   <= 1'b0;
-                        err_q   <= 1'b0;
+                        drop_q  <= 1'b0;
                         sum_q   <= '0;
                     end
                     else if (hdr_cnt == 5'd19) begin
@@ -219,7 +222,7 @@ module axi_stream_ipv4_parser #(
                         m_src_ip    <= src_q;
                         m_dst_ip    <= dst_full;
                         m_protocol  <= proto_q;
-                        m_length    <= total_q - 16'd20;
+                        m_length    <= pay_len;
                     end
                 end
 
@@ -227,9 +230,8 @@ module axi_stream_ipv4_parser #(
                     pay_cnt <= pay_cnt + 16'd1;
                     if (s_axi_tlast) begin
                         // Truncated frames abort with tuser on the beat
-                        state <= HEADER;
-                        bad_q <= 1'b0;
-                        err_q <= 1'b0;
+                        state  <= HEADER;
+                        drop_q <= 1'b0;
                     end
                     else if (out_last) begin
                         state <= PAD;
@@ -238,9 +240,8 @@ module axi_stream_ipv4_parser #(
 
                 default: begin // PAD
                     if (s_axi_tlast) begin
-                        state <= HEADER;
-                        bad_q <= 1'b0;
-                        err_q <= 1'b0;
+                        state  <= HEADER;
+                        drop_q <= 1'b0;
                     end
                 end
             endcase

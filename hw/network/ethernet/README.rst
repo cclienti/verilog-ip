@@ -39,7 +39,9 @@ pattern one layer up: the `IPv4 parser
 <axi_stream_ipv4_parser/README.rst>`_ validates and strips the IP
 header — cutting the payload at ``total_length``, since the Ethernet
 minimum frame pads short packets — and drives a second demux, one
-output per transport protocol.
+output per transport protocol. Behind it, the `ICMP echo responder
+<axi_stream_icmp_echo/README.rst>`_ answers pings with complete
+Ethernet frames, like the ARP responder.
 
 +---------------------------------------------------------------------+----------------------------------------------+
 | Module                                                              | Description                                  |
@@ -57,4 +59,6 @@ output per transport protocol.
 | `axi_stream_eth_arp <axi_stream_eth_arp/README.rst>`_               | ARP responder with a learn side-band         |
 +---------------------------------------------------------------------+----------------------------------------------+
 | `axi_stream_ipv4_parser <axi_stream_ipv4_parser/README.rst>`_       | IPv4 parser, protocol select for the demux   |
++---------------------------------------------------------------------+----------------------------------------------+
+| `axi_stream_icmp_echo <axi_stream_icmp_echo/README.rst>`_           | ICMP echo responder with payload buffer      |
 +---------------------------------------------------------------------+----------------------------------------------+
