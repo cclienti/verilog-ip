@@ -34,7 +34,12 @@ testbench instantiates the parser → demux pair. On the demux's ARP
 output, the `responder <axi_stream_eth_arp/README.rst>`_ answers
 requests for the local IP with complete Ethernet frames, ready for the
 `packet mux <../../lib/axi_stream_packet_mux/README.rst>`_ merging the
-transmit path back into the FCS generator.
+transmit path back into the FCS generator. The IPv4 output repeats the
+pattern one layer up: the `IPv4 parser
+<axi_stream_ipv4_parser/README.rst>`_ validates and strips the IP
+header — cutting the payload at ``total_length``, since the Ethernet
+minimum frame pads short packets — and drives a second demux, one
+output per transport protocol.
 
 +---------------------------------------------------------------------+----------------------------------------------+
 | Module                                                              | Description                                  |
@@ -50,4 +55,6 @@ transmit path back into the FCS generator.
 | `axi_stream_eth_parser <axi_stream_eth_parser/README.rst>`_         | Header parser, EtherType select for the demux|
 +---------------------------------------------------------------------+----------------------------------------------+
 | `axi_stream_eth_arp <axi_stream_eth_arp/README.rst>`_               | ARP responder with a learn side-band         |
++---------------------------------------------------------------------+----------------------------------------------+
+| `axi_stream_ipv4_parser <axi_stream_ipv4_parser/README.rst>`_       | IPv4 parser, protocol select for the demux   |
 +---------------------------------------------------------------------+----------------------------------------------+
