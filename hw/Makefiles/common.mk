@@ -11,14 +11,18 @@ TESTBENCH_FILE       ?= $(TESTBENCH_MODULE).v
 TESTBENCH_DEPS       ?=
 
 
-# Function to retrieve files
+# Function to retrieve files. MAKEFLAGS is cleared on the recursive
+# query: bash completion probes with `make -npq`, and those inherited
+# flags turn the sub-make's output into a database dump whose `:`
+# tokens then abort rule parsing with "multiple target patterns" --
+# which is how half the targets used to vanish from <tab>.
 get-file = $(shell \
 	     deps=$$(realpath $1); \
 	     for dep in $2; do \
 	       if [ -f $$dep ]; then \
 	         deps="$$deps $$(realpath $$dep)"; \
 	       else \
-	         deps="$$deps $$($(MAKE) --no-print-directory -C $$(realpath $$dep)/project eval-$3)";\
+	         deps="$$deps $$(MAKEFLAGS= $(MAKE) --no-print-directory -C $$(realpath $$dep)/project eval-$3)";\
 	       fi \
 	     done; \
 	     echo "$$deps" | tr ' ' '\n' | sort -u | tr '\n' ' ')
