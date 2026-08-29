@@ -21,7 +21,7 @@ get-file = $(shell \
 	         deps="$$deps $$($(MAKE) --no-print-directory -C $$(realpath $$dep)/project eval-$3)";\
 	       fi \
 	     done; \
-	     echo "$$deps" | sort -u)
+	     echo "$$deps" | tr ' ' '\n' | sort -u | tr '\n' ' ')
 
 # Gather all module and testbench files
 ALL_TOP_FILES    := $(call get-file,$(TOP_FILE),$(TOP_DEPS),ALL_TOP_FILES)
