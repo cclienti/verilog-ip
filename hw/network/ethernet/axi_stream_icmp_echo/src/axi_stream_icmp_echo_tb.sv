@@ -267,7 +267,7 @@ module axi_stream_icmp_echo_tb;
         fold    = 17'(sum[15:0]) + 17'(sum[19:16]);
         ip_csum = ~(16'(fold[15:0]) + 16'(fold[16]));
 
-        fold      = 17'(~req_csum) + 17'h0F7FF;
+        fold      = {1'b0, ~req_csum} + 17'h0F7FF;
         icmp_csum = ~(16'(fold[15:0]) + 16'(fold[16]));
 
         n = 0;

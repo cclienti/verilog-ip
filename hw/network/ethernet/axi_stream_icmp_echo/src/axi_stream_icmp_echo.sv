@@ -161,8 +161,10 @@ module axi_stream_icmp_echo #(
     assign ip_fold = 17'(ip_sum[15:0]) + 17'(ip_sum[19:16]);
     assign ip_csum = ~(16'(ip_fold[15:0]) + 16'(ip_fold[16]));
 
-    // Type 8 -> 0 is the only change: HC' = ~(~HC + ~0x0800)
-    assign inc_sum   = 17'(~csum_q) + 17'h0F7FF;
+    // Type 8 -> 0 is the only change: HC' = ~(~HC + ~0x0800). The
+    // concatenation, not a 17-bit cast: 17'(~csum_q) would invert the
+    // zero-extended value, set bit 16 and flip the end-around carry
+    assign inc_sum   = {1'b0, ~csum_q} + 17'h0F7FF;
     assign icmp_csum = ~(16'(inc_sum[15:0]) + 16'(inc_sum[16]));
 
     //-------------------------------------------
