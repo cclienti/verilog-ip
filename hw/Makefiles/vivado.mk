@@ -42,6 +42,11 @@ VIVADO_BOARDFILE       ?= $(abspath $(VIVADO_MK_DIR)../boards/zedboard/zedboard.
 # which only applies to the non-project vivado-gen-* targets).
 VIVADO_PROJECT_OOC     ?= 0
 
+# Set to 1 on board-level projects: impl.vivado also writes
+# $(TOP_MODULE).bit into vivado-post-impl/. Needs full pin constraints,
+# meaningless together with VIVADO_PROJECT_OOC.
+VIVADO_BITSTREAM       ?= 0
+
 .PHONY: vivado-project.tcl vivado-gen-post-syn.tcl vivado-gen-post-impl.tcl
 .PHONY: project.vivado synth.vivado impl.vivado floorplan.vivado
 .PHONY: clean.vivado distclean.vivado
@@ -119,6 +124,9 @@ vivado-gen-post-impl.tcl: $(ALL_TOP_FILES)
 	@echo "write_verilog -force -include_xilinx_libs -mode timesim -sdf_anno true $(TOP_MODULE)_impl.v" >> $@
 	@echo "report_utilization -file post_impl_util.rpt" >> $@
 	@echo "report_timing_summary -file post_impl_timing.rpt" >> $@
+	@if [ "$(VIVADO_BITSTREAM)" = "1" ]; then \
+		echo "write_bitstream -force $(TOP_MODULE).bit" >> $@; \
+	fi
 	@echo "exit" >> $@
 
 floorplan.vivado:
