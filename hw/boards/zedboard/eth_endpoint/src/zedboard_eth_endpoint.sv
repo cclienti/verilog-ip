@@ -21,8 +21,9 @@
 // with a LAN8720 RMII PHY module jumper-wired to Pmod JA -- the
 // on-board Marvell PHY hangs off the PS GEM and is not reachable from
 // the PL. Everything runs on the PHY module's 50 MHz reference clock,
-// entering on the clock-capable JA10 pin. Identity is fixed here:
-// ping 192.168.90.42 answers once the link is up.
+// entering on JA4, the P side of the Pmod's clock-capable pair.
+// Identity is fixed here: ping 192.168.90.42 answers once the link
+// is up.
 //
 // This wrapper only adds what a board needs: a power-on/button reset
 // stretcher, the identity constants, activity LEDs -- heartbeat,

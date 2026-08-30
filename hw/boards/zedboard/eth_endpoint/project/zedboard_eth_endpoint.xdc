@@ -10,14 +10,18 @@
 # 50 MHz RMII reference from the PHY module
 create_clock -name phy_refclk -period 20.000 [get_ports phy_refclk]
 
-# Pmod JA, matching the existing harness; JA1 is not connected
+# Pmod JA; JA1 is not connected. The reference clock must sit on JA4:
+# AA9 is the P side of the connector's clock-capable pair and AA8
+# (JA10) is the N side, which cannot drive a clock buffer for a
+# single-ended input (DRC PLIO-9) -- CRS_DV, a plain data input, takes
+# JA10 instead.
 set_property PACKAGE_PIN AA11 [get_ports {phy_txd[0]}];   # JA2  - TX0
 set_property PACKAGE_PIN Y10  [get_ports {phy_rxd[1]}];   # JA3  - RX1
-set_property PACKAGE_PIN AA9  [get_ports {phy_crs_dv}];   # JA4  - CRS_DV
+set_property PACKAGE_PIN AA9  [get_ports {phy_refclk}];   # JA4  - nINT/REFCLKO, CC P-side
 set_property PACKAGE_PIN AB11 [get_ports {phy_txd[1]}];   # JA7  - TX1
 set_property PACKAGE_PIN AB10 [get_ports {phy_txen}];     # JA8  - TX_EN
 set_property PACKAGE_PIN AB9  [get_ports {phy_rxd[0]}];   # JA9  - RX0
-set_property PACKAGE_PIN AA8  [get_ports {phy_refclk}];   # JA10 - nINT/REFCLKO, clock-capable
+set_property PACKAGE_PIN AA8  [get_ports {phy_crs_dv}];   # JA10 - CRS_DV
 
 # BTNC and LD0..LD3
 set_property PACKAGE_PIN P16 [get_ports {btn_reset}]
