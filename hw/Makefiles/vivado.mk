@@ -161,7 +161,8 @@ vivado-program.tcl:
 	else \
 		echo "set part [string trim {$(VIVADO_PART)} {\"}]" >> $@; \
 		echo "set dev {}" >> $@; \
-		echo "foreach d [get_hw_devices] { if {[get_property PART \$$d] eq \$$part} { set dev \$$d } }" >> $@; \
+		echo "# hw_device PART is the bare device name (xc7z020), match it as a prefix of the full part" >> $@; \
+		echo "foreach d [get_hw_devices] { set p [get_property PART \$$d]; if {\$$p ne {} && [string match \$$p* \$$part]} { set dev \$$d } }" >> $@; \
 		echo "if {\$$dev eq {}} { error \"no \$$part device in the JTAG chain: [get_hw_devices]\" }" >> $@; \
 	fi
 	@echo "current_hw_device \$$dev" >> $@
