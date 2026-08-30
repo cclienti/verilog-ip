@@ -32,7 +32,11 @@ set_property IOSTANDARD LVCMOS33 [get_ports *]
 # with a large clock-to-out (worst case from the LAN8720 datasheet)
 # and needs 4 ns setup / 2 ns hold on txd/txen. The receive side is
 # resynchronized inside the MAC, so the input constraint is only there
-# to keep the analysis honest, not tight.
+# to keep the analysis honest, not tight. The transmit pins leave
+# through falling-edge-retimed ODDRs, half a period away from the
+# PHY's rising-edge sample on both sides; the delays below still state
+# the PHY's true window against the rising edge and the fall-launched
+# paths meet it with margin.
 set_input_delay  -clock phy_refclk -max 14.000 [get_ports {phy_rxd[*] phy_crs_dv}]
 set_input_delay  -clock phy_refclk -min  2.000 [get_ports {phy_rxd[*] phy_crs_dv}]
 set_output_delay -clock phy_refclk -max  4.000 [get_ports {phy_txd[*] phy_txen}]

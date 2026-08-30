@@ -2,7 +2,8 @@
 
 TOP_MODULE        ?= zedboard_eth_endpoint
 TOP_FILE          ?= ../src/zedboard_eth_endpoint.sv
-TOP_DEPS          ?= ../../../../network/ethernet/rmii_eth_endpoint
+TOP_DEPS          ?= ../src/oddr_out.sv \
+			../../../../network/ethernet/rmii_eth_endpoint
 
 TESTBENCH_MODULE  ?= zedboard_eth_endpoint_tb
 TESTBENCH_FILE    ?= ../src/zedboard_eth_endpoint_tb.sv

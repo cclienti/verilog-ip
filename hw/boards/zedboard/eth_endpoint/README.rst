@@ -10,9 +10,14 @@ on a Zedboard, live: the board answers ``arping`` and
 PS GEM and is not reachable from the PL, so the demonstrator uses a
 LAN8720 RMII PHY module jumper-wired to Pmod JA. The wrapper adds only
 what a board needs: a power-on/button reset stretcher (BTNC re-arms
-it), the fixed identity constants, and four LEDs — LD0 heartbeat, LD1
+it), the fixed identity constants, four LEDs — LD0 heartbeat, LD1
 receive activity, LD2 transmit activity, LD3 lit for ~84 ms whenever a
-valid ARP packet taught the endpoint a mapping.
+valid ARP packet taught the endpoint a mapping — and ODDR retiming of
+the transmit pins to the falling edge: the LAN8720 samples TXD/TX_EN
+on the rising edge with a 4 ns setup / 2 ns hold window, a plain
+fabric register released them ~0.9 ns after that edge (a measured
+−1.1 ns hold violation), and the falling-edge ODDRs leave 10 ns on
+each side, independent of routing, corner or lead length.
 
 Hardware setup
 --------------
