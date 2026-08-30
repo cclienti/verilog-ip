@@ -47,11 +47,11 @@ VIVADO_PROJECT_OOC     ?= 0
 # meaningless together with VIVADO_PROJECT_OOC.
 VIVADO_BITSTREAM       ?= 0
 
-# JTAG device programmed by program.vivado. Empty: picked by exact
-# PART match against VIVADO_PART -- a Zynq chain also exposes the ARM
-# DAP, so "first device" would grab the wrong one. Set it to a
-# hw_device name or glob (e.g. xc7z020_1) when the chain holds several
-# identical parts.
+# JTAG device programmed by program.vivado: a hw_device name or glob
+# (e.g. xc7z020_1), declared by each board project. No automatic
+# guess: a chain can hold a DAP and several identical parts, and the
+# hw_device PART property is the bare device name, so any inference is
+# one surprise away from programming the wrong chip.
 VIVADO_JTAG_DEVICE     ?=
 
 .PHONY: vivado-project.tcl vivado-gen-post-syn.tcl vivado-gen-post-impl.tcl vivado-program.tcl
@@ -141,30 +141,23 @@ floorplan.vivado:
 
 HELP_ENTRIES += 'floorplan.vivado|open the post-implementation floorplan in the gui'
 
-# JTAG programming of the impl.vivado bitstream. The device is picked
-# by exact PART match against VIVADO_PART: a Zynq chain also exposes
-# the ARM DAP, so "first device" would grab the wrong one.
+# JTAG programming of the impl.vivado bitstream, into the device the
+# project names in VIVADO_JTAG_DEVICE.
 program.vivado: vivado-program.tcl
 	@test -f vivado-post-impl/$(TOP_MODULE).bit || \
 		{ echo "ERROR: vivado-post-impl/$(TOP_MODULE).bit not found, run impl.vivado (VIVADO_BITSTREAM=1) first"; exit 1; }
 	cd vivado-post-impl && $(VIVADO) -mode batch -source ../vivado-program.tcl -notrace -nolog -nojournal
 
 vivado-program.tcl:
+	@test -n "$(VIVADO_JTAG_DEVICE)" || \
+		{ echo "ERROR: VIVADO_JTAG_DEVICE is not set; declare the hw_device to program (e.g. xc7z020_1) in the project Makefile"; exit 1; }
 	@echo "Generating $@"
 	@echo "### Vivado $(TOP_MODULE) script to program the bitstream over JTAG" > $@
 	@echo "open_hw_manager" >> $@
 	@echo "connect_hw_server" >> $@
 	@echo "open_hw_target" >> $@
-	@if [ -n "$(VIVADO_JTAG_DEVICE)" ]; then \
-		echo "set dev [lindex [get_hw_devices -quiet {$(VIVADO_JTAG_DEVICE)}] 0]" >> $@; \
-		echo "if {\$$dev eq {}} { error \"no device matching $(VIVADO_JTAG_DEVICE) in the JTAG chain: [get_hw_devices]\" }" >> $@; \
-	else \
-		echo "set part [string trim {$(VIVADO_PART)} {\"}]" >> $@; \
-		echo "set dev {}" >> $@; \
-		echo "# hw_device PART is the bare device name (xc7z020), match it as a prefix of the full part" >> $@; \
-		echo "foreach d [get_hw_devices] { set p [get_property PART \$$d]; if {\$$p ne {} && [string match \$$p* \$$part]} { set dev \$$d } }" >> $@; \
-		echo "if {\$$dev eq {}} { error \"no \$$part device in the JTAG chain: [get_hw_devices]\" }" >> $@; \
-	fi
+	@echo "set dev [lindex [get_hw_devices -quiet {$(VIVADO_JTAG_DEVICE)}] 0]" >> $@
+	@echo "if {\$$dev eq {}} { error \"no device matching $(VIVADO_JTAG_DEVICE) in the JTAG chain: [get_hw_devices]\" }" >> $@
 	@echo "current_hw_device \$$dev" >> $@
 	@echo "set_property PROGRAM.FILE $(TOP_MODULE).bit \$$dev" >> $@
 	@echo "program_hw_devices \$$dev" >> $@

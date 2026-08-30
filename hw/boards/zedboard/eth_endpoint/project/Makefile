@@ -16,6 +16,7 @@ VIVADO_BOARDFILE     ?= zedboard_eth_endpoint.xdc
 VIVADO_PROJECT_OOC   ?= 0
 VIVADO_BITSTREAM     ?= 1
 VIVADO_PART          ?= xc7z020clg484-1
+VIVADO_JTAG_DEVICE   ?= xc7z020_1
 VIVADO_SYNTH_OPTIONS ?= -flatten_hierarchy full
 
 include ../../../../Makefiles/common.mk
