@@ -21,8 +21,8 @@
 // with a LAN8720 RMII PHY module jumper-wired to Pmod JA -- the
 // on-board Marvell PHY hangs off the PS GEM and is not reachable from
 // the PL. Everything runs on the PHY module's 50 MHz reference clock,
-// entering on the clock-capable JA4 pin. Identity is fixed here:
-// ping 192.168.1.42 answers once the link is up.
+// entering on the clock-capable JA10 pin. Identity is fixed here:
+// ping 192.168.90.42 answers once the link is up.
 //
 // This wrapper only adds what a board needs: a power-on/button reset
 // stretcher, the identity constants, and activity LEDs -- heartbeat,
@@ -46,7 +46,7 @@ module zedboard_eth_endpoint (
 );
 
     localparam logic [47:0] LOCAL_MAC = 48'h02_12_34_56_78_9A;      // locally administered
-    localparam logic [31:0] LOCAL_IP  = {8'd192, 8'd168, 8'd1, 8'd42};
+    localparam logic [31:0] LOCAL_IP  = {8'd192, 8'd168, 8'd90, 8'd42};
 
     localparam int STRETCH_W = 22;  // activity stretch, ~84 ms at 50 MHz
     localparam int BEAT_W    = 26;  // heartbeat divider, ~0.75 Hz blink

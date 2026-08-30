@@ -31,9 +31,9 @@
 module zedboard_eth_endpoint_tb;
 
     localparam logic [47:0] LOCAL_MAC = 48'h02_12_34_56_78_9A;
-    localparam logic [31:0] LOCAL_IP  = {8'd192, 8'd168, 8'd1, 8'd42};
+    localparam logic [31:0] LOCAL_IP  = {8'd192, 8'd168, 8'd90, 8'd42};
     localparam logic [47:0] REQ_MAC   = 48'h02_AB_CD_EF_01_23;
-    localparam logic [31:0] REQ_IP    = {8'd192, 8'd168, 8'd1, 8'd99};
+    localparam logic [31:0] REQ_IP    = {8'd192, 8'd168, 8'd90, 8'd99};
     localparam logic [47:0] BCAST_MAC = 48'hFF_FF_FF_FF_FF_FF;
 
     integer errors = 0;

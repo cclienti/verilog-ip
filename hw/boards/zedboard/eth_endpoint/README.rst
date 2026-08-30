@@ -6,7 +6,7 @@ Description
 
 `rmii_eth_endpoint <../../../network/ethernet/rmii_eth_endpoint/README.rst>`_
 on a Zedboard, live: the board answers ``arping`` and
-``ping 192.168.1.42``. The Zedboard's own Ethernet PHY hangs off the
+``ping 192.168.90.42``. The Zedboard's own Ethernet PHY hangs off the
 PS GEM and is not reachable from the PL, so the demonstrator uses a
 LAN8720 RMII PHY module jumper-wired to Pmod JA. The wrapper adds only
 what a board needs: a power-on/button reset stretcher (BTNC re-arms
@@ -48,8 +48,8 @@ write ``vivado-post-impl/zedboard_eth_endpoint.bit``. Program it (JTAG
 via ``vivado`` hardware manager, or ``xsdb``), plug the module into a
 switch or a PC, then::
 
-  arping 192.168.1.42
-  ping 192.168.1.42
+  arping 192.168.90.42
+  ping 192.168.90.42
 
 LD1 blinks on any wire traffic, LD3 on the first ARP exchange, LD2
 whenever the board answers.
