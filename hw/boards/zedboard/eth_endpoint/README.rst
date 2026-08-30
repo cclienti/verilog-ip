@@ -20,18 +20,17 @@ Hardware setup
 - **VADJ must be set to 3V3** (jumper J18): Pmod JA is powered from
   VADJ and the LAN8720 module is a 3.3 V part.
 - Wire the module to JA following the pin map in
-  `project/zedboard_eth_endpoint.xdc <project/zedboard_eth_endpoint.xdc>`_:
-  TX0/TX1/TX-EN on JA1/JA2/JA3, the 50 MHz clock on JA4, RX0/RX1 on
-  JA7/JA8, CRS_DV on JA9, plus ground and 3V3. Keep the jumper wires
-  short: this is a 50 MHz bus on flying leads.
+  `project/zedboard_eth_endpoint.xdc <project/zedboard_eth_endpoint.xdc>`_
+  (the existing harness): TX0 on JA2, RX1 on JA3, CRS_DV on JA4, TX1
+  on JA7, TX_EN on JA8, RX0 on JA9, nINT/REFCLKO on JA10, JA1 left
+  unconnected, plus ground and 3V3. Keep the jumper wires short: this
+  is a 50 MHz bus on flying leads.
 - Everything is clocked by the PHY module's 50 MHz reference entering
-  on JA4 (clock-capable). On the common blue LAN8720 breakout the
-  oscillator drives the PHY directly and the clock is exposed on the
-  nINT/REFCLKO pin only in REF_CLK Out mode: tie the nINTSEL strap low
-  at power-up (on most modules a pull-down on that pin) or tap the
-  oscillator output. A module that expects REF_CLK *in* instead needs
-  the FPGA to generate 50 MHz, which this wrapper deliberately does
-  not do — one clock, one source.
+  on JA10 (clock-capable) from the nINT/REFCLKO pin. On the common
+  blue LAN8720 breakout that pin carries the clock in REF_CLK Out
+  mode (nINTSEL strap low at power-up); a module that expects REF_CLK
+  *in* instead needs the FPGA to generate 50 MHz, which this wrapper
+  deliberately does not do — one clock, one source.
 - MDIO is not used: the LAN8720 straps default to auto-negotiation
   with all speeds advertised, which is enough for an RMII 100BASE-TX
   link. The two MDIO pads on the module stay unconnected.

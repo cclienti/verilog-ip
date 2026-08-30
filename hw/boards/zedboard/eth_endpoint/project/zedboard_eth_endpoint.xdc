@@ -2,22 +2,22 @@
 #
 # The LAN8720 RMII PHY module is jumper-wired to Pmod JA (bank 13,
 # powered from VADJ: set the VADJ jumper to 3V3, the LAN8720 module is
-# 3.3 V I/O). The module's 50 MHz reference clock enters on JA4, a
-# clock-capable pin. On the common blue LAN8720 breakout the clock is
-# available on the nINT/REFCLKO pin once the nINTSEL strap selects
-# REF_CLK Out mode -- see the README.
+# 3.3 V I/O). The module's 50 MHz reference clock enters on the
+# nINT/REFCLKO pin wired to JA10, a clock-capable pin -- see the
+# README. TX0/TX1/TX_EN are named from the PHY's side: they are the
+# module's transmit inputs, driven by the FPGA.
 
 # 50 MHz RMII reference from the PHY module
 create_clock -name phy_refclk -period 20.000 [get_ports phy_refclk]
 
-# Pmod JA
-set_property PACKAGE_PIN Y11  [get_ports {phy_txd[0]}];   # JA1
-set_property PACKAGE_PIN AA11 [get_ports {phy_txd[1]}];   # JA2
-set_property PACKAGE_PIN Y10  [get_ports {phy_txen}];     # JA3
-set_property PACKAGE_PIN AA9  [get_ports {phy_refclk}];   # JA4, clock-capable
-set_property PACKAGE_PIN AB11 [get_ports {phy_rxd[0]}];   # JA7
-set_property PACKAGE_PIN AB10 [get_ports {phy_rxd[1]}];   # JA8
-set_property PACKAGE_PIN AB9  [get_ports {phy_crs_dv}];   # JA9
+# Pmod JA, matching the existing harness; JA1 is not connected
+set_property PACKAGE_PIN AA11 [get_ports {phy_txd[0]}];   # JA2  - TX0
+set_property PACKAGE_PIN Y10  [get_ports {phy_rxd[1]}];   # JA3  - RX1
+set_property PACKAGE_PIN AA9  [get_ports {phy_crs_dv}];   # JA4  - CRS_DV
+set_property PACKAGE_PIN AB11 [get_ports {phy_txd[1]}];   # JA7  - TX1
+set_property PACKAGE_PIN AB10 [get_ports {phy_txen}];     # JA8  - TX_EN
+set_property PACKAGE_PIN AB9  [get_ports {phy_rxd[0]}];   # JA9  - RX0
+set_property PACKAGE_PIN AA8  [get_ports {phy_refclk}];   # JA10 - nINT/REFCLKO, clock-capable
 
 # BTNC and LD0..LD3
 set_property PACKAGE_PIN P16 [get_ports {btn_reset}]
