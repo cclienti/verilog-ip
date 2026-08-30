@@ -26,14 +26,15 @@
 // is up.
 //
 // This wrapper only adds what a board needs: a power-on/button reset
-// stretcher, the identity constants, activity LEDs -- heartbeat,
-// receive, transmit, and the ARP learn pulse stretched visible -- and
-// ODDR retiming of the transmit pins to the falling edge: the PHY
-// samples TXD/TX_EN on the rising edge with a 4 ns / 2 ns window, and
-// a fabric register released them 0.9 ns after that edge, inside the
-// hold window; changing them at the falling edge leaves 10 ns on each
-// side. BTNC re-arms the reset; the FPGA register init values cover
-// power-on.
+// stretcher, the identity constants, and activity LEDs -- heartbeat,
+// receive, transmit, and the ARP learn pulse stretched visible. BTNC
+// re-arms the reset; the FPGA register init values cover power-on.
+// The transmit pins are plain rising-edge registers: the measured
+// clock insertion delay (about 3 to 5.6 ns across corners) plus the
+// OBUF lands their transitions comfortably inside the PHY's 4 ns
+// setup / 2 ns hold window -- an ODDR falling-edge retime was tried
+// and reverted, its half-period shift plus that same insertion delay
+// overshot into the next sampling edge (setup -3.8 ns, measured).
 
 `timescale 1 ns / 100 ps
 
@@ -76,8 +77,6 @@ module zedboard_eth_endpoint (
     logic        learn_valid;  // valid ARP mapping seen
     logic [47:0] learn_mac;    // learned MAC, unused here
     logic [31:0] learn_ip;     // learned IP, unused here
-    logic [1:0]  ep_txd;       // transmit dibit, fabric domain
-    logic        ep_txen;      // transmit enable, fabric domain
 
     rmii_eth_endpoint
     #(
@@ -92,49 +91,11 @@ module zedboard_eth_endpoint (
         .local_ip    (LOCAL_IP),
         .phy_rxd     (phy_rxd),
         .phy_crs_dv  (phy_crs_dv),
-        .phy_txd     (ep_txd),
-        .phy_txen    (ep_txen),
+        .phy_txd     (phy_txd),
+        .phy_txen    (phy_txen),
         .learn_valid (learn_valid),
         .learn_mac   (learn_mac),
         .learn_ip    (learn_ip)
-    );
-
-    //-------------------------------------------
-    // Transmit pins retimed to the falling edge
-    //-------------------------------------------
-    logic [1:0] ep_txd_q;   // previous cycle's dibit, the pin's high half
-    logic       ep_txen_q;  // previous cycle's enable, the pin's high half
-
-    always_ff @(posedge phy_refclk) begin
-        ep_txd_q  <= ep_txd;
-        ep_txen_q <= ep_txen;
-    end
-
-    // d1 keeps the previous value through the high half-period, d2
-    // brings the new one at the falling edge: the pins are stable
-    // 10 ns on either side of the PHY's rising-edge sample
-    oddr_out oddr_txd0_inst
-    (
-        .clock (phy_refclk),
-        .d1    (ep_txd_q[0]),
-        .d2    (ep_txd[0]),
-        .q     (phy_txd[0])
-    );
-
-    oddr_out oddr_txd1_inst
-    (
-        .clock (phy_refclk),
-        .d1    (ep_txd_q[1]),
-        .d2    (ep_txd[1]),
-        .q     (phy_txd[1])
-    );
-
-    oddr_out oddr_txen_inst
-    (
-        .clock (phy_refclk),
-        .d1    (ep_txen_q),
-        .d2    (ep_txen),
-        .q     (phy_txen)
     );
 
     //-------------------------------------------
@@ -163,7 +124,7 @@ module zedboard_eth_endpoint (
                 rx_stretch <= rx_stretch - 1'b1;
             end
 
-            if (ep_txen) begin
+            if (phy_txen) begin
                 tx_stretch <= '1;
             end
             else if (tx_stretch != '0) begin

@@ -198,30 +198,6 @@ module zedboard_eth_endpoint_tb;
         end
     end
 
-    //----------------------------------------------------------------
-    // DDR phase check: the transmit pins must only change on falling
-    // edges (the ODDR retiming is the board's hold fix). Each edge
-    // reads the pins pre-update -- the ODDR model assigns non-blocking
-    // on both edges -- so the posedge sample is the preceding low
-    // half-period and the negedge sample the preceding high one; a
-    // difference between them is a transition on a rising edge.
-    //----------------------------------------------------------------
-    logic [2:0] phase_q;              // pins over the preceding low half
-    logic       phase_armed = 1'b0;   // phase_q holds a sample
-
-    always @(posedge clock) begin
-        phase_q     <= {txd, txen};
-        phase_armed <= 1'b1;
-    end
-
-    always @(negedge clock) begin
-        if (phase_armed === 1'b1 && {txd, txen} !== phase_q) begin
-            errors = errors + 1;
-            $error("transmit pins changed on a rising edge: %b -> %b",
-                   phase_q, {txd, txen});
-        end
-    end
-
     task automatic wait_reply(input integer target);
         integer waited;
         waited = 0;

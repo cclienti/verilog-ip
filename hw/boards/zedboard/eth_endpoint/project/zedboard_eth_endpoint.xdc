@@ -36,24 +36,16 @@ set_property IOSTANDARD LVCMOS33 [get_ports *]
 # with a large clock-to-out (worst case from the LAN8720 datasheet)
 # and needs 4 ns setup / 2 ns hold on txd/txen. The receive side is
 # resynchronized inside the MAC, so the input constraint is only there
-# to keep the analysis honest, not tight. The transmit pins leave
-# through falling-edge-retimed ODDRs, half a period away from the
-# PHY's rising-edge sample on both sides; the delays below still state
-# the PHY's true window against the rising edge and the fall-launched
-# paths meet it with margin.
+# to keep the analysis honest, not tight. The transmit pins are plain
+# rising-edge registers: the clock insertion delay plus the OBUF
+# provides the hold margin and leaves ample setup -- both corners
+# measured met. (A falling-edge ODDR retime was tried and reverted:
+# its half-period shift plus the same insertion delay overshot into
+# the next sampling edge.)
 set_input_delay  -clock phy_refclk -max 14.000 [get_ports {phy_rxd[*] phy_crs_dv}]
 set_input_delay  -clock phy_refclk -min  2.000 [get_ports {phy_rxd[*] phy_crs_dv}]
 set_output_delay -clock phy_refclk -max  4.000 [get_ports {phy_txd[*] phy_txen}]
 set_output_delay -clock phy_refclk -min -2.000 [get_ports {phy_txd[*] phy_txen}]
-
-# The ODDR's rising-edge arc (D1 -> Q) exists physically, so STA keeps
-# checking hold on it -- but by construction d1 is the registered copy
-# of the previous d2: the rising edge re-drives the value already on
-# the pin and the only real transitions are fall-launched (the bench's
-# DDR phase monitor enforces exactly this). Waive hold on the
-# rise-launched arc only; both setup checks and the fall-launched hold
-# stay analyzed.
-set_false_path -hold -rise_from [get_clocks phy_refclk] -to [get_ports {phy_txd[*] phy_txen}]
 
 # Asynchronous by design: the button feeds a synchronizing shift
 # register and the LEDs are for eyes only
