@@ -1,9 +1,14 @@
 # Zedboard pin and timing constraints for the eth_endpoint demonstrator.
 #
-# The LAN8720 RMII PHY module is jumper-wired to Pmod JA (bank 13,
-# powered from VADJ: set the VADJ jumper to 3V3, the LAN8720 module is
-# 3.3 V I/O). The module's 50 MHz reference clock enters on the
-# nINT/REFCLKO pin wired to JA10, a clock-capable pin -- see the
+# The LAN8720 RMII PHY module is jumper-wired to Pmod JA. JA is in
+# bank 13 and the LEDs are in bank 33; both banks take their VCCO from
+# the board's fixed 3V3 rail, as do the Pmod connector's own power
+# pins, so the 3.3 V module needs no jumper. BTNC (P16) is the
+# exception: it is in bank 34, one of the two banks powered from VADJ,
+# which ships at 1V8. The LVCMOS33 below is then uncharacterized but
+# harmless -- the button is driven from VADJ itself, so its levels
+# track that bank's VCCO. The module's 50 MHz reference clock enters on
+# the nINT/REFCLKO pin wired to JA4, a clock-capable pin -- see the
 # README. TX0/TX1/TX_EN are named from the PHY's side: they are the
 # module's transmit inputs, driven by the FPGA.
 

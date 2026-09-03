@@ -25,8 +25,25 @@ measured).
 Hardware setup
 --------------
 
-- **VADJ must be set to 3V3** (jumper J18): Pmod JA is powered from
-  VADJ and the LAN8720 module is a 3.3 V part.
+- **Pmod JA needs no jumper.** JA is in bank 13, whose VCCO is the
+  board's fixed 3V3 rail, and the connector's power pins (6 and 12)
+  are that same rail — schematic sheets 3 (Pmods) and 9 (FPGA banks).
+  The LAN8720 module therefore gets 3.3 V I/O and 3.3 V supply
+  whatever J18 is set to. LD0..LD3 are in bank 33, also fixed 3V3.
+- **J18 can stay at its 1V8 default.** The one pin that depends on
+  VADJ is BTNC (P16): every ZedBoard button and switch is in bank 34
+  or 35, the two banks powered from VADJ, and J18 ships with pin 1-2
+  unloaded. The button is driven from VADJ itself through a series
+  resistor against a 10K pulldown, so its levels track the bank's own
+  VCCO and nothing can exceed it — no overstress, and the input
+  threshold of a 7-series LVCMOS receiver scales with VCCO, so the
+  button reads correctly at 1V8 despite the LVCMOS33 in the XDC.
+  Vivado does not flag the mismatch either: BTNC is the only pin this
+  design uses in bank 34, so there is nothing for the intra-bank
+  compatibility check to conflict with. Set J18 to 3V3 only to make
+  that constraint literally true — the combination is uncharacterized
+  otherwise, which is academic for an asynchronous, false-pathed
+  button.
 - Wire the module to JA following the pin map in
   `project/zedboard_eth_endpoint.xdc <project/zedboard_eth_endpoint.xdc>`_:
   TX0 on JA2, RX1 on JA3, **nINT/REFCLKO on JA4**, TX1 on JA7, TX_EN
