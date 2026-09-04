@@ -15,7 +15,7 @@
 // File          : axi_stream_icmp_echo.sv
 // Author        : Christophe Clienti <cclienti@wavecruncher.net>
 // Created       : 2026-08-28
-// Last modified : 2026-08-28
+// Last modified : 2026-09-04
 //-----------------------------------------------------------------------------
 // Description: This module answers ICMP echo requests. It consumes
 // ICMP payload frames as the IPv4 parser and packet demux deliver
@@ -99,7 +99,6 @@ module axi_stream_icmp_echo #(
     logic                  frame_ok;    // whole-frame verdict on the closing beat
     logic                  drop_q;      // sticky drop decision
     logic [15:0]           len_q;       // sampled s_length
-    logic [15:0]           dlen;        // buffered data length, len_q - 4
     logic [31:0]           src_ip_q;    // sampled requester IP
     logic [47:0]           dst_mac_q;   // sampled requester MAC
     logic [47:0]           my_mac_q;    // identity sample of the frame start
@@ -107,12 +106,17 @@ module axi_stream_icmp_echo #(
     logic [15:0]           csum_q;      // request ICMP checksum, echoed adjusted
     logic [7:0]            ram [0:DEPTH-1]; // id/seq/data store
     logic [7:0]            ram_q;       // registered RAM read
-    logic [15:0]           total_w;     // reply IP total_length
-    logic [19:0]           ip_sum;      // reply IP header checksum accumulator
-    logic [16:0]           ip_fold;     // reply IP checksum fold
-    logic [15:0]           ip_csum;     // reply IP header checksum
-    logic [16:0]           inc_sum;     // RFC 1624 incremental accumulator
-    logic [15:0]           icmp_csum;   // adjusted reply ICMP checksum
+    logic [15:0]           total_q;     // reply IP total_length, 20 + len_q
+    logic [15:0]           last_idx_q;  // index of the last reply data byte, len_q - 5
+    logic [16:0]           my_sum_q;    // local IP halfwords summed
+    logic [16:0]           src_sum_q;   // requester IP halfwords summed
+    logic [16:0]           fix_sum_q;   // total_q plus the constant header halfwords
+    logic [17:0]           ip_sum_q;    // the two IP address sums
+    logic [18:0]           hdr_sum_q;   // all eight header halfwords summed
+    logic [16:0]           ip_fold_q;   // hdr_sum_q folded to 16 bits once
+    logic [15:0]           ip_csum_q;   // reply IP header checksum
+    logic [16:0]           inc_sum_q;   // RFC 1624 incremental accumulator
+    logic [15:0]           icmp_csum_q; // adjusted reply ICMP checksum
     logic [303:0]          hdr_vec;     // 38-byte reply header image
 
     //-------------------------------------------
@@ -150,37 +154,63 @@ module axi_stream_icmp_echo #(
                    && rx_cnt == s_length - 16'd1;
 
     //-------------------------------------------
-    // Reply checksums, combinational on sampled
-    // fields that hold still for the whole reply
+    // Reply checksums, a register per adder.
+    // Everything is computed from the sampled
+    // fields, which hold still from the first
+    // request beat to the end of the reply, so
+    // the pipeline just runs and settles. It has
+    // the time: the eight-halfword IP sum was one
+    // 13 ns carry chain into the header byte mux
+    // when written combinationally, and five
+    // two-operand stages close at 5 ns instead.
+    // The deepest result, ip_csum_q, is valid
+    // six cycles after the first beat is
+    // accepted; the reply cannot start before
+    // the eighth, since shorter requests are
+    // dropped on their first byte, and the
+    // checksum is header byte 24, so the real
+    // margin is far wider than that
     //-------------------------------------------
-    assign total_w = 16'd20 + len_q;
 
-    assign ip_sum = 20'(IP_VER_LEN) + 20'(total_w) + 20'(IP_FLAGS) + 20'(IP_TTL_PROT)
-                  + 20'(my_ip_q[31:16]) + 20'(my_ip_q[15:0])
-                  + 20'(src_ip_q[31:16]) + 20'(src_ip_q[15:0]);
-    assign ip_fold = 17'(ip_sum[15:0]) + 17'(ip_sum[19:16]);
-    assign ip_csum = ~(16'(ip_fold[15:0]) + 16'(ip_fold[16]));
+    // The three constant halfwords, summed once from the same
+    // encodings the header image uses
+    localparam logic [15:0] IP_CONST_SUM = IP_VER_LEN + IP_FLAGS + IP_TTL_PROT;
 
-    // Type 8 -> 0 is the only change: HC' = ~(~HC + ~0x0800). The
-    // concatenation, not a 17-bit cast: 17'(~csum_q) would invert the
-    // zero-extended value, set bit 16 and flip the end-around carry
-    assign inc_sum   = {1'b0, ~csum_q} + 17'h0F7FF;
-    assign icmp_csum = ~(16'(inc_sum[15:0]) + 16'(inc_sum[16]));
+    always_ff @(posedge clock) begin
+        // Stage 1, from the sampled fields
+        total_q    <= 16'd20 + len_q;
+        last_idx_q <= len_q - 16'd5;
+        my_sum_q   <= 17'(my_ip_q[31:16]) + 17'(my_ip_q[15:0]);
+        src_sum_q  <= 17'(src_ip_q[31:16]) + 17'(src_ip_q[15:0]);
+        // Stage 2
+        fix_sum_q  <= 17'(total_q) + 17'(IP_CONST_SUM);
+        ip_sum_q   <= 18'(my_sum_q) + 18'(src_sum_q);
+        // Stage 3, 4, 5: the full sum, its fold, and the end-around carry
+        hdr_sum_q  <= 19'(fix_sum_q) + 19'(ip_sum_q);
+        ip_fold_q  <= 17'(hdr_sum_q[15:0]) + 17'(hdr_sum_q[18:16]);
+        ip_csum_q  <= ~(16'(ip_fold_q[15:0]) + 16'(ip_fold_q[16]));
+
+        // Type 8 -> 0 is the only change: HC' = ~(~HC + ~0x0800). The
+        // concatenation, not a 17-bit cast: 17'(~csum_q) would invert
+        // the zero-extended value, set bit 16 and flip the end-around
+        // carry. csum_q completes on the fourth beat, this two cycles
+        // later, still ahead of the reply
+        inc_sum_q   <= {1'b0, ~csum_q} + 17'h0F7FF;
+        icmp_csum_q <= ~(16'(inc_sum_q[15:0]) + 16'(inc_sum_q[16]));
+    end
 
     //-------------------------------------------
     // The reply frame header, oldest byte in the
     // MSBs: Ethernet, IPv4, then type/code/csum
     //-------------------------------------------
     assign hdr_vec = {dst_mac_q, my_mac_q, 16'h0800,
-                      IP_VER_LEN, total_w, 16'h0000, IP_FLAGS,
-                      IP_TTL_PROT, ip_csum, my_ip_q, src_ip_q,
-                      16'h0000, icmp_csum};
-
-    assign dlen = len_q - 16'd4;
+                      IP_VER_LEN, total_q, 16'h0000, IP_FLAGS,
+                      IP_TTL_PROT, ip_csum_q, my_ip_q, src_ip_q,
+                      16'h0000, icmp_csum_q};
 
     assign m_axi_tvalid = state != RECEIVE;
     assign m_axi_tdata  = state == HDR ? hdr_vec[8*(37 - 32'(tx_cnt)) +: 8] : ram_q;
-    assign m_axi_tlast  = state == DATA && data_idx == dlen - 16'd1;
+    assign m_axi_tlast  = state == DATA && data_idx == last_idx_q;
     assign m_axi_tuser  = 1'b0;
 
     //-------------------------------------------
@@ -237,7 +267,7 @@ module axi_stream_icmp_echo #(
 
                 default: begin // DATA
                     if (m_accept) begin
-                        if (data_idx == dlen - 16'd1) begin
+                        if (data_idx == last_idx_q) begin
                             state    <= RECEIVE;
                             data_idx <= '0;
                         end

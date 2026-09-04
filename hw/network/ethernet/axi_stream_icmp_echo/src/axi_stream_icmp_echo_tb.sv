@@ -465,6 +465,13 @@ module axi_stream_icmp_echo_tb;
         send_ping(32'h0A_00_00_02, LOCAL_IP, 8'h08, 8'h00, 16'h9999, 8, 46, 8'h20, -1);
         req_mac = REQ_MAC;
 
+        // A source address that drives the reply IP checksum through
+        // the double fold: with total_length 32 the eight halfwords
+        // sum to 0x2FFFF, the first fold gives 0x10001, and only the
+        // end-around carry makes the checksum 0xFFFD rather than
+        // 0xFFFE. Random addresses reach this a few times in 65536
+        send_ping(32'hFF_FF_79_0D, LOCAL_IP, 8'h08, 8'h00, 16'h5A5A, 12, 46, 8'h3A, -1);
+
         // Sweep instance: exact fit, oversize by one, minimum,
         // announced length mismatch, non-echo, broadcast
         p1_send(LOCAL_IP, 8'h08, 16'hCAFE, 20, 20, 8'h31);
