@@ -18,4 +18,8 @@ set_output_delay -clock clock 0.000 [get_ports {m_axi_tdata[*] learn_valid learn
 # Hold is re-timed for real when the block is integrated in context.
 # The clock port is excluded: a clock-source startpoint expands the
 # waiver to every register-launched path, silencing real hold analysis.
-set_false_path -hold -from [remove_from_collection [all_inputs] [get_ports clock]]
+# Not remove_from_collection: that is a Tcl command, not an XDC one,
+# and Vivado drops the whole line with a critical warning (Designutils
+# 20-1307) -- so the waiver had never applied and every hold figure
+# these projects reported was the artifact itself.
+set_false_path -hold -from [get_ports -filter {DIRECTION == IN && NAME != clock}]
