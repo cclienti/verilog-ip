@@ -47,11 +47,12 @@ the same retime that failed then is what is required now.
 
 Measured, Vivado 2026.1 on the -1 part, all constraints met: transmit
 setup 5.198 ns and hold 7.759 ns, receive setup **0.610 ns** and hold
-3.392 ns, 7.704 ns of slack inside the 50 MHz domain since the ICMP
-echo registered its checksums (it was 4.042 before, on the checksum
-adder; the worst fabric path is now the MAC's transmit register into
-the falling-edge pin register, a half-period path by design); 985 LUT
-and 1124 flops. The receive
+3.392 ns, 7.522 ns of slack inside the 50 MHz domain since the ICMP
+echo and the IPv4 parser registered their checksum arithmetic (it was
+4.042 before, on the echo's checksum adder; the worst fabric path is
+now the MAC's transmit register into the falling-edge pin register, a
+half-period path by design, and the figure moves by placement noise
+from run to run); 997 LUT and 1172 flops. The receive
 number is nearly the whole budget spent — the forwarded edge needs
 4.439 ns to reach the pin (3.088 of it the OBUF at the slow corner),
 the constraint then allows the PHY 14 ns, and the IBUF another 1.561.
@@ -65,15 +66,18 @@ RMII clock-to-out in place of the datasheet-worst 14 ns, then a PLL
 output advanced by about 2 ns for the ODDR alone, which is the only
 way to center the 6.7 ns receive eye — the divider cannot move phase.
 
-On the wire, 2026-09-04 with ``SLEW FAST`` and the registered ICMP
-checksums in, every test at 0% loss: ``arping`` 5/5 and
-``ping -f -c 10000`` 10000/10000 at 1.254/1.298/2.611 ms with 28 µs
-mdev. The same day's bitstream before the checksum pipeline measured
-``arping`` 8/8, ``ping -s 1400`` 9/9 through the ICMP payload buffer
-and the flood at 1.264/1.301/2.619 ms with 27 µs; the 2026-09-03 one
-before the slew change 1.266/1.297/1.444 ms and 17 µs over 1000; and
-the previous PHY-sourced wiring 1.29 ms and 16 µs, so none of this
-costs anything on the wire.
+On the wire, 2026-09-04 with ``SLEW FAST`` and the registered
+checksum arithmetic of both the ICMP echo and the IPv4 parser in,
+every test at 0% loss: ``arping`` 3/3, ``ping -f -c 10000``
+10000/10000 at 1.266/1.300/2.642 ms with 29 µs mdev, and four
+``ping -f -c 1000`` runs all 1000/1000 at 1.299 to 1.305 ms average
+with 22 to 35 µs mdev. Earlier bitstreams the same day measured the
+flood at 1.254/1.298/2.611 ms with 28 µs (ICMP echo pipeline alone)
+and 1.264/1.301/2.619 ms with 27 µs (slew change alone, plus
+``arping`` 8/8 and ``ping -s 1400`` 9/9 through the ICMP payload
+buffer); the 2026-09-03 one before the slew change 1.266/1.297/1.444 ms
+and 17 µs over 1000; and the previous PHY-sourced wiring 1.29 ms and
+16 µs, so none of this costs anything on the wire.
 Each reply needs a byte-perfect frame in both directions, the receive
 FIFO dropping anything that fails FCS before the ARP and ICMP
 responders ever see it, so the sampling geometry is right in practice
