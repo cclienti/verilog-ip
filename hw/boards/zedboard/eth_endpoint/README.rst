@@ -46,25 +46,34 @@ into the next sample (measured, ``551adaf``). Nothing carries over:
 the same retime that failed then is what is required now.
 
 Measured, Vivado 2026.1 on the -1 part, all constraints met: transmit
-setup 5.703 ns and hold 7.639 ns, receive setup **0.078 ns** and hold
-3.469 ns, 4.042 ns of slack inside the 50 MHz domain. The receive
-number is the whole budget spent — the forwarded edge needs 4.971 ns
-to reach the pin (3.620 of it the OBUF at the slow corner), the
-constraint then allows the PHY 14 ns, and the IBUF another 1.561. It
-met, but a rerun could place it either side of zero. Two levers before
-anyone reaches for a waiver: the LAN8720A's real RMII clock-to-out in
-place of the datasheet-worst 14 ns, then ``SLEW FAST`` on ``phy_clkin``
-against that OBUF — the transmit side has 5.7 ns to absorb the shift.
+setup 5.198 ns and hold 7.759 ns, receive setup **0.610 ns** and hold
+3.392 ns, 4.042 ns of slack inside the 50 MHz domain. The receive
+number is nearly the whole budget spent — the forwarded edge needs
+4.439 ns to reach the pin (3.088 of it the OBUF at the slow corner),
+the constraint then allows the PHY 14 ns, and the IBUF another 1.561.
+``SLEW FAST`` on ``phy_clkin`` is already in: it took that OBUF arc
+from 3.620 to 3.088 ns and the receive setup from 0.078 ns, which a
+rerun could have placed either side of zero, to the figure above, at
+the cost of 0.5 ns on the transmit side. That path has no routing and
+no placement freedom, so no implementation strategy moves it. Two
+levers remain before anyone reaches for a waiver: the LAN8720A's real
+RMII clock-to-out in place of the datasheet-worst 14 ns, then a PLL
+output advanced by about 2 ns for the ODDR alone, which is the only
+way to center the 6.7 ns receive eye — the divider cannot move phase.
 
-On the wire, 2026-09-03, every test at 0% loss: ``arping`` 6/6,
-``ping`` 18/18, ``ping -s 1400`` 45/45 through the ICMP payload
-buffer, and ``ping -f -c 1000`` 1000/1000 at 1.266/1.297/1.444 ms with
-17 µs mdev — within noise of the 1.29 ms and 16 µs the previous
-PHY-sourced wiring measured, so none of this clocking costs anything.
+On the wire, 2026-09-04 with ``SLEW FAST`` in, every test at 0% loss:
+``arping`` 8/8, ``ping -s 1400`` 9/9 through the ICMP payload buffer,
+and ``ping -f -c 10000`` 10000/10000 at 1.264/1.301/2.619 ms with
+27 µs mdev. The 2026-09-03 bitstream before the slew change measured
+1.266/1.297/1.444 ms and 17 µs over 1000, and the previous PHY-sourced
+wiring 1.29 ms and 16 µs, so none of this clocking costs anything.
 Each reply needs a byte-perfect frame in both directions, the receive
 FIFO dropping anything that fails FCS before the ARP and ICMP
 responders ever see it, so the sampling geometry is right in practice
-whatever the 0.078 ns reads like on paper.
+whatever the receive slack reads like on paper. The 1400-byte replies
+spread from 1.7 to 4.2 ms while the 56-byte flood holds 27 µs of
+jitter: the endpoint's store-and-forward latency is fixed per frame
+size, so that spread is the host's USB NIC, as it was before.
 
 Hardware setup
 --------------

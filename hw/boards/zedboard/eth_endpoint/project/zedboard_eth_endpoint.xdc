@@ -49,6 +49,16 @@ set_property PACKAGE_PIN U21 [get_ports {led[3]}]
 
 set_property IOSTANDARD LVCMOS33 [get_ports *]
 
+# The forwarded clock leaves through a fast-slew OBUF: at the slow
+# corner that arc is 0.53 ns shorter than the slow-slew default, which
+# is the receive setup margin below (measured, 0.078 ns to 0.610 ns,
+# first on the routed checkpoint then reproduced by a full run) and
+# costs the transmit side only 0.5 ns of a 5.7 ns setup. DRIVE 16 was
+# tried on the checkpoint and moves nothing; LVCMOS33 has no DRIVE 24. The data pins stay at
+# the default: a faster edge on them would move the PHY-side eye, not
+# the FPGA-side one.
+set_property SLEW FAST [get_ports phy_clkin]
+
 # RMII timing against the reference this design forwards. The PHY needs
 # 4 ns setup / 2 ns hold on txd/txen and answers with a large
 # clock-to-out (worst case from the LAN8720A datasheet).
@@ -58,21 +68,22 @@ set_property IOSTANDARD LVCMOS33 [get_ports *]
 # samples the pins essentially on the fabric edge that launched them --
 # hence the falling-edge transmit registers in the RTL, which put the
 # transitions half a period away from that sample. Measured, Vivado
-# 2026.1 on the -1 part: transmit setup 5.703 ns, hold 7.639 ns, the
+# 2026.1 on the -1 part: transmit setup 5.198 ns, hold 7.759 ns, the
 # half period doing exactly what it was put there for.
 #
 # The receive path is the tight one, and it is the direction the old
 # PHY-sourced clock got for free. Measured on the same run: the
-# forwarded edge reaches the pin 4.971 ns after the fabric edge that
-# made it -- 3.620 of that is the OBUF at the slow corner and 0.472 the
-# ODDR -- the PHY is then allowed 14 ns, the IBUF costs 1.561, and the
-# capture edge is 20 ns after that same fabric edge. Slack 0.078 ns:
-# met, with nothing to spare. Both pin register sets sit in the IOBs
-# (ILOGIC and OLOGIC, route 0.000 ns) so none of it goes on fabric
-# routing. The two levers left, in that order: the module's real
-# clock-to-out in place of the datasheet-worst 14 ns below, and SLEW
-# FAST on phy_clkin against that OBUF, which the transmit side has the
-# margin to absorb. Not a waiver.
+# forwarded edge reaches the pin 4.439 ns after the fabric edge that
+# made it -- 3.088 of that is the fast-slew OBUF at the slow corner
+# (3.620 before SLEW FAST) and 0.472 the ODDR -- the PHY is then
+# allowed 14 ns, the IBUF costs 1.561, and the capture edge is 20 ns
+# after that same fabric edge. Slack 0.610 ns: met, thinly. Both pin
+# register sets sit in the IOBs (ILOGIC and OLOGIC, route 0.000 ns)
+# so none of it goes on fabric routing, and no implementation
+# strategy can touch it. The levers left, in that order: the module's
+# real clock-to-out in place of the datasheet-worst 14 ns below, then
+# a PLL output advanced ~2 ns for the ODDR alone, the only way to
+# center the 6.7 ns eye at the capture flops. Not a waiver.
 set_input_delay  -clock phy_clkin -max 14.000 [get_ports {phy_rxd[*] phy_crs_dv}]
 set_input_delay  -clock phy_clkin -min  2.000 [get_ports {phy_rxd[*] phy_crs_dv}]
 set_output_delay -clock phy_clkin -max  4.000 [get_ports {phy_txd[*] phy_txen}]
