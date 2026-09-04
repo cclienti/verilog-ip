@@ -7,8 +7,11 @@ TOP_DEPS          ?=
 TESTBENCH_MODULE  ?= axi_stream_upsizer_tb
 TESTBENCH_FILE    ?= ../src/axi_stream_upsizer_tb.sv
 
+VIVADO_BOARDFILE  ?= axi_stream_upsizer.xdc
+VIVADO_PROJECT_OOC ?= 1
 
 include ../../../Makefiles/common.mk
 include ../../../Makefiles/wavedisp.mk
 include ../../../Makefiles/iverilog.mk
 include ../../../Makefiles/verilator.mk
+include ../../../Makefiles/vivado.mk
