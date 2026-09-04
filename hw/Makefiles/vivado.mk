@@ -173,6 +173,8 @@ HELP_ENTRIES += 'floorplan.vivado|open the post-implementation floorplan in the 
 # error goes through at once. A target that opens onto an empty chain
 # means the board is off or the ribbon is loose, open_hw_target says so
 # itself, and retrying that would only bury the message under a delay.
+# The give-up is a return -code error, not error: a plain error inside
+# the loop drags the loop body into the Tcl traceback under the message.
 program.vivado: vivado-program.tcl
 	@test -f vivado-post-impl/$(TOP_MODULE).bit || \
 		{ echo "ERROR: vivado-post-impl/$(TOP_MODULE).bit not found, run impl.vivado (VIVADO_BITSTREAM=1) first"; exit 1; }
@@ -191,7 +193,7 @@ vivado-program.tcl:
 	@echo "# open_hw_target the same way; refresh and retry that one error" >> $@
 	@echo "set tries 0" >> $@
 	@echo "while {[catch {open_hw_target} err]} {" >> $@
-	@echo "  if {![string match {*no active target available*} \$$err] || [incr tries] > 15} { error \$$err }" >> $@
+	@echo "  if {![string match {*no active target available*} \$$err] || [incr tries] > 15} { return -code error \$$err }" >> $@
 	@echo "  after 1000" >> $@
 	@echo "  refresh_hw_server" >> $@
 	@echo "}" >> $@
