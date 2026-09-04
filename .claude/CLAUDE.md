@@ -139,10 +139,15 @@ when ports or instances change, update them in the same edit.
 
 ## Vivado
 
-Not on `PATH`:
+Vivado 2026.1 is the version in use; 2025.1 is still installed. Not on
+`PATH`: the user's shell has a `load-xilinx` function that sets it up,
+and shell functions do not reach the Bash tool, so replicate its three
+lines. The `LD_LIBRARY_PATH` entry is not optional on this Fedora host.
 
 ```sh
-export PATH="$HOME/Xilinx/2025.1/Vivado/bin:$PATH"
+export LM_LICENSE_FILE=~/Xilinx/Xilinx.lic
+export LD_LIBRARY_PATH=$HOME/.local/vivado-libs:$LD_LIBRARY_PATH
+source $HOME/Xilinx/2026.1/Vivado/settings64.sh
 cd hw/lib/<component>/project
 make impl.vivado VIVADO_PART="xc7z020clg484-1" \
      VIVADO_SYNTH_OPTIONS='"-flatten_hierarchy full -no_iobuf -generic ADRREG=1"'
@@ -150,6 +155,14 @@ make impl.vivado VIVADO_PART="xc7z020clg484-1" \
 
 Reports in `project/vivado-post-impl/post_impl_{timing,util}.rpt` — `Setup :`
 for worst slack, `Slice LUTs` / `CLB LUTs` / `RAMB36` for area.
+
+An I/O property change (SLEW, DRIVE, IOSTANDARD) needs no re-run: open
+the routed `.dcp` with `open_checkpoint`, `set_property` it, and read
+`get_timing_paths` — about 15 s, and it reproduced the full run to the
+picosecond on paths with no placement freedom. Board projects: a
+`hw_server` launched by `program.vivado` outlives the Vivado session;
+one born while the Platform Cable was re-enumerating keeps a stale
+target list until stopped by PID.
 
 Licensed and installed parts: `xc7z020clg484-1` (z7020-1),
 `xc7k160tfbg484-2` (k160-2), `xcku5p-ffvb676-2-e` (ku5p-2).
