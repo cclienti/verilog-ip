@@ -103,7 +103,8 @@ module axi_stream_ipv4_parser #(
     logic                    dst_ok;        // destination filter verdict
     logic                    byte_bad;      // live mismatch on the current byte
     logic                    frame_good;    // routable header verdict at byte 19
-    logic [15:0]             pay_len;       // L4 payload length, total_length - 20
+    logic [15:0]             pay_len_q;     // L4 payload length, total_length - 20
+    logic [15:0]             last_idx_q;    // index of the last payload byte, total_length - 21
     logic [15:0]             pay_cnt;       // payload byte index
     logic [SEL_W-1:0]        type_sel;      // matched protocol index or discard
     logic                    out_last;      // payload cut point at total_length
@@ -116,7 +117,7 @@ module axi_stream_ipv4_parser #(
     assign s_axi_tready = state == PAYLOAD ? m_axi_tready : 1'b1;
     assign s_accept     = s_axi_tvalid && s_axi_tready;
 
-    assign out_last  = pay_cnt == pay_len - 16'd1;
+    assign out_last  = pay_cnt == last_idx_q;
     assign out_abort = s_axi_tlast && !out_last;
 
     assign m_axi_tvalid = state == PAYLOAD && s_axi_tvalid;
@@ -169,7 +170,14 @@ module axi_stream_ipv4_parser #(
 
     assign frame_good = !drop_q && !s_axi_tuser && csum_ok && dst_ok;
 
-    assign pay_len = total_q - 16'd20;
+    // Both derived from total_q, complete on byte 3 and first needed on
+    // byte 19, so they run a cycle behind it: the payload cut is then
+    // an equality on the way to tlast and tuser, not a subtract and a
+    // compare -- 5.3 ns with five CARRY4 out of context at 5 ns
+    always_ff @(posedge clock) begin
+        pay_len_q  <= total_q - 16'd20;
+        last_idx_q <= total_q - 16'd21;
+    end
 
     //-------------------------------------------
     // Protocol decode
@@ -239,7 +247,7 @@ module axi_stream_ipv4_parser #(
                         m_src_ip    <= src_q;
                         m_dst_ip    <= dst_full;
                         m_protocol  <= proto_q;
-                        m_length    <= pay_len;
+                        m_length    <= pay_len_q;
                     end
                 end
 
