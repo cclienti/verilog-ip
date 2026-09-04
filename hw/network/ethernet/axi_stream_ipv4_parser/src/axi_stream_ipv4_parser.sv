@@ -15,7 +15,7 @@
 // File          : axi_stream_ipv4_parser.sv
 // Author        : Christophe Clienti <cclienti@wavecruncher.net>
 // Created       : 2026-08-28
-// Last modified : 2026-08-28
+// Last modified : 2026-09-04
 //-----------------------------------------------------------------------------
 // Description: This module strips the IPv4 header from the byte stream
 // behind the eth parser's demux output and decodes it for a second
@@ -96,8 +96,9 @@ module axi_stream_ipv4_parser #(
     logic [7:0]              even_q;        // even byte of the running halfword
     logic [19:0]             sum_q;         // ones-complement accumulator
     logic [19:0]             sum_next;      // accumulator with the live halfword
-    logic [16:0]             fold1;         // first checksum fold
-    logic [16:0]             fold2;         // second checksum fold
+    logic [16:0]             fold1;         // first fold of the accumulator
+    logic [15:0]             fold9_q;       // the first nine halfwords, folded to 16 bits
+    logic [15:0]             last_hw;       // tenth halfword, live at byte 19
     logic                    csum_ok;       // header checksum verdict, live at byte 19
     logic                    dst_ok;        // destination filter verdict
     logic                    byte_bad;      // live mismatch on the current byte
@@ -140,12 +141,28 @@ module axi_stream_ipv4_parser #(
         end
     end
 
-    // Ones-complement sum of the ten header halfwords, folded twice;
-    // a valid header sums to 0xFFFF, checksum field included
+    // Ones-complement sum of the header halfwords: a valid header sums
+    // to a multiple of 0xFFFF, checksum field included. The verdict
+    // is due on byte 19, with the tenth halfword live, and used to be
+    // the whole thing at once -- accumulator plus halfword, two folds
+    // and the compare, 8.2 ns into m_sel at a 5 ns target. Instead the
+    // first nine halfwords, complete on byte 17, are folded to sixteen
+    // bits a cycle behind the accumulator (byte 18 always sits between
+    // 17 and 19, so fold9_q is ready), and byte 19 needs no adder: the
+    // total is a nonzero multiple of 0xFFFF iff the last halfword is
+    // the complement of the folded nine, or both are 0xFFFF -- the two
+    // ones-complement zeros, and the second case is every broadcast.
+    // Checked exhaustively against the folded total for every last
+    // halfword before the rewrite.
     assign sum_next = sum_q + 20'({even_q, s_axi_tdata});
-    assign fold1    = 17'(sum_next[15:0]) + 17'(sum_next[19:16]);
-    assign fold2    = 17'(fold1[15:0]) + 17'(fold1[16]);
-    assign csum_ok  = fold2[15:0] == 16'hFFFF;
+    assign fold1    = 17'(sum_q[15:0]) + 17'(sum_q[19:16]);
+
+    always_ff @(posedge clock) begin
+        fold9_q <= 16'(fold1[15:0]) + 16'(fold1[16]);
+    end
+
+    assign last_hw = {even_q, s_axi_tdata};
+    assign csum_ok = last_hw == ~fold9_q || (&fold9_q && &last_hw);
 
     assign dst_full = {dst_q, s_axi_tdata};
     assign dst_ok   = dst_full == my_ip_q || dst_full == 32'hFFFF_FFFF;

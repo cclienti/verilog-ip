@@ -41,6 +41,8 @@ module axi_stream_ipv4_parser_tb;
     localparam logic [31:0] REMOTE_IP = 32'hC0_A8_01_63;
     localparam logic [31:0] BCAST_IP  = 32'hFF_FF_FF_FF;
 
+    logic [31:0] my_ip = LOCAL_IP;  // the address both DUTs answer to, changed for one frame
+
     integer errors = 0;
 
     //----------------------------------------------------------------
@@ -94,7 +96,7 @@ module axi_stream_ipv4_parser_tb;
     (
         .clock        (clock),
         .sreset       (sreset),
-        .local_ip     (LOCAL_IP),
+        .local_ip     (my_ip),
         .s_axi_tdata  (s_tdata),
         .s_axi_tuser  (s_tuser),
         .s_axi_tvalid (s_tvalid),
@@ -166,7 +168,7 @@ module axi_stream_ipv4_parser_tb;
     (
         .clock        (clock),
         .sreset       (sreset),
-        .local_ip     (LOCAL_IP),
+        .local_ip     (my_ip),
         .s_axi_tdata  (p2_s_tdata),
         .s_axi_tuser  (p2_s_tuser),
         .s_axi_tvalid (p2_s_tvalid),
@@ -278,7 +280,7 @@ module axi_stream_ipv4_parser_tb;
 
         // Reference model: select code, then what the parser emits
         if (bad_kind != 0 || (user_beat >= 0 && user_beat < 20)
-            || !(dst == LOCAL_IP || dst == BCAST_IP)) begin
+            || !(dst == my_ip || dst == BCAST_IP)) begin
             sel = p2 ? 2'd2 : 2'd1;
         end
         else if (!p2) begin
@@ -370,6 +372,18 @@ module axi_stream_ipv4_parser_tb;
         send_ip(1'b0, REMOTE_IP, LOCAL_IP, 8'h01, 1'b0, 28, 48, 0, -1);
         send_ip(1'b0, REMOTE_IP, LOCAL_IP, 8'h01, 1'b0, 8, 46, 0, -1);
         send_ip(1'b0, REMOTE_IP, LOCAL_IP, 8'h01, 1'b1, 12, 32, 0, -1);
+
+        // The checksum verdict must fold the nine-halfword sum twice.
+        // With the sender's checksum in, that sum is congruent to the
+        // negative of the destination's low halfword, and its first
+        // fold carries only when that residue is below the number of
+        // 16-bit wraps, at most 9 -- impossible for LOCAL_IP, whose
+        // residue is 0xFED5, for any source. An address ending in
+        // 0xFFFE has residue 1, and this source makes the sum 0x1FFFF,
+        // one wrap, first fold exactly 0x10000
+        my_ip = 32'h0A_00_FF_FE;
+        send_ip(1'b0, 32'hD5_E3_41_24, my_ip, 8'h01, 1'b0, 8, 46, 0, -1);
+        my_ip = LOCAL_IP;
         send_ip(1'b0, REMOTE_IP, BCAST_IP, 8'h01, 1'b0, 8, 46, 0, -1);
 
         // Discards: foreign dst, bad version, MF, offset, checksum,
