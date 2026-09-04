@@ -125,7 +125,15 @@ Build and run
 ``VIVADO_BITSTREAM=1`` in the Makefile makes ``impl.vivado`` also
 write ``vivado-post-impl/zedboard_eth_endpoint.bit``, and
 ``program.vivado`` loads it over JTAG into the ``xc7z020_1`` device the
-Makefile names. Plug the module into a switch or a PC, then::
+Makefile names. With a Platform Cable USB II, the first run after a
+cold plug takes a few seconds longer: the cable downloads its firmware
+and re-enumerates on the USB bus while Vivado is already connecting,
+and the generated script retries ``open_hw_target`` for up to 15 s
+while that settles. A ``hw_server`` started inside that window can
+keep a stale target list and outlives the Vivado session; if the
+retries run out on "no active target available" with the cable
+visible in ``lsusb``, stop that ``hw_server`` by PID and rerun. Plug
+the module into a switch or a PC, then::
 
   arping 192.168.90.42
   ping 192.168.90.42

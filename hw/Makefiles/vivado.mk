@@ -144,15 +144,22 @@ HELP_ENTRIES += 'floorplan.vivado|open the post-implementation floorplan in the 
 # JTAG programming of the impl.vivado bitstream, into the device the
 # project names in VIVADO_JTAG_DEVICE.
 #
-# The generated script waits for a hw_target before opening one. A
-# Platform Cable USB II downloads its firmware the first time it is
+# The generated script retries open_hw_target while the cable settles.
+# A Platform Cable USB II downloads its firmware the first time it is
 # used after a cold plug and re-enumerates on the USB bus while
-# connect_hw_server is already running, so the immediate open_hw_target
-# looked for a target that was still gone and failed with "no active
-# target available" -- measured, the cable came back a second later and
-# the identical rerun worked. Only the missing-target case is retried:
-# a target that opens but shows an empty chain means the board is off
-# or the ribbon is loose, and open_hw_target says so itself.
+# connect_hw_server is already running. Measured twice, two failure
+# shapes: the target is simply not there yet (b2fb2ee, the cable came
+# back a second later and the identical rerun worked), or a hw_server
+# born inside that window lists phantom targets that never open --
+# three of them, named jsn1..jsn3, on a server started between the
+# cable's two enumerations -- and since hw_server outlives the Vivado
+# session every rerun met the same stale list. Waiting only while the
+# list was empty covered the first shape and not the second. Both fail
+# open_hw_target with the same "no active target available", so that
+# one error is retried after a refresh_hw_server, up to 15 s; any other
+# error goes through at once. A target that opens onto an empty chain
+# means the board is off or the ribbon is loose, open_hw_target says so
+# itself, and retrying that would only bury the message under a delay.
 program.vivado: vivado-program.tcl
 	@test -f vivado-post-impl/$(TOP_MODULE).bit || \
 		{ echo "ERROR: vivado-post-impl/$(TOP_MODULE).bit not found, run impl.vivado (VIVADO_BITSTREAM=1) first"; exit 1; }
@@ -166,12 +173,15 @@ vivado-program.tcl:
 	@echo "open_hw_manager" >> $@
 	@echo "connect_hw_server" >> $@
 	@echo "# A cable that downloads its firmware on first use re-enumerates" >> $@
-	@echo "# while we are already connecting, so wait for a target to appear" >> $@
-	@echo "for {set i 0} {[llength [get_hw_targets -quiet]] == 0 && \$$i < 15} {incr i} {" >> $@
+	@echo "# while we are already connecting: the target is then missing, or" >> $@
+	@echo "# listed stale by a server that saw both incarnations. Both fail" >> $@
+	@echo "# open_hw_target the same way; refresh and retry that one error" >> $@
+	@echo "set tries 0" >> $@
+	@echo "while {[catch {open_hw_target} err]} {" >> $@
+	@echo "  if {![string match {*no active target available*} \$$err] || [incr tries] > 15} { error \$$err }" >> $@
 	@echo "  after 1000" >> $@
 	@echo "  refresh_hw_server" >> $@
 	@echo "}" >> $@
-	@echo "open_hw_target" >> $@
 	@echo "set dev [lindex [get_hw_devices -quiet {$(VIVADO_JTAG_DEVICE)}] 0]" >> $@
 	@echo "if {\$$dev eq {}} { error \"no device matching $(VIVADO_JTAG_DEVICE) in the JTAG chain: [get_hw_devices]\" }" >> $@
 	@echo "current_hw_device \$$dev" >> $@

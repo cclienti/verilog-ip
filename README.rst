@@ -374,6 +374,10 @@ action, which depends on the ``.mk`` files its Makefile includes.
 +----------------------------+----------------------------------------------------+
 | ``project.vivado``         | Generate the Vivado project                        |
 +----------------------------+----------------------------------------------------+
+| ``floorplan.vivado``       | Open the post-implementation floorplan in the GUI  |
++----------------------------+----------------------------------------------------+
+| ``program.vivado``         | Program the impl.vivado bitstream over JTAG        |
++----------------------------+----------------------------------------------------+
 | ``project.quartus``        | Generate the Quartus project                       |
 +----------------------------+----------------------------------------------------+
 | ``waves.wavedisp``         | Generate the save scripts for every viewer         |
