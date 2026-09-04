@@ -106,6 +106,19 @@ vivado-gen-post-syn.tcl: $(ALL_TOP_FILES)
 	@echo "report_timing_summary -file post_synth_timing.rpt" >> $@
 	@echo "exit" >> $@
 
+# phys_opt_design runs after placement, its documented default
+# position, not after routing. The post-route mode segfaulted in
+# Vivado 2026.1 on 4 of 17 out-of-context runs of the ethernet
+# components (HAPSPathLenReduct::optimizeSingleNet into
+# HAPSRouteMgr::route, per the hs_err log), every time while working
+# a net that drives an unbuffered output port with negative slack.
+# axi_stream_icmp_echo, which crashed twice post-route, went through
+# the post-place mode and routed to the WNS the crashed run had
+# estimated; the other three were reproduced with no phys_opt at all.
+# Post-place phys_opt sees estimated routing, which is what the
+# critical-path optimizations are designed for; the post-route mode
+# is the tool's own opt-in extra for designs within 0.5 ns of closing,
+# and it said so on each crashed run.
 impl.vivado: vivado-gen-post-impl.tcl
 	mkdir -p vivado-post-impl
 	cd vivado-post-impl && $(VIVADO) -mode batch -source ../$^ -notrace -nolog -nojournal
@@ -125,8 +138,8 @@ vivado-gen-post-impl.tcl: $(ALL_TOP_FILES)
 	@echo "synth_design -top $(TOP_MODULE) -part $(VIVADO_PART) $(VIVADO_SYNTH_OPTIONS) -include_dirs \"$(INCLUDE_DIRS)\"" >> $@
 	@echo "opt_design" >> $@
 	@echo "place_design" >> $@
-	@echo "route_design" >> $@
 	@echo "phys_opt_design" >> $@
+	@echo "route_design" >> $@
 	@echo "write_checkpoint -force $(TOP_MODULE)_impl.dcp" >> $@
 	@echo "write_verilog -force -include_xilinx_libs -mode timesim -sdf_anno true $(TOP_MODULE)_impl.v" >> $@
 	@echo "report_utilization -file post_impl_util.rpt" >> $@
