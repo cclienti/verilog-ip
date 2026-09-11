@@ -123,6 +123,19 @@ control segment itself, is sent again and the timer restarts;
 ``RTO_CLOCKS`` period, no round-trip estimate and no back-off, is
 enough on a LAN and keeps the timer a plain counter.
 
+The peer's receive window bounds what may be in flight: the window
+field of every acceptable segment is kept, and no byte is sent beyond
+the oldest unacknowledged one plus that window. Bytes the application
+presents past it wait in the ring. A zero window turns the same timer
+into the persist timer: on expiry a one-byte probe is sent from the
+oldest unacknowledged byte, the peer answers it with its current
+window, and the probe does not count against ``MAX_RETRIES`` — a
+peer that keeps its window closed is slow, not gone. Sending resumes
+when a window update arrives, whether on that answer or on any
+segment. A telnet client advertises tens of kilobytes, so the echo
+never meets this rule; it is here because the ring must never
+overrun a peer that is smaller than it.
+
 A pure acknowledgement is not sent the moment it is owed: it waits
 ``ACK_DELAY_CLOCKS`` for a data segment to carry it. With the echo
 wire the received bytes are back in the ring within a few cycles of
