@@ -31,6 +31,13 @@ get-file = $(shell \
 # both iverilog and Verilator need a package compiled before the file
 # that imports it, so files named *_pkg.sv go first: that suffix is the
 # convention for a package, and the only ordering the lists carry.
+#
+# This is a heuristic, not a dependency sort: among several packages it
+# keeps get-file's alphabetical order, so if one package ever imports
+# another and sorts after it, compilation fails with "package not
+# found". Today no project has more than one package and none import
+# another. When that changes, order them here explicitly (or list them
+# per project), rather than relying on the name.
 pkg-first = $(filter %_pkg.sv,$1) $(filter-out %_pkg.sv,$1)
 
 ALL_TOP_FILES    := $(call pkg-first,$(call get-file,$(TOP_FILE),$(TOP_DEPS),ALL_TOP_FILES))

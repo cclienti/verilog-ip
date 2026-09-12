@@ -419,17 +419,18 @@ package tcp_model_pkg;
         end
     endtask
 
-    // The L4 payload of a frame that parse_frame accepted
-    function automatic bytes_t frame_payload(input bytes_t f);
-        int total = int'({f[16], f[17]});
-        return tcp_payload(bytes_slice(f, ETH_HDR_LEN + IP_HDR_LEN, total - IP_HDR_LEN));
-    endfunction
-
     // The L4 unit of a frame, header and payload, for driving a
     // socket input from a frame
     function automatic bytes_t frame_l4(input bytes_t f);
         int total = int'({f[16], f[17]});
         return bytes_slice(f, ETH_HDR_LEN + IP_HDR_LEN, total - IP_HDR_LEN);
+    endfunction
+
+    // The L4 payload of a frame that parse_frame accepted: the L4 unit
+    // with its TCP header stripped, so the total-length arithmetic
+    // lives in frame_l4 alone
+    function automatic bytes_t frame_payload(input bytes_t f);
+        return tcp_payload(frame_l4(f));
     endfunction
 
     //-------------------------------------------

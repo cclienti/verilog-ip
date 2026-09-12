@@ -69,11 +69,17 @@ Testing
 -------
 
 ``make check.iverilog`` and ``make check.verilator`` run the
-self-check: the published checksum example, the nine golden frames
-built and parsed, the L4 unit parsed with its pseudo-header, twelve
-single-byte damages each refused with the expected reason plus a
-padded and a truncated frame, option lists the builder never produces
-(NOPs, window scale, EOL, and two malformed ones), three hundred
-random round trips through build and parse, and the sequence-space
-functions around the wrap. To add a vector, extend ``VECTORS`` in
-``gen_vectors.py``, run it, and paste its output into the bench.
+self-check: the published checksum example, the checksum fold forced
+through its double carry, the hex decoder's odd-length and bad-char
+rejection, the nine golden frames built and parsed, the L4 unit parsed
+with its pseudo-header, twelve single-byte damages each refused with
+the expected reason plus a padded and a truncated frame, a short L4
+unit fed straight to ``parse_tcp`` for its own length guard, option
+lists the builder never produces (NOPs, window scale, EOL, a length
+past the header, a kind with no length byte, and an MSS option of the
+wrong length), three hundred random round trips through build and
+parse, and the sequence-space functions around the wrap. Every branch
+is reached: the four cases above were added after a review found them
+uncovered, each confirmed to kill a mutant of the guard it exercises.
+To add a vector, extend ``VECTORS`` in ``gen_vectors.py``, run it, and
+paste its output into the bench.

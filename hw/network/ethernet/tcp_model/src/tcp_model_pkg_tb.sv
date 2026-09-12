@@ -149,6 +149,25 @@ module tcp_model_pkg_tb;
         f = bytes_from_hex("45000073000040004011b861c0a80001c0a800c7");
         check(csum_verifies(ones_sum(f, 0, 20, 32'h0)), "published IP header with its checksum verifies");
 
+        // The double carry: 0xFFFFFFFF folds to 0x1FFFE, which still
+        // carries and must fold again to 0xFFFF, complemented to 0. A
+        // single fold would leave 0x0001. No packet in the suite forces
+        // this, so it is checked directly.
+        check(csum_fold(32'hFFFFFFFF) == 16'h0000, $sformatf("csum_fold double carry: got %04x", csum_fold(32'hFFFFFFFF)));
+        // 0x0001FFFF folds to 0x00010000, which carries again to
+        // 0x0001, complemented to 0xFFFE; a single fold would give
+        // 0xFFFF, so this too separates while from if
+        check(csum_fold(32'h0001FFFF) == 16'hFFFE, $sformatf("csum_fold second double carry: got %04x", csum_fold(32'h0001FFFF)));
+
+        // bytes_from_hex error handling: an odd length and a non-hex
+        // character each give an empty result, a clean pair decodes
+        pl = bytes_from_hex("abc");
+        check(pl.size() == 0, "odd-length hex string is rejected");
+        pl = bytes_from_hex("00gg");
+        check(pl.size() == 0, "non-hex character is rejected");
+        pl = bytes_from_hex("00ff");
+        check(pl.size() == 2 && pl[0] == 8'h00 && pl[1] == 8'hff, "clean hex pair decodes");
+
         //------------------------------------------------------------
         // 2. Golden frames, built and parsed
         //------------------------------------------------------------
@@ -209,6 +228,14 @@ module tcp_model_pkg_tb;
         parse_frame(f, p, err, ok);
         check(!ok && err == "shorter than the three headers", "truncated frame is refused");
 
+        // parse_tcp fed a segment shorter than a TCP header, its own
+        // guard: parse_frame never lets one through, so this is the
+        // only path that reaches it
+        seg = bytes_slice(frame_l4(bytes_from_hex(V_DATA)), 0, 10);
+        p = '0;
+        parse_tcp(CLIENT_IP, SERVER_IP, seg, p, err, ok);
+        check(!ok && err == "shorter than a TCP header", "short L4 unit is refused");
+
         //------------------------------------------------------------
         // 5. Option lists the builder never produces
         //------------------------------------------------------------
@@ -254,6 +281,20 @@ module tcp_model_pkg_tb;
         p = '0;
         parse_tcp(h.src_ip, h.dst_ip, seg, p, err, ok);
         check(!ok && err == "option runs past the header", {"option without a length is refused: ", err});
+
+        // A kind-2 (MSS) option whose length is not 4: NOP then MSS
+        // declared length 3, in a 24-byte header
+        seg = build_tcp(h, bytes_new(0));
+        seg = bytes_cat(seg, bytes_from_hex("01020300"));
+        seg[12] = 8'h60;  // data offset 6
+        seg[16] = 8'h00;
+        seg[17] = 8'h00;
+        csum = tcp_checksum(h.src_ip, h.dst_ip, seg);
+        seg[16] = csum[15:8];
+        seg[17] = csum[7:0];
+        p = '0;
+        parse_tcp(h.src_ip, h.dst_ip, seg, p, err, ok);
+        check(!ok && err == "MSS option not 4 bytes", {"MSS option of the wrong length is refused: ", err});
 
         //------------------------------------------------------------
         // 6. Random round trips
