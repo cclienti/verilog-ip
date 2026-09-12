@@ -7,11 +7,12 @@ Description
 One TCP connection between the IPv4 layer and an application, with the
 application side as a pair of byte streams: payload received in order
 leaves on ``m_app_*``, bytes the application presents on ``s_app_*``
-are segmented, sent and retransmitted until acknowledged. A wire from
-``m_app_*`` to ``s_app_*``, with ``rx_eof`` looped back into
-``app_close``, makes the socket an echo server — the first use case,
-``nc`` or ``telnet`` to ``listen_port`` — and the same block,
-unchanged, serves whatever replaces the wire later.
+are segmented, sent and retransmitted until acknowledged. The end of
+the stream travels in the stream, as a close token beat with
+``tuser``, so a plain wire from ``m_app_*`` to ``s_app_*`` makes the
+socket an echo server — the first use case, ``nc`` or ``telnet`` to
+``listen_port`` — and the same block, unchanged, serves whatever
+replaces the wire later.
 
 The socket is a passive server with a single connection record: it
 listens on ``listen_port``, completes the three-way handshake, runs
@@ -41,18 +42,18 @@ only on the two responders.
 ::
 
   s_axi_* ──► receive walker ────► receive buffer ────► m_app_*
-  side-bands   validate, order,     packet FIFO,          in order,
-               checksum, events     commit / rollback     tlast per segment
-                    │ events              │ occupancy
+  side-bands   validate, order,     packet FIFO,          in order, tlast
+               checksum, events     commit / rollback     per segment,
+                    │ events              │ occupancy     close token last
                     ▼                     ▼ window
              connection machine ◄──► connection record ──► connected
              tcp_connection_fsm      peer MAC/IP/port,     peer_ip, peer_port
-                    │ levels         seq/ack, window,      rx_eof
+                    │ levels         seq/ack, window,
                     ▼                timer, retries
   m_axi_* ◄── transmit walker ◄── scheduler ◄──── transmit ring ◄──── s_app_*
-  complete     header image,      reset, SYN-ACK,   una/nxt/wr,       app_close
-  frames       checksums,         FIN, resend,      bytes kept until
-               payload            probe, data, ACK  acknowledged
+  complete     header image,      reset, SYN-ACK,   una/nxt/wr,       data, and
+  frames       checksums,         FIN, resend,      bytes kept until  the close
+               payload            probe, data, ACK  acknowledged      token
 
 The two engines meet only in the connection record and in the
 machine. The receive walker writes the record (peer, next expected
@@ -84,7 +85,14 @@ doomed with ``tuser`` when the sum fails. Its ``LOG2_FRAMES`` is set
 to ``LOG2_RX_DEPTH`` so that the frame count can never bind before
 the byte count: an interactive session is a stream of one-byte
 segments. The socket keeps the byte occupancy itself (the FIFO does
-not expose it), and the free space is the window it advertises.
+not expose it), and the free space is the window it advertises. The
+FIFO's data is nine bits wide, the byte and a token bit: when the
+peer's FIN is accepted the walker commits a one-beat frame with the
+token bit set, behind every committed segment by construction, and
+on the way out that beat becomes the close token — ``m_app_tuser``
+and ``m_app_tlast`` high, ``m_app_tdata`` to be ignored — the read
+side's end of stream, one extra beat per connection. It is a data
+bit and not the FIFO's own ``tuser``, which dooms a frame.
 
 Only in-order data is accepted, and only while the connection machine
 holds ``rx_open``: a segment whose sequence number is exactly the
@@ -98,10 +106,15 @@ handshake ACK itself — is consumed, not stored, and answered with a
 pure acknowledgement carrying the current expected sequence number
 and window. The peer's retransmission timer then drives recovery from
 its side, and the socket never needs out-of-order storage. A FIN is
-accepted, and reported to the connection machine, when it is in
-order: its own sequence number, after any data the segment carries
-and which must itself have been stored, is the next expected one.
-When the application does not consume, the window closes to zero;
+accepted, and reported to the connection machine, under the same
+gate as data — ``rx_open``, and in order: its own sequence number,
+after any data the segment carries and which must itself have been
+stored, is the next expected one — and it needs one free byte in
+the receive buffer for its token, failing which it is treated like
+data that does not fit. A FIN not accepted is not acknowledged
+either, so the peer retransmits it; that is what keeps a FIN on the
+handshake ACK from being swallowed in ``SYN_RCVD`` with the machine
+never told. When the application does not consume, the window closes to zero;
 when the free space has been advertised below the effective MSS and
 rises back to it or more, a pure acknowledgement carries the update
 without waiting for the peer's probe.
@@ -109,8 +122,9 @@ without waiting for the peer's probe.
 An acknowledgement number strictly above the oldest unacknowledged
 byte and up to and including the next byte to send releases the
 transmit ring up to it, clears the retry counter, and restarts the
-retransmission timer if a sequence number is still outstanding, or
-stops it. An acknowledgement equal to the oldest unacknowledged byte
+retransmission timer if a sequence number is still outstanding or
+bytes wait against a zero window, or stops it. An acknowledgement
+equal to the oldest unacknowledged byte
 — a duplicate, or any segment the peer sends while our lost segment
 is outstanding — changes nothing, so it cannot keep the timer from
 expiring. One ahead of what was sent is answered with a pure
@@ -132,15 +146,17 @@ plus one per SYN or FIN. Concretely:
   tail of a connection the socket has already forgotten, which is
   routine after an abort; a SYN is accepted, and a segment with
   neither is dropped;
-- while a connection is up, a segment from any other peer, a SYN
+- in any state past ``LISTEN``, a segment from any other peer, a SYN
   included, so a second client sees "connection refused" instead of
   a timeout.
 
 The reset is addressed from the offending segment, not from the
 connection record: the receive walker captures its source MAC, IP
-and port, sequence and acknowledgement numbers, flags and length into
-a one-entry reset request, and the transmit side builds the reset
-from that. A further offending segment arriving while the request is
+and port, its destination port, sequence and acknowledgement
+numbers, flags and length into a one-entry reset request, and the
+transmit side builds the reset from that, with the live
+``local_mac`` and ``local_ip`` as its source when no connection has
+sampled them. A further offending segment arriving while the request is
 pending is dropped; its sender retransmits. A reset *from* the
 connected peer that is in order closes the connection at once, in any
 state past ``LISTEN``. When the socket itself gives a connection up —
@@ -152,10 +168,24 @@ Transmit
 --------
 
 Bytes accepted on ``s_app_*`` enter a ``2**LOG2_TX_DEPTH``-byte ring
-and stay there until acknowledged; ``s_app_tready`` drops when the
-ring is full and while the connection machine does not hold
-``tx_open``. The ring is nine bits wide: each byte lands at the
-position of its sequence number together with its ``s_app_tlast``,
+and stay there until acknowledged; ``s_app_tready`` drops only when
+the ring is full. A beat with ``s_app_tuser`` high is the
+application's close token, the mirror of the one on ``m_app_*``: it
+carries no data, its ``tdata`` is ignored, it never enters the ring,
+and it sets the close flag the FIN waits for. A data beat never
+carries ``tuser``, so there is one form and no ambiguity about
+whether a flagged byte is data. Beats that arrive after the token,
+or while the connection machine does not hold ``tx_open``, tokens
+included, are accepted and discarded — a write on a closed socket —
+rather than held: holding would freeze an application's pipeline for
+the rest of the connection and, worse, deadlock the clean-up, whose
+frame-wise flush needs the wire to keep taking what ``m_app_*``
+delivers. The close flag is cleared on the way from ``CLOSED`` to
+``LISTEN``, so a token the flush loops back through the wire cannot
+close the next connection.
+
+The ring is nine bits wide: each byte lands at the position of its
+sequence number together with its ``s_app_tlast``,
 which a block RAM gives at that width for nothing, and neither the
 byte's place nor its stay depends on the bit. A segment is sent as
 soon as unsent bytes are present and either a ``tlast`` is among
@@ -303,14 +333,17 @@ buffer either way.
 The other header fields have one source each. Destination MAC from
 the connection record, or from the reset request for a reset it
 answers; source MAC and source IP from the identity sampled at the
-SYN; EtherType ``0x0800``. In the IP header, version and IHL
+SYN, or the live inputs for a reset sent with no connection;
+EtherType ``0x0800``. In the IP header, version and IHL
 ``0x45``, TOS zero, total length computed from the TCP header length
 and the payload length, identification zero (legal for a datagram
 with ``DF`` set, RFC 6864, and one less counter), flags ``DF`` alone,
 offset zero, TTL 64, protocol 6, destination IP from the record or
 the request. In the TCP header, source port ``listen_port`` and
-destination port the peer's, swapped from the request for a reset,
-urgent pointer zero, and the MSS option on the SYN-ACK only, carrying
+destination port the peer's, both swapped from the request for a
+reset (whose source port is then whatever port the offending segment
+was sent to), urgent pointer zero, and the MSS option on the SYN-ACK
+only, carrying
 the ``MSS`` parameter.
 
 The header is built the way the `ARP responder
@@ -370,19 +403,21 @@ riding on the handshake ACK itself are not stored; the peer
 retransmits them once the connection is established, one round trip
 later on a path that is rare.
 
-The close follows the socket API. When the peer's FIN has been
-accepted and every byte it sent has been delivered on ``m_app_*``,
-``rx_eof`` rises — the read side's end of stream — and stays high to
-the end of the connection. The application then asserts ``app_close``
-once it has nothing more to send; the socket sends its own FIN as
-soon as ``app_close`` is high, the ring is empty and everything sent
-is acknowledged, and it holds ``s_app_tready`` low from then on. An
-application that is a wire ties ``app_close`` to ``rx_eof``: the byte
-delivered is the byte accepted, so nothing can be in flight between
-the two. Anything with a pipeline between the streams asserts
-``app_close`` when that pipeline is empty. ``app_close`` is a level,
-sampled only after the peer's FIN; asserting it earlier is harmless
-and takes effect then. An active close from ``ESTABLISHED`` — the
+The close follows the socket API, carried in the streams. When the
+peer's FIN has been accepted, the close token is queued behind every
+byte the peer sent, and the application receives it on ``m_app_*``
+after the last of them — the read side's end of stream, ``read()``
+returning zero. The application answers with its own close token on
+``s_app_*`` once it has nothing more to send, and the socket sends
+its FIN as soon as that token is in, the ring is empty and
+everything sent is acknowledged. Because both tokens travel in the
+streams they cannot overtake data: a wire returns the token behind
+the last echoed byte, and so does anything with a register slice or
+a dual-clock FIFO between the streams, with no pipeline bookkeeping
+in the application. A token sent while the connection is up but
+before the peer's FIN is harmless and takes effect then; one sent
+while ``tx_open`` is low is discarded with everything else. An
+active close from ``ESTABLISHED`` — the
 ``FIN_WAIT`` states — and an active open are the extension that makes
 a client out of this block; they add states to the connection
 machine and change neither stream.
@@ -397,8 +432,8 @@ in delivery on ``m_app_*`` finishes to its ``tlast``, the committed
 ones behind it are read and discarded — and the occupancy counter
 zeroed with it; the connection record cleared. Data the old peer
 sent that the application had not yet read is discarded, the reset
-semantics; after a clean close there is none, since the FIN needed
-``rx_eof`` first.
+semantics; after a clean close there is none, since our FIN needed
+the application's token, which follows the last delivered byte.
 
 ``connected`` is high from ``ESTABLISHED`` to ``LAST_ACK``
 inclusive; ``peer_ip`` and ``peer_port`` are valid while it is.
@@ -434,7 +469,8 @@ state.
   ``fin_rx``, ``rst_rx`` — the ``abort`` pulse from the timer side
   (retry budget spent or idle limit reached), and three levels the
   socket computes: ``listen``, tied high; ``close_ready``, which is
-  ``app_close`` with the ring empty and everything acknowledged;
+  the application's close token received with the ring empty and
+  everything acknowledged;
   ``clear_done``, the clean-up above finished. Outputs are the
   seven Moore levels the socket's engines act on: ``clear``,
   ``listening``, ``syn_ack_pending``, ``connected``, ``rx_open``,
@@ -500,16 +536,17 @@ Signals
 - ``m_axi_tdata`` (8 bits), ``m_axi_tuser``, ``m_axi_tvalid``,
   ``m_axi_tlast``, ``m_axi_tready``: AXI stream master, complete
   Ethernet frames; ``m_axi_tuser`` is constant zero.
-- ``m_app_tdata`` (8 bits), ``m_app_tvalid``, ``m_app_tlast``,
-  ``m_app_tready``: AXI stream master to the application, received
-  payload in order, ``tlast`` on the last byte of each segment.
-- ``s_app_tdata`` (8 bits), ``s_app_tvalid``, ``s_app_tlast``,
-  ``s_app_tready``: AXI stream slave from the application, bytes to
-  send; ``tlast`` sends what is waiting now.
-- ``rx_eof``: level, the peer has closed and every byte it sent has
-  been delivered; high to the end of the connection.
-- ``app_close``: level, the application has nothing more to send;
-  sampled after the peer's FIN, tied to ``rx_eof`` by the echo wire.
+- ``m_app_tdata`` (8 bits), ``m_app_tuser``, ``m_app_tvalid``,
+  ``m_app_tlast``, ``m_app_tready``: AXI stream master to the
+  application, received payload in order, ``tlast`` on the last byte
+  of each segment; a beat with ``tuser`` high is the close token, the
+  end of the stream, ``tdata`` to be ignored.
+- ``s_app_tdata`` (8 bits), ``s_app_tuser``, ``s_app_tvalid``,
+  ``s_app_tlast``, ``s_app_tready``: AXI stream slave from the
+  application, bytes to send, ``tlast`` sends what is waiting now; a
+  beat with ``tuser`` high is the application's close token, ``tdata``
+  ignored. On these two streams ``tuser`` means close, not the drop
+  or abort it means on every network stream of the chain.
 - ``connected``: a connection is up, ``ESTABLISHED`` to ``LAST_ACK``.
 - ``peer_ip`` (32 bits), ``peer_port`` (16 bits): the connected peer,
   valid while ``connected`` is high.

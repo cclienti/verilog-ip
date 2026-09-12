@@ -29,17 +29,19 @@ counter or arithmetic in the transition conditions.
 Transitions
 -----------
 
-Events are one-cycle pulses, registered by the receive walker on the
-last beat of a segment, so at most one segment's events arrive per
-cycle and several of them may be set together — a FIN rides on an
-ACK, the socket gives up in any state. The machine resolves them in
-a fixed order: ``rst_rx`` first, then ``abort``, then the event the
-current state waits for. A pulse a state does not wait for is
-ignored: a SYN outside ``LISTEN`` is the walker's business (a reset
-for a foreign peer, a challenge ACK for the connected one), an ACK in
+Events are one-cycle pulses — the four segment events registered by
+the receive walker on the last beat of a segment, ``abort`` by the
+timer side — so at most one segment's events arrive per cycle and
+several of them may be set together — a FIN rides on an ACK, the
+socket gives up in any state. The machine resolves them in a fixed
+order: ``rst_rx`` first, then ``abort``, then the event the current
+state waits for. A pulse a state does not wait for is ignored: a SYN
+outside ``LISTEN`` is the walker's business (a reset for a foreign
+peer, a challenge ACK for the connected one), an ACK in
 ``ESTABLISHED`` only moves the transmit ring, and ``fin_rx`` cannot
-occur in ``SYN_RCVD`` because the walker stores nothing there (see
-``rx_open``) and a FIN is only in order behind stored data.
+occur in ``SYN_RCVD`` because the walker accepts a FIN only under
+``rx_open``, like data, and leaves one it does not accept
+unacknowledged for the peer to retransmit.
 
 ::
 
@@ -70,8 +72,8 @@ and exists so that an active open, a later extension, has somewhere
 to start from. A reset in ``SYN_RCVD`` also goes through ``CLOSED``
 rather than straight back to ``LISTEN``, so that the clean-up is one
 place. ``close_ready`` is the socket's verdict that its own FIN may
-go: the application has asserted ``app_close``, the ring is empty,
-everything sent is acknowledged. ``abort`` is the socket giving the
+go: the application's close token has been received, the ring is
+empty, everything sent is acknowledged. ``abort`` is the socket giving the
 connection up — retransmission budget spent, idle limit reached — and
 arrives from the timer side, not from the walker.
 
@@ -136,8 +138,9 @@ Signals
   arrived.
 - ``abort``: pulse, the socket gives the connection up —
   retransmission budget spent or idle limit reached.
-- ``close_ready``: level, the socket may send its FIN — ``app_close``
-  asserted, transmit ring empty, everything sent acknowledged.
+- ``close_ready``: level, the socket may send its FIN — the
+  application's close token received, transmit ring empty, everything
+  sent acknowledged.
 - ``clear``: level, ``CLOSED``; the socket sends the reset it owes,
   drops the ring, flushes the receive buffer and clears the record.
 - ``listening``: level, ``LISTEN``; the walker may accept a SYN and
