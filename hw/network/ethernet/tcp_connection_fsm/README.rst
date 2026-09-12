@@ -13,7 +13,9 @@ those are the socket's datapath — and sees the network only as
 events the socket's receive walker has already qualified against the
 connection record. Its outputs are levels decoded from the state,
 which the socket's engines turn into work: send a SYN-ACK, store
-data, send a FIN, clear the record.
+data, send a FIN, clear the record. This README is the contract
+between the two; the socket README describes the machine only by
+reference to it.
 
 It is separate so that a version produced by an FSM synthesis tool
 drops in without touching the socket, runs against the same
@@ -30,38 +32,48 @@ Transitions
 Events are one-cycle pulses, registered by the receive walker on the
 last beat of a segment, so at most one segment's events arrive per
 cycle and several of them may be set together — a FIN rides on an
-ACK, a reset budget runs out in any state. The machine resolves them
-in a fixed order: ``rst_rx`` first, then ``retries_exhausted``, then
-the event the current state waits for. A pulse a state does not wait
-for is ignored: a SYN outside ``LISTEN`` is the walker's business
-(a reset for a foreign peer, a challenge ACK for the connected one),
-an ACK in ``ESTABLISHED`` only moves the transmit ring.
+ACK, the socket gives up in any state. The machine resolves them in
+a fixed order: ``rst_rx`` first, then ``abort``, then the event the
+current state waits for. A pulse a state does not wait for is
+ignored: a SYN outside ``LISTEN`` is the walker's business (a reset
+for a foreign peer, a challenge ACK for the connected one), an ACK in
+``ESTABLISHED`` only moves the transmit ring, and ``fin_rx`` cannot
+occur in ``SYN_RCVD`` because the walker stores nothing there (see
+``rx_open``) and a FIN is only in order behind stored data.
 
 ::
 
-  CLOSED      --listen-----------------> LISTEN
+  CLOSED      --listen & clear_done----> LISTEN
   LISTEN      --syn_rx-----------------> SYN_RCVD
-  SYN_RCVD    --fin_rx-----------------> CLOSE_WAIT   (FIN on the handshake ACK)
   SYN_RCVD    --ctl_acked--------------> ESTABLISHED
   ESTABLISHED --fin_rx-----------------> CLOSE_WAIT
   CLOSE_WAIT  --close_ready------------> LAST_ACK
   LAST_ACK    --ctl_acked--------------> CLOSED
   any but CLOSED, LISTEN
               --rst_rx-----------------> CLOSED
-              --retries_exhausted------> CLOSED
+              --abort------------------> CLOSED
 
 ``ctl_acked`` is the walker's verdict that the peer acknowledged the
 control segment outstanding in the current state — the SYN-ACK in
 ``SYN_RCVD``, the FIN in ``LAST_ACK`` — which is why one event serves
-both. ``fin_rx`` takes precedence over ``ctl_acked`` in ``SYN_RCVD``
-so that a FIN carried by the handshake ACK lands in ``CLOSE_WAIT``,
-as a real stack would after passing through ``ESTABLISHED``.
-``CLOSED`` is where the socket clears its record and buffers; it
-leaves for ``LISTEN`` as soon as ``listen`` is high, which the socket
-ties high — the input exists so that an active open, a later
-extension, has somewhere to start from. A reset in ``SYN_RCVD`` also
-goes through ``CLOSED`` rather than straight back to ``LISTEN``, so
-that the clean-up is one place.
+both. A FIN carried by the handshake ACK itself is not accepted in
+``SYN_RCVD``: the ACK moves the machine to ``ESTABLISHED`` and the
+peer retransmits the FIN into it, one round trip later on a path that
+is rare; the alternative, an arc from ``SYN_RCVD`` to ``CLOSE_WAIT``,
+would have to accept a FIN behind data the state drops.
+
+``CLOSED`` is where the socket cleans up — the reset owed to the
+peer sent, the ring dropped, the receive buffer flushed frame by
+frame, the record cleared — and the machine stays there until the
+socket reports ``clear_done``; ``listen`` is tied high by the socket
+and exists so that an active open, a later extension, has somewhere
+to start from. A reset in ``SYN_RCVD`` also goes through ``CLOSED``
+rather than straight back to ``LISTEN``, so that the clean-up is one
+place. ``close_ready`` is the socket's verdict that its own FIN may
+go: the application has asserted ``app_close``, the ring is empty,
+everything sent is acknowledged. ``abort`` is the socket giving the
+connection up — retransmission budget spent, idle limit reached — and
+arrives from the timer side, not from the walker.
 
 Outputs
 -------
@@ -90,6 +102,8 @@ walker a store in ``SYN_RCVD``. ``tx_open`` stays high in
 ``CLOSE_WAIT`` — the peer has finished sending, the application has
 not — and drops in ``LAST_ACK``, after the socket has decided the
 ring is empty. ``connected`` is the socket's ``connected`` port.
+``clear`` holds for as long as the clean-up takes, since ``CLOSED``
+waits for ``clear_done``.
 
 Benchmark note
 --------------
@@ -109,8 +123,10 @@ Signals
 
 - ``clock``, ``sreset``: clock and synchronous reset, active high;
   reset lands in ``CLOSED``.
-- ``listen``: level, leave ``CLOSED`` for ``LISTEN``; tied high by the
-  socket.
+- ``listen``: level, leave ``CLOSED`` for ``LISTEN`` once the clean-up
+  is done; tied high by the socket.
+- ``clear_done``: level, the socket has finished the clean-up
+  ``clear`` asked for.
 - ``syn_rx``: pulse, an acceptable SYN for the listening port arrived
   (no ACK, no RST, validated by the walker).
 - ``ctl_acked``: pulse, the peer acknowledged the control segment
@@ -118,12 +134,12 @@ Signals
 - ``fin_rx``: pulse, an in-order FIN from the connected peer arrived.
 - ``rst_rx``: pulse, an acceptable RST from the connected peer
   arrived.
-- ``retries_exhausted``: pulse, the transmit side spent its
-  retransmission budget on the outstanding segment.
-- ``close_ready``: level, the socket may send its FIN — transmit ring
-  empty, everything sent acknowledged, receive buffer drained.
-- ``clear``: level, ``CLOSED``; the socket clears the connection
-  record and both buffers.
+- ``abort``: pulse, the socket gives the connection up —
+  retransmission budget spent or idle limit reached.
+- ``close_ready``: level, the socket may send its FIN — ``app_close``
+  asserted, transmit ring empty, everything sent acknowledged.
+- ``clear``: level, ``CLOSED``; the socket sends the reset it owes,
+  drops the ring, flushes the receive buffer and clears the record.
 - ``listening``: level, ``LISTEN``; the walker may accept a SYN and
   sample the identity.
 - ``syn_ack_pending``: level, ``SYN_RCVD``; a SYN-ACK is owed.

@@ -8,8 +8,9 @@ One TCP connection between the IPv4 layer and an application, with the
 application side as a pair of byte streams: payload received in order
 leaves on ``m_app_*``, bytes the application presents on ``s_app_*``
 are segmented, sent and retransmitted until acknowledged. A wire from
-``m_app_*`` to ``s_app_*`` makes the socket an echo server — the first
-use case, ``nc`` or ``telnet`` to ``listen_port`` — and the same block,
+``m_app_*`` to ``s_app_*``, with ``rx_eof`` looped back into
+``app_close``, makes the socket an echo server — the first use case,
+``nc`` or ``telnet`` to ``listen_port`` — and the same block,
 unchanged, serves whatever replaces the wire later.
 
 The socket is a passive server with a single connection record: it
@@ -40,101 +41,156 @@ only on the two responders.
 Receive
 -------
 
-A segment is validated on the fly: at least 20 bytes and a data
-offset that fits ``s_length``, a destination equal to ``local_ip``
-(the parser also passes limited broadcast, which is dropped here), a
-TCP checksum over the pseudo-header, header and data that verifies,
-and no ``tuser``. Options are skipped, none is interpreted. The
-checksum verdict only exists on the last byte, so the payload is
-written speculatively into the receive buffer — an
-`axi_stream_packet_fifo <../../../lib/axi_stream_packet_fifo/README.rst>`_
-in backpressure mode, whose commit/rollback is exactly the mechanism
-needed — and doomed with ``tuser`` when the sum fails. Its
-``LOG2_FRAMES`` is set to ``LOG2_RX_DEPTH`` so that the frame count
-can never bind before the byte count: an interactive session is a
-stream of one-byte segments. The socket keeps the byte occupancy
-itself (the FIFO does not expose it), and the free space is the
-window it advertises.
+A segment is validated on the fly: at least 20 bytes, a data offset
+of at least 5 that fits ``s_length``, a destination equal to
+``local_ip`` (the parser also passes limited broadcast, which is
+dropped here), a TCP checksum over the pseudo-header, header and data
+that verifies, and no ``tuser``. Options are walked, and one is read:
+the MSS option of the SYN, which bounds what the socket sends (see
+Transmit); every other option is skipped. The checksum verdict only
+exists on the last byte, so the payload is written speculatively into
+the receive buffer — an `axi_stream_packet_fifo
+<../../../lib/axi_stream_packet_fifo/README.rst>`_ in backpressure
+mode, whose commit/rollback is exactly the mechanism needed — and
+doomed with ``tuser`` when the sum fails. Its ``LOG2_FRAMES`` is set
+to ``LOG2_RX_DEPTH`` so that the frame count can never bind before
+the byte count: an interactive session is a stream of one-byte
+segments. The socket keeps the byte occupancy itself (the FIFO does
+not expose it), and the free space is the window it advertises.
 
-Only in-order data is accepted: a segment whose sequence number is
-exactly the next expected one and whose payload fits the free space is
-stored, acknowledged, and delivered on ``m_app_*`` with ``tlast`` on
-its last byte, the segment boundary. Anything else that belongs to
-the connection — an old segment (the peer's retransmission, our
+Only in-order data is accepted, and only while the connection machine
+holds ``rx_open``: a segment whose sequence number is exactly the
+next expected one and whose payload fits the free space is stored,
+acknowledged, and delivered on ``m_app_*`` with ``tlast`` on its last
+byte, the segment boundary. Anything else that belongs to the
+connection — an old segment (the peer's retransmission, our
 acknowledgement was lost), a future one (reordering or a lost
-predecessor), a partial overlap, a window probe — is consumed, not
-stored, and answered with a pure acknowledgement carrying the current
-expected sequence number and window. The peer's retransmission timer
-then drives recovery from its side, and the socket never needs
-out-of-order storage. When the application does not consume, the
-window closes to zero; when the free space has been advertised below
-``MSS`` and rises back to ``MSS`` or more, a pure acknowledgement
-carries the update without waiting for the peer's probe.
+predecessor), a partial overlap, a window probe, data carried by the
+handshake ACK itself — is consumed, not stored, and answered with a
+pure acknowledgement carrying the current expected sequence number
+and window. The peer's retransmission timer then drives recovery from
+its side, and the socket never needs out-of-order storage. A FIN is
+accepted, and reported to the connection machine, when it is in
+order: its own sequence number, after any data the segment carries
+and which must itself have been stored, is the next expected one.
+When the application does not consume, the window closes to zero;
+when the free space has been advertised below the effective MSS and
+rises back to it or more, a pure acknowledgement carries the update
+without waiting for the peer's probe.
 
-An acknowledgement number between the oldest unacknowledged byte and
-the next byte to send releases the transmit ring up to it and restarts
-the retransmission timer if data is still outstanding, or stops it.
-One outside that range is ignored, and answered with a pure
-acknowledgement if it lies ahead of what was sent.
+An acknowledgement number strictly above the oldest unacknowledged
+byte and up to and including the next byte to send releases the
+transmit ring up to it, clears the retry counter, and restarts the
+retransmission timer if a sequence number is still outstanding, or
+stops it. An acknowledgement equal to the oldest unacknowledged byte
+— a duplicate, or any segment the peer sends while our lost segment
+is outstanding — changes nothing, so it cannot keep the timer from
+expiring. One ahead of what was sent is answered with a pure
+acknowledgement. Every acceptable segment from the peer also restarts
+the idle limit.
 
-While the socket is not listening for it, a segment is matched
-against the connection record — peer IP, peer port, ``listen_port``.
-A segment for any other port, or from any other peer while a
-connection is up, is answered with a reset built as RFC 793 specifies
-for a closed port, unless it carries ``RST`` itself; the peer sees
-"connection refused" instead of a timeout. A reset from the peer, in
-any state past ``LISTEN``, closes the connection at once.
+Resets
+------
+
+Every segment not accepted above is answered as RFC 793 prescribes
+for a socket that does not exist, unless it carries ``RST`` itself:
+a reset with sequence number equal to the segment's acknowledgement
+number when it carries ``ACK``, otherwise sequence 0 and an
+acknowledgement of the segment's own sequence number plus its length
+plus one per SYN or FIN. Concretely:
+
+- a segment to any port other than ``listen_port``, in any state;
+- in ``LISTEN``, a segment to ``listen_port`` carrying ``ACK`` — the
+  tail of a connection the socket has already forgotten, which is
+  routine after an abort; a SYN is accepted, and a segment with
+  neither is dropped;
+- while a connection is up, a segment from any other peer, a SYN
+  included, so a second client sees "connection refused" instead of
+  a timeout.
+
+The reset is addressed from the offending segment, not from the
+connection record: the receive walker captures its source MAC, IP
+and port, sequence and acknowledgement numbers, flags and length into
+a one-entry reset request, and the transmit side builds the reset
+from that. A further offending segment arriving while the request is
+pending is dropped; its sender retransmits. A reset *from* the
+connected peer that is in order closes the connection at once, in any
+state past ``LISTEN``. When the socket itself gives a connection up —
+retransmission budget spent, idle limit reached — it sends a reset to
+the peer from the connection record before clearing it, so the peer
+does not sit in ``ESTABLISHED`` for minutes.
 
 Transmit
 --------
 
 Bytes accepted on ``s_app_*`` enter a ``2**LOG2_TX_DEPTH``-byte ring
 and stay there until acknowledged; ``s_app_tready`` drops when the
-ring is full and outside the states that carry data. A segment is
-sent as soon as unsent bytes are present and either ``s_app_tlast``
-was accepted with them — send now, the push — or ``MSS`` of them are
-waiting. There is no Nagle delay: an interactive echo must go back
-per keystroke. Every data segment carries ``PSH`` and ``ACK``.
+ring is full and while the connection machine does not hold
+``tx_open``. A segment is sent as soon as unsent bytes are present
+and either ``s_app_tlast`` was accepted with them — send now, the
+push — or an effective MSS of them are waiting. There is no Nagle
+delay: an interactive echo must go back per keystroke. Every data
+segment carries ``PSH`` and ``ACK``.
+
+The effective MSS is the smallest of the ``MSS`` parameter, the MSS
+option the peer's SYN carried, and 536 when it carried none, per RFC
+1122. It is the largest payload sent or resent; with ``DF`` set on
+every frame, a segment cut at the socket's own size would be dropped
+by any narrower hop on the path, and the stack has no path MTU
+discovery to notice.
 
 Those two rules are the whole of the send policy, and they put the
 ``TCP_NODELAY``/``TCP_CORK`` choice in the application's hands, byte
 by byte: ``tlast`` on every unit is no-delay, ``tlast`` withheld is
 cork. What is *not* implemented, and left as a documented extension,
 is the cork timeout Linux applies after 200 ms — an application that
-never asserts ``tlast`` and stops short of ``MSS`` leaves its bytes
-in the ring until more arrive. It would be a third send rule, "unsent
-bytes waiting and none arrived for ``PUSH_IDLE_CLOCKS`` cycles", one
-counter and one more boolean into the scheduler, zero disabling it.
-The echo wire never needs it, every looped segment ends with a
-``tlast``; it is deferred until an application behind the socket
-does.
+never asserts ``tlast`` and stops short of the effective MSS leaves
+its bytes in the ring until more arrive. It would be a third send
+rule, "unsent bytes waiting and none arrived for ``PUSH_IDLE_CLOCKS``
+cycles", one counter and one more boolean into the scheduler, zero
+disabling it. The echo wire never needs it, every looped segment ends
+with a ``tlast``; it is deferred until an application behind the
+socket does.
 
 The headers leave before the data and a retransmission re-reads the
 ring, so the data sum cannot be taken at write time: the transmit
 engine reads a segment once to sum it, then again to emit it. At one
-byte per cycle a full-``MSS`` segment costs under 30 µs, invisible on
+byte per cycle a full-MSS segment costs under 30 µs, invisible on
 Fast Ethernet.
 
 The retransmission timer runs whenever a sequence number is
-outstanding — data, our SYN-ACK, our FIN. On expiry the oldest
-unacknowledged segment, at most ``MSS`` bytes from the ring or the
-control segment itself, is sent again and the timer restarts;
-``MAX_RETRIES`` consecutive expiries reset the connection. A fixed
-``RTO_CLOCKS`` period, no round-trip estimate and no back-off, is
-enough on a LAN and keeps the timer a plain counter.
+outstanding — data, our SYN-ACK, our FIN — and also, as the persist
+timer, whenever unsent bytes wait in the ring against a zero window
+(see below). On expiry with a sequence number outstanding, the oldest
+unacknowledged segment, at most an effective MSS from the ring or the
+control segment itself, is sent again; the timer restarts and the
+retry counter increments. ``MAX_RETRIES`` consecutive expiries
+without an acknowledgement that advances give the connection up. A
+fixed ``RTO_CLOCKS`` period, no round-trip estimate and no back-off,
+is enough on a LAN and keeps the timer a plain counter.
 
 The peer's receive window bounds what may be in flight: the window
 field of every acceptable segment is kept, and no byte is sent beyond
 the oldest unacknowledged one plus that window. Bytes the application
-presents past it wait in the ring. A zero window turns the same timer
-into the persist timer: on expiry a one-byte probe is sent from the
-oldest unacknowledged byte, the peer answers it with its current
-window, and the probe does not count against ``MAX_RETRIES`` — a
-peer that keeps its window closed is slow, not gone. Sending resumes
-when a window update arrives, whether on that answer or on any
-segment. A telnet client advertises tens of kilobytes, so the echo
-never meets this rule; it is here because the ring must never
-overrun a peer that is smaller than it.
+presents past it wait in the ring. When that window is zero and bytes
+wait, the timer runs even though nothing is outstanding, and on
+expiry a one-byte probe is sent from the first unsent byte; the peer
+answers with its current window and sending resumes when a window
+update arrives, on that answer or on any segment. Unanswered probes
+count against ``MAX_RETRIES`` like retransmissions, and an answered
+one clears the counter like any acceptable acknowledgement: a peer
+that keeps its window closed but keeps answering is slow, one that
+stops answering is gone. A telnet client advertises tens of
+kilobytes, so the echo never meets this rule; it is here because the
+ring must never overrun a peer that is smaller than it.
+
+An idle connection runs no timer at all, so a peer that vanishes
+without a reset would hold the single connection record forever and
+every later client would be refused. The idle limit closes that:
+``IDLE_CLOCKS`` without an acceptable segment from the peer gives the
+connection up, reset sent, like a spent retry budget; zero disables
+it. Linux keeps such a connection for hours by default, but Linux
+has more than one record.
 
 A pure acknowledgement is not sent the moment it is owed: it waits
 ``ACK_DELAY_CLOCKS`` for a data segment to carry it. With the echo
@@ -143,31 +199,56 @@ their delivery, so the acknowledgement rides on the echo and each
 keystroke costs one frame each way instead of two. The delay is far
 below the 500 ms RFC 1122 allows.
 
-The transmit side serves, in this priority: a reset or a handshake
-segment the connection machine asks for, a retransmission, a data
-segment, a pure acknowledgement. One segment is in flight through the
-engine at a time; the packet mux downstream merges it with the
-responders' frames.
+The transmit side serves, in this priority: a reset — from the reset
+request, or to the peer on giving up — then the SYN-ACK or FIN the
+connection machine holds pending (sent on the rising edge of the
+level, resent on expiry while it stays high), a retransmission or
+persist probe, a data segment, a pure acknowledgement. One segment is
+in flight through the engine at a time; the packet mux downstream
+merges it with the responders' frames.
 
 Connection
 ----------
 
-The passive half of the RFC 793 diagram: ``LISTEN``, ``SYN_RCVD``,
-``ESTABLISHED``, ``CLOSE_WAIT``, ``LAST_ACK``, and back to ``LISTEN``.
-The SYN-ACK carries a single option, ``MSS``; the initial sequence
-number is sampled from a free-running counter. A SYN from another
-peer while a connection is up gets a reset, so one client at a time.
+The passive half of the RFC 793 diagram: ``CLOSED``, ``LISTEN``,
+``SYN_RCVD``, ``ESTABLISHED``, ``CLOSE_WAIT``, ``LAST_ACK``, in the
+`connection machine <../tcp_connection_fsm/README.rst>`_. The SYN-ACK
+carries a single option, ``MSS``; the initial sequence number is
+sampled from a free-running counter. One client at a time: a SYN from
+another peer while a connection is up gets a reset. Data or a FIN
+riding on the handshake ACK itself are not stored; the peer
+retransmits them once the connection is established, one round trip
+later on a path that is rare.
 
-The socket has no application-side close request yet: after the
-peer's FIN it sends its own as soon as the ring is empty, everything
-sent is acknowledged, and the receive buffer has been drained — so
-that an application looping the last bytes back still gets them out.
-Once that FIN is acknowledged the connection record is cleared and
-both buffers are emptied; bytes the application had not yet sent are
-lost, as on a closed socket. Active open and active close are the
-extension that makes a client out of this block; they add states to
-the connection machine and a control side-band, and change neither
-stream.
+The close follows the socket API. When the peer's FIN has been
+accepted and every byte it sent has been delivered on ``m_app_*``,
+``rx_eof`` rises — the read side's end of stream — and stays high to
+the end of the connection. The application then asserts ``app_close``
+once it has nothing more to send; the socket sends its own FIN as
+soon as ``app_close`` is high, the ring is empty and everything sent
+is acknowledged, and it holds ``s_app_tready`` low from then on. An
+application that is a wire ties ``app_close`` to ``rx_eof``: the byte
+delivered is the byte accepted, so nothing can be in flight between
+the two. Anything with a pipeline between the streams asserts
+``app_close`` when that pipeline is empty. ``app_close`` is a level,
+sampled only after the peer's FIN; asserting it earlier is harmless
+and takes effect then. An active close from ``ESTABLISHED`` — the
+``FIN_WAIT`` states — and an active open are the extension that makes
+a client out of this block; they add states to the connection
+machine and change neither stream.
+
+A connection ends in ``CLOSED``, whether by the peer's
+acknowledgement of our FIN, a reset, or the socket giving up; the
+machine stays there until the socket reports the clean-up done. The
+clean-up is: the reset owed to the peer sent, if any; the transmit
+ring dropped, bytes the application had not yet sent lost, as on a
+closed socket; the receive buffer flushed frame by frame — a segment
+in delivery on ``m_app_*`` finishes to its ``tlast``, the committed
+ones behind it are read and discarded — and the occupancy counter
+zeroed with it; the connection record cleared. Data the old peer
+sent that the application had not yet read is discarded, the reset
+semantics; after a clean close there is none, since the FIN needed
+``rx_eof`` first.
 
 ``connected`` is high from ``ESTABLISHED`` to ``LAST_ACK``
 inclusive; ``peer_ip`` and ``peer_port`` are valid while it is.
@@ -197,18 +278,22 @@ state.
 - **Connection machine** — its own component,
   `tcp_connection_fsm <../tcp_connection_fsm/README.rst>`_, so a
   generated version drops in without touching the socket and gets
-  its own area and timing numbers. Inputs are one-cycle events from
-  the receive engine — acceptable SYN, acknowledgement of the
-  outstanding control segment, FIN, RST, retries exhausted — and a
-  transmit-done pulse; outputs are the state, ``connected``, and the
-  requests for a SYN-ACK, a FIN or a reset. States ``CLOSED``,
-  ``LISTEN``, ``SYN_RCVD``, ``ESTABLISHED``, ``CLOSE_WAIT``,
-  ``LAST_ACK``.
+  its own area and timing numbers; its README is the contract.
+  Inputs are one-cycle events the receive walker has qualified
+  against the connection record — ``syn_rx``, ``ctl_acked``,
+  ``fin_rx``, ``rst_rx`` — the ``abort`` pulse from the timer side
+  (retry budget spent or idle limit reached), and three levels the
+  socket computes: ``listen``, tied high; ``close_ready``, which is
+  ``app_close`` with the ring empty and everything acknowledged;
+  ``clear_done``, the clean-up above finished. Outputs are the
+  seven Moore levels the socket's engines act on: ``clear``,
+  ``listening``, ``syn_ack_pending``, ``connected``, ``rx_open``,
+  ``tx_open``, ``fin_pending``.
 - **Receive walker** — ``IDLE``, ``HEADER``, ``OPTIONS``, ``PAYLOAD``,
   ``DROP``. Walks the segment, validates it, writes the receive
-  buffer, raises the events above and the acknowledgement-owed
-  flag. Registers the events, so the connection machine never sees a
-  raw stream bit.
+  buffer, raises the events above, the acknowledgement-owed flag and
+  the reset request. Registers the events, so the connection machine
+  never sees a raw stream bit.
 - **Transmit walker** — ``IDLE``, ``SUM``, ``ETH_HEADER``,
   ``IP_HEADER``, ``TCP_HEADER``, ``PAYLOAD``. Emits one frame of the
   kind it was handed.
@@ -223,12 +308,16 @@ Parameters
   2048 bytes; the largest window advertised; at least ``MSS``).
 - ``LOG2_TX_DEPTH``: transmit ring size in bytes, log2 (default 11 —
   2048 bytes; bounds the unacknowledged data; at least ``MSS``).
-- ``MSS``: maximum segment size, advertised in the SYN-ACK and the
-  largest payload sent (default 1460, the 1500 MTU; at most 16 bits).
-- ``RTO_CLOCKS``: retransmission timeout in clock cycles (default
-  10 000 000 — 200 ms at 50 MHz).
-- ``MAX_RETRIES``: consecutive retransmissions before the connection
-  is reset (default 8).
+- ``MSS``: maximum segment size advertised in the SYN-ACK, and the
+  socket's own bound on the effective MSS (default 1460, the 1500
+  MTU; at most 16 bits).
+- ``RTO_CLOCKS``: retransmission and persist timeout in clock cycles
+  (default 10 000 000 — 200 ms at 50 MHz).
+- ``MAX_RETRIES``: consecutive retransmissions or unanswered probes
+  before the connection is given up (default 8).
+- ``IDLE_CLOCKS``: clock cycles without an acceptable segment from
+  the peer before the connection is given up (default
+  30 000 000 000 — 10 minutes at 50 MHz; 0 disables).
 - ``ACK_DELAY_CLOCKS``: hold-off of a pure acknowledgement, in clock
   cycles, for a data segment to carry it (default 4096 — 82 µs at
   50 MHz).
@@ -255,6 +344,10 @@ Signals
 - ``s_app_tdata`` (8 bits), ``s_app_tvalid``, ``s_app_tlast``,
   ``s_app_tready``: AXI stream slave from the application, bytes to
   send; ``tlast`` sends what is waiting now.
+- ``rx_eof``: level, the peer has closed and every byte it sent has
+  been delivered; high to the end of the connection.
+- ``app_close``: level, the application has nothing more to send;
+  sampled after the peer's FIN, tied to ``rx_eof`` by the echo wire.
 - ``connected``: a connection is up, ``ESTABLISHED`` to ``LAST_ACK``.
 - ``peer_ip`` (32 bits), ``peer_port`` (16 bits): the connected peer,
   valid while ``connected`` is high.
