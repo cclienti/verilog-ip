@@ -27,10 +27,15 @@ get-file = $(shell \
 	     done; \
 	     echo "$$deps" | tr ' ' '\n' | sort -u | tr '\n' ' ')
 
-# Gather all module and testbench files
-ALL_TOP_FILES    := $(call get-file,$(TOP_FILE),$(TOP_DEPS),ALL_TOP_FILES)
-ALL_TEST_FILES   := $(call get-file,$(TESTBENCH_FILE),$(TESTBENCH_DEPS),ALL_TOP_FILES)
-ALL_SOURCE_FILES := $(sort $(ALL_TOP_FILES) $(ALL_TEST_FILES))
+# Gather all module and testbench files. get-file sorts by path, and
+# both iverilog and Verilator need a package compiled before the file
+# that imports it, so files named *_pkg.sv go first: that suffix is the
+# convention for a package, and the only ordering the lists carry.
+pkg-first = $(filter %_pkg.sv,$1) $(filter-out %_pkg.sv,$1)
+
+ALL_TOP_FILES    := $(call pkg-first,$(call get-file,$(TOP_FILE),$(TOP_DEPS),ALL_TOP_FILES))
+ALL_TEST_FILES   := $(call pkg-first,$(call get-file,$(TESTBENCH_FILE),$(TESTBENCH_DEPS),ALL_TOP_FILES))
+ALL_SOURCE_FILES := $(call pkg-first,$(sort $(ALL_TOP_FILES) $(ALL_TEST_FILES)))
 
 
 # The waveform viewers, shared by the iverilog and modelsim trace

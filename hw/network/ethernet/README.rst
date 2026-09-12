@@ -69,5 +69,7 @@ it lives in `hw/boards/zedboard/eth_endpoint
 +---------------------------------------------------------------------+----------------------------------------------+
 | `tcp_connection_fsm <tcp_connection_fsm/README.rst>`_               | TCP connection state machine, passive server |
 +---------------------------------------------------------------------+----------------------------------------------+
+| `tcp_model <tcp_model/README.rst>`_                                 | Bench-side TCP/IP frame model package        |
++---------------------------------------------------------------------+----------------------------------------------+
 | `rmii_eth_endpoint <rmii_eth_endpoint/README.rst>`_                 | The whole stack between the RMII PHY pins    |
 +---------------------------------------------------------------------+----------------------------------------------+
