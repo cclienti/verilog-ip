@@ -317,8 +317,11 @@ The header is built the way the `ARP responder
 <../axi_stream_eth_arp/README.rst>`_ builds its reply: once the
 scheduler has decided the kind, the transmit walker assembles a
 header image — 58 bytes at most, one register vector — and streams
-it by byte index during ``ETH_HEADER``, ``IP_HEADER`` and
-``TCP_HEADER``, then the payload from the ring during ``PAYLOAD``.
+it by byte index during ``HEADER``, then the payload from the ring
+during ``PAYLOAD``. One state for the three headers: nothing changes
+at the Ethernet-to-IP or IP-to-TCP boundary that the machine needs
+to express, the image is one vector and the checksum index runs on
+its own beside the byte index.
 Both checksums are ones'-complement sums over halfwords of that same
 image, one halfword per cycle, taken by a second index that runs
 ahead of the byte index: the IP header checksum covers its ten
@@ -441,12 +444,24 @@ state.
   buffer, raises the events above, the acknowledgement-owed flag and
   the reset request. Registers the events, so the connection machine
   never sees a raw stream bit.
-- **Transmit walker** — ``IDLE``, ``SUM``, ``ETH_HEADER``,
-  ``IP_HEADER``, ``TCP_HEADER``, ``PAYLOAD``. Emits one frame of the
-  kind it was handed.
-- **Transmit scheduler** — the priority above. Written as a machine
-  if it needs one to sequence the pre-pass and the hand-off, as
-  priority logic otherwise; decided when the RTL is written.
+- **Transmit walker** — ``IDLE``, ``SUM``, ``HEADER``, ``PAYLOAD``.
+  Emits one frame of the kind it was handed; a segment without
+  payload leaves ``HEADER`` for ``IDLE`` directly, and ``SUM`` is
+  entered only with a payload to scan.
+- **Transmit scheduler** — not a machine. A priority encoder over
+  the booleans of the priority above: a reset owed, a pending
+  SYN-ACK or FIN on its rising edge or on expiry, a resend or probe
+  on expiry, data ready within the window, an acknowledgement owed
+  past its hold-off. When the walker is idle the encoder's choice is
+  latched as the segment kind and handed over; when the walker
+  reports done, the side effects keyed on that kind fire — the send
+  pointer advanced by the scanned length, the acknowledgement-owed
+  flag or the reset request cleared, the timer restarted, the retry
+  counted. A kind register, an in-flight flag and decode, with no
+  sequence of its own; the walker's ``IDLE`` is the only wait.
+
+Three machines in all, then: the connection machine in its own
+component, and the two walkers here.
 
 Parameters
 ----------
