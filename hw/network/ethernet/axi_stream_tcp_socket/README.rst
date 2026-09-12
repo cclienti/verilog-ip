@@ -154,11 +154,26 @@ Transmit
 Bytes accepted on ``s_app_*`` enter a ``2**LOG2_TX_DEPTH``-byte ring
 and stay there until acknowledged; ``s_app_tready`` drops when the
 ring is full and while the connection machine does not hold
-``tx_open``. A segment is sent as soon as unsent bytes are present
-and either ``s_app_tlast`` was accepted with them — send now, the
-push — or an effective MSS of them are waiting. There is no Nagle
-delay: an interactive echo must go back per keystroke. Every data
-segment carries ``PSH`` and ``ACK``.
+``tx_open``. The ring is nine bits wide: each byte lands at the
+position of its sequence number together with its ``s_app_tlast``,
+which a block RAM gives at that width for nothing, and neither the
+byte's place nor its stay depends on the bit. A segment is sent as
+soon as unsent bytes are present and either a ``tlast`` is among
+them — send now, the push — or an effective MSS of them are waiting.
+The first condition is a counter of pending pushes, up by one when a
+``tlast`` byte is accepted and down by one when a segment ends on
+one, so the scheduler sees a boolean. There is no Nagle delay: an
+interactive echo must go back per keystroke. Every data segment
+carries ``PSH`` and ``ACK``.
+
+A segment is cut at the first ``tlast`` from the send pointer, or at
+the effective MSS, whichever comes first; pushes are never merged, so
+the framing the application expressed leaves as it was expressed,
+and with the echo wire one segment in is exactly one segment out. It
+is a hint, not a frame: a message longer than the MSS leaves in
+several segments, and the far end marks a boundary at every segment
+it receives, so anything that needs real framing across TCP puts it
+in the payload.
 
 The effective MSS is the smallest of the ``MSS`` parameter, the MSS
 option the peer's SYN carried, and 536 when it carried none, per RFC
@@ -182,9 +197,15 @@ socket does.
 
 The headers leave before the data and a retransmission re-reads the
 ring, so the data sum cannot be taken at write time: the transmit
-engine reads a segment once to sum it, then again to emit it. At one
-byte per cycle a full-MSS segment costs under 30 µs, invisible on
-Fast Ethernet.
+engine reads a segment once to sum it, then again to emit it. That
+first pass is also what finds the cut: it reads from the send pointer
+byte by byte and stops at the first ``tlast``, at the effective MSS,
+or after the one byte of a probe, so a single scan yields both the
+length the IP header needs and the data sum, and no length is kept
+per segment. A retransmission scans from the oldest unacknowledged
+byte under the same rule and reproduces the original cut, the same
+``tlast`` bits and the same MSS being there. At one byte per cycle a
+full-MSS segment costs under 30 µs, invisible on Fast Ethernet.
 
 The retransmission timer runs whenever a sequence number is
 outstanding — data, our SYN-ACK, our FIN — and also, as the persist
