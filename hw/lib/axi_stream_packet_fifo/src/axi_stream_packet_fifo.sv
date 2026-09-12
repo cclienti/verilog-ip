@@ -36,6 +36,13 @@
 // a MAC receiver): a frame that meets a full data or info FIFO is dropped
 // whole -- committed frames are untouched -- which also disposes of frames
 // larger than the FIFO.
+//
+// Two occupancy outputs for a writer that sizes an advertised window on
+// the FIFO, a TCP receive buffer for one: level counts committed beats
+// not yet popped and frames the committed frames not yet popped. The
+// frame being written is in neither -- the writer knows its own
+// in-flight size -- and the beat being presented on the output counts
+// until it is consumed.
 
 `timescale 1 ns / 100 ps
 
@@ -63,7 +70,11 @@ module axi_stream_packet_fifo #(
     output logic                   m_axi_tlast,
     input logic                    m_axi_tready,
     output logic [INFO_WIDTH-1:0]  m_info,      // stable for the whole frame
-    output logic [LOG2_DEPTH:0]    m_length     // frame length in beats
+    output logic [LOG2_DEPTH:0]    m_length,    // frame length in beats
+
+    // Occupancy: committed and not yet popped, the frame in flight excluded
+    output logic [LOG2_DEPTH:0]    level,       // in beats
+    output logic [LOG2_FRAMES:0]   frames       // in frames
 );
 
     localparam int PTR_W = LOG2_DEPTH + 1;
@@ -154,7 +165,7 @@ module axi_stream_packet_fifo #(
     (
         .clk    (clock),
         .srst   (sreset),
-        .level  (),
+        .level  (frames),
         .ren    (consume && m_axi_tlast),
         .rdata  ({m_info, m_length}),
         .rempty (),
@@ -225,5 +236,8 @@ module axi_stream_packet_fifo #(
     end
 
     assign {m_axi_tlast, m_axi_tdata} = ram_rdata;
+
+    // The readable region, [rptr, cptr): the frame in flight is not in it
+    assign level = cptr - rptr;
 
 endmodule

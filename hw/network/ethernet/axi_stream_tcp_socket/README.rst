@@ -81,12 +81,19 @@ exists on the last byte, so the payload is written speculatively into
 the receive buffer — an `axi_stream_packet_fifo
 <../../../lib/axi_stream_packet_fifo/README.rst>`_ in backpressure
 mode, whose commit/rollback is exactly the mechanism needed — and
-doomed with ``tuser`` when the sum fails. Its ``LOG2_FRAMES`` is set
-to ``LOG2_RX_DEPTH`` so that the frame count can never bind before
-the byte count: an interactive session is a stream of one-byte
-segments. The socket keeps the byte occupancy itself (the FIFO does
-not expose it), and the free space is the window it advertises. The
-FIFO's data is nine bits wide, the byte and a token bit: when the
+doomed with ``tuser`` when the sum fails. The FIFO reports its
+occupancy on ``level`` and ``frames``, committed beats and frames not
+yet popped, and the socket's window is ``2**LOG2_RX_DEPTH - level``.
+A segment is stored only if its payload fits that free space *and* a
+frame slot is free, ``2**LOG2_RX_FRAMES`` being the frame capacity:
+an interactive session is a stream of one-byte segments and can run
+out of frame slots long before bytes, and a segment refused for want
+of one is consumed and acknowledged without it, like any that does
+not fit, so the peer resends it later and the window is never
+retracted. The walker writes one segment at a time and checks the fit
+at the header, before writing, so the frame in flight — which the
+FIFO leaves out of its counts — is never unaccounted for. The FIFO's
+data is nine bits wide, the byte and a token bit: when the
 peer's FIN is accepted the walker commits a one-beat frame with the
 token bit set, behind every committed segment by construction, and
 on the way out that beat becomes the close token — ``m_app_tuser``
@@ -429,8 +436,8 @@ clean-up is: the reset owed to the peer sent, if any; the transmit
 ring dropped, bytes the application had not yet sent lost, as on a
 closed socket; the receive buffer flushed frame by frame — a segment
 in delivery on ``m_app_*`` finishes to its ``tlast``, the committed
-ones behind it are read and discarded — and the occupancy counter
-zeroed with it; the connection record cleared. Data the old peer
+ones behind it are read and discarded, until ``level`` reads zero;
+the connection record cleared. Data the old peer
 sent that the application had not yet read is discarded, the reset
 semantics; after a clean close there is none, since our FIN needed
 the application's token, which follows the last delivered byte.
@@ -504,6 +511,9 @@ Parameters
 
 - ``LOG2_RX_DEPTH``: receive buffer size in bytes, log2 (default 11 —
   2048 bytes; the largest window advertised; at least ``MSS``).
+- ``LOG2_RX_FRAMES``: receive buffer capacity in segments, log2
+  (default 6 — 64 segments not yet read by the application; a
+  segment arriving with none free is refused and resent by the peer).
 - ``LOG2_TX_DEPTH``: transmit ring size in bytes, log2 (default 11 —
   2048 bytes; bounds the unacknowledged data; at least ``MSS``).
 - ``MSS``: maximum segment size advertised in the SYN-ACK, and the

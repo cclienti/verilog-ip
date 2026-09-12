@@ -321,7 +321,9 @@ module axi_stream_eth_fcs_check_tb;
         .m_axi_tlast  (pf_m_tlast),
         .m_axi_tready (pf_m_tready),
         .m_info       (pf_m_info),
-        .m_length     (pf_m_length)
+        .m_length     (pf_m_length),
+        .level        (),
+        .frames       ()
     );
 
     //----------------------------------------------------------------

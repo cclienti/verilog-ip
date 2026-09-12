@@ -25,6 +25,8 @@ def generator():
     blk.add(Disp("m_axi_tready"))
     blk.add(Disp("m_info"))
     blk.add(Disp("m_length"))
+    blk.add(Disp("level"))
+    blk.add(Disp("frames"))
 
     internal = blk.add(Group("Internal"))
     internal.add(Disp("wptr"))

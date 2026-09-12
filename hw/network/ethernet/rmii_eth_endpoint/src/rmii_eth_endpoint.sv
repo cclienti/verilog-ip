@@ -191,7 +191,9 @@ module rmii_eth_endpoint #(
         .m_axi_tlast  (pf_tlast),
         .m_axi_tready (pf_tready),
         .m_info       (pf_info),
-        .m_length     (pf_length)
+        .m_length     (pf_length),
+        .level        (),
+        .frames       ()
     );
 
     //-------------------------------------------

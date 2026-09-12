@@ -19,6 +19,6 @@ def generator():
         other = testbench.add(Hierarchy(f"axi_stream_packet_fifo_{name}_inst"))
         other.add(Disp(["s_axi_tvalid", "s_axi_tlast", "s_axi_tdata", "s_axi_tuser",
                         "s_axi_tready", "m_axi_tvalid", "m_axi_tlast", "m_axi_tdata",
-                        "m_axi_tready", "m_length"]))
+                        "m_axi_tready", "m_length", "level", "frames"]))
 
     return testbench

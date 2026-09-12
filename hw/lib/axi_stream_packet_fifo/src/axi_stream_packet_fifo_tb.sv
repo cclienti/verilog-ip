@@ -27,7 +27,13 @@
 // frame meeting a full FIFO vanishes whole while committed neighbours
 // survive, and that an oversize frame is disposed of. A narrow 2-bit
 // instance proves the width generic. Readers apply random backpressure
-// and every output beat, tlast, info and length is compared.
+// and every output beat, tlast, info and length is compared. On every
+// cycle the level and frames outputs of each instance are compared with
+// the bench's own count of committed beats and frames minus what the
+// reader has popped -- in the process that counts the pops, so both
+// sides of the compare come from the same edge -- so the occupancy is
+// checked through every commit, rollback, drop, stall and wraparound
+// the sequences produce.
 
 `timescale 1 ns / 100 ps
 
@@ -65,6 +71,8 @@ module axi_stream_packet_fifo_tb;
     logic       mn_m_tready;
     logic [3:0] mn_m_info;
     logic [4:0] mn_m_length;
+    logic [4:0] mn_level;
+    logic [2:0] mn_frames;
     logic       mn_reader_en;
     logic       mn_force_ready;
 
@@ -91,7 +99,9 @@ module axi_stream_packet_fifo_tb;
         .m_axi_tlast  (mn_m_tlast),
         .m_axi_tready (mn_m_tready),
         .m_info       (mn_m_info),
-        .m_length     (mn_m_length)
+        .m_length     (mn_m_length),
+        .level        (mn_level),
+        .frames       (mn_frames)
     );
 
     //----------------------------------------------------------------
@@ -109,6 +119,8 @@ module axi_stream_packet_fifo_tb;
     logic       dr_m_tready;
     logic [3:0] dr_m_info;
     logic [4:0] dr_m_length;
+    logic [4:0] dr_level;
+    logic [2:0] dr_frames;
     logic       dr_reader_en;
 
     axi_stream_packet_fifo
@@ -134,7 +146,9 @@ module axi_stream_packet_fifo_tb;
         .m_axi_tlast  (dr_m_tlast),
         .m_axi_tready (dr_m_tready),
         .m_info       (dr_m_info),
-        .m_length     (dr_m_length)
+        .m_length     (dr_m_length),
+        .level        (dr_level),
+        .frames       (dr_frames)
     );
 
     //----------------------------------------------------------------
@@ -151,6 +165,8 @@ module axi_stream_packet_fifo_tb;
     logic       nw_m_tready;
     logic       nw_m_info;
     logic [5:0] nw_m_length;
+    logic [5:0] nw_level;
+    logic [3:0] nw_frames;
 
     axi_stream_packet_fifo
     #(
@@ -175,7 +191,9 @@ module axi_stream_packet_fifo_tb;
         .m_axi_tlast  (nw_m_tlast),
         .m_axi_tready (nw_m_tready),
         .m_info       (nw_m_info),
-        .m_length     (nw_m_length)
+        .m_length     (nw_m_length),
+        .level        (nw_level),
+        .frames       (nw_frames)
     );
 
     //----------------------------------------------------------------
@@ -204,6 +222,8 @@ module axi_stream_packet_fifo_tb;
     integer     mn_exp_frames = 0;
     integer     mn_mon_idx = 0;
     integer     mn_frame_idx = 0;
+    integer     mn_committed_beats = 0;   // beats of frames the FIFO has committed
+    integer     mn_committed_frames = 0;  // frames the FIFO has committed
 
     logic [8:0] dr_exp [0:511];
     logic [3:0] dr_exp_info [0:63];
@@ -212,6 +232,8 @@ module axi_stream_packet_fifo_tb;
     integer     dr_exp_frames = 0;
     integer     dr_mon_idx = 0;
     integer     dr_frame_idx = 0;
+    integer     dr_committed_beats = 0;
+    integer     dr_committed_frames = 0;
 
     logic [2:0] nw_exp [0:127];
     integer     nw_exp_len [0:15];
@@ -219,6 +241,8 @@ module axi_stream_packet_fifo_tb;
     integer     nw_exp_frames = 0;
     integer     nw_mon_idx = 0;
     integer     nw_frame_idx = 0;
+    integer     nw_committed_beats = 0;
+    integer     nw_committed_frames = 0;
 
     //----------------------------------------------------------------
     // Drivers
@@ -256,6 +280,10 @@ module axi_stream_packet_fifo_tb;
         for (int i = 0; i < nbeats; i++) begin
             mn_send_beat(8'(base + i), i == nbeats-1, 1'b0);
         end
+        // The commit lands with the accept edge of the last beat: the
+        // counters move from that edge too, non-blocking, like cptr
+        mn_committed_beats  <= mn_committed_beats + nbeats;
+        mn_committed_frames <= mn_committed_frames + 1;
         mn_s_tvalid <= 1'b0;
         mn_s_tlast  <= 1'b0;
     endtask
@@ -289,6 +317,10 @@ module axi_stream_packet_fifo_tb;
         for (int i = 0; i < nbeats; i++) begin
             dr_send_beat(8'(base + i), i == nbeats-1, 1'b0);
         end
+        if (expected) begin
+            dr_committed_beats  <= dr_committed_beats + nbeats;
+            dr_committed_frames <= dr_committed_frames + 1;
+        end
         dr_s_tvalid <= 1'b0;
         dr_s_tlast  <= 1'b0;
     endtask
@@ -317,6 +349,8 @@ module axi_stream_packet_fifo_tb;
         for (int i = 0; i < nbeats; i++) begin
             nw_send_beat(2'(base + i), i == nbeats-1, 1'b0);
         end
+        nw_committed_beats  <= nw_committed_beats + nbeats;
+        nw_committed_frames <= nw_committed_frames + 1;
         nw_s_tvalid <= 1'b0;
         nw_s_tlast  <= 1'b0;
     endtask
@@ -514,10 +548,24 @@ module axi_stream_packet_fifo_tb;
         $finish;
     end
 
+
     //----------------------------------------------------------------
     // Check outputs
     //----------------------------------------------------------------
     always @(posedge clock) begin
+        // Occupancy first, from the same edge as the pop counters below
+        if (sreset === 1'b0) begin
+            if (mn_level !== 5'(mn_committed_beats - mn_mon_idx)) begin
+                errors = errors + 1;
+                $error("lossless level: got %0d, expected %0d",
+                       mn_level, mn_committed_beats - mn_mon_idx);
+            end
+            if (mn_frames !== 3'(mn_committed_frames - mn_frame_idx)) begin
+                errors = errors + 1;
+                $error("lossless frames: got %0d, expected %0d",
+                       mn_frames, mn_committed_frames - mn_frame_idx);
+            end
+        end
         if (sreset === 1'b0 && mn_m_tvalid === 1'b1 && mn_m_tready === 1'b1) begin
             if (mn_mon_idx >= mn_exp_count) begin
                 errors = errors + 1;
@@ -547,6 +595,19 @@ module axi_stream_packet_fifo_tb;
     end
 
     always @(posedge clock) begin
+        // Occupancy first, from the same edge as the pop counters below
+        if (sreset === 1'b0) begin
+            if (dr_level !== 5'(dr_committed_beats - dr_mon_idx)) begin
+                errors = errors + 1;
+                $error("drop level: got %0d, expected %0d",
+                       dr_level, dr_committed_beats - dr_mon_idx);
+            end
+            if (dr_frames !== 3'(dr_committed_frames - dr_frame_idx)) begin
+                errors = errors + 1;
+                $error("drop frames: got %0d, expected %0d",
+                       dr_frames, dr_committed_frames - dr_frame_idx);
+            end
+        end
         if (sreset === 1'b0 && dr_m_tvalid === 1'b1 && dr_m_tready === 1'b1) begin
             if (dr_mon_idx >= dr_exp_count) begin
                 errors = errors + 1;
@@ -584,6 +645,19 @@ module axi_stream_packet_fifo_tb;
     end
 
     always @(posedge clock) begin
+        // Occupancy first, from the same edge as the pop counters below
+        if (sreset === 1'b0) begin
+            if (nw_level !== 6'(nw_committed_beats - nw_mon_idx)) begin
+                errors = errors + 1;
+                $error("narrow level: got %0d, expected %0d",
+                       nw_level, nw_committed_beats - nw_mon_idx);
+            end
+            if (nw_frames !== 4'(nw_committed_frames - nw_frame_idx)) begin
+                errors = errors + 1;
+                $error("narrow frames: got %0d, expected %0d",
+                       nw_frames, nw_committed_frames - nw_frame_idx);
+            end
+        end
         if (sreset === 1'b0 && nw_m_tvalid === 1'b1 && nw_m_tready === 1'b1) begin
             if (nw_mon_idx >= nw_exp_count) begin
                 errors = errors + 1;

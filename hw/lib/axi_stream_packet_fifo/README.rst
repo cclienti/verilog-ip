@@ -37,6 +37,15 @@ Two overflow policies:
 Latency is store-and-forward: a frame becomes visible to the reader once
 committed, two cycles after its last beat.
 
+Two occupancy outputs serve a writer that sizes an advertised window on
+the FIFO, such as a TCP receive buffer: ``level`` counts the committed
+beats not yet popped, ``frames`` the committed frames not yet popped.
+The frame being written is in neither — the writer knows its own
+in-flight size — and the beat presented on the output counts until it
+is consumed. Free space is ``2**LOG2_DEPTH - level`` beats and
+``2**LOG2_FRAMES - frames`` frames, exact once the frame in flight, if
+any, is accounted for by the writer.
+
 Parameters
 ----------
 
@@ -59,3 +68,6 @@ Signals
 - ``m_axi_*``: AXI stream master, complete valid frames only.
 - ``m_info``, ``m_length``: per-frame side-band and length in beats,
   stable for the whole frame.
+- ``level`` (``LOG2_DEPTH+1`` bits), ``frames`` (``LOG2_FRAMES+1``
+  bits): committed beats and frames not yet popped; leave open when
+  unused.
