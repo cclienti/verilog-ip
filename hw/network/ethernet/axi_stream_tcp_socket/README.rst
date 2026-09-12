@@ -207,6 +207,73 @@ persist probe, a data segment, a pure acknowledgement. One segment is
 in flight through the engine at a time; the packet mux downstream
 merges it with the responders' frames.
 
+Frame assembly
+--------------
+
+Seven kinds of segment leave the socket. Each is one complete
+Ethernet frame; the differences are the TCP header fields and where
+the payload, if any, comes from:
+
+=========================== ================== ============ ============ ================== ==============
+Kind                        Sequence           Ack          Flags        Payload            TCP header
+=========================== ================== ============ ============ ================== ==============
+SYN-ACK                     ISN                ``rcv_nxt``  SYN, ACK     none               24, MSS option
+Data                        first byte's       ``rcv_nxt``  PSH, ACK     ring, up to the    20
+                                                                         effective MSS
+Pure acknowledgement        ``snd_nxt``        ``rcv_nxt``  ACK          none               20
+Persist probe               first unsent byte  ``rcv_nxt``  ACK          ring, 1 byte       20
+FIN                         ``snd_nxt``        ``rcv_nxt``  FIN, ACK     none               20
+Reset, from the request     RFC 793            RFC 793      RST or       none               20
+                                                            RST, ACK
+Reset, on giving up         ``snd_nxt``        ``rcv_nxt``  RST, ACK     none               20
+=========================== ================== ============ ============ ================== ==============
+
+A retransmission is a data, SYN-ACK or FIN segment rebuilt from the
+same rules with the oldest unacknowledged sequence number. The
+window field is the free space of the receive buffer on every kind
+but a reset, where it is zero. Data segments carry ``PSH``
+unconditionally; the peer's read side does not wait for a full
+buffer either way.
+
+The other header fields have one source each. Destination MAC from
+the connection record, or from the reset request for a reset it
+answers; source MAC and source IP from the identity sampled at the
+SYN; EtherType ``0x0800``. In the IP header, version and IHL
+``0x45``, TOS zero, total length computed from the TCP header length
+and the payload length, identification zero (legal for a datagram
+with ``DF`` set, RFC 6864, and one less counter), flags ``DF`` alone,
+offset zero, TTL 64, protocol 6, destination IP from the record or
+the request. In the TCP header, source port ``listen_port`` and
+destination port the peer's, swapped from the request for a reset,
+urgent pointer zero, and the MSS option on the SYN-ACK only, carrying
+the ``MSS`` parameter.
+
+The header is built the way the `ARP responder
+<../axi_stream_eth_arp/README.rst>`_ builds its reply: once the
+scheduler has decided the kind, the transmit walker assembles a
+header image — 58 bytes at most, one register vector — and streams
+it by byte index during ``ETH_HEADER``, ``IP_HEADER`` and
+``TCP_HEADER``, then the payload from the ring during ``PAYLOAD``.
+Both checksums are ones'-complement sums over halfwords of that same
+image, one halfword per cycle, taken by a second index that runs
+ahead of the byte index: the IP header checksum covers its ten
+halfwords and is emitted at frame byte 24, the TCP checksum covers
+the six pseudo-header halfwords, the ten or twelve of the TCP header
+and the data sum, and is emitted at byte 50. At one halfword per
+cycle from byte 0 both are complete before their slot, with no extra
+state and no second copy of any field. The ``SUM`` state supplies
+only the data sum, read from the ring before the header starts;
+segments without payload skip it, so the pre-pass costs nothing on
+control segments or pure acknowledgements, and the headers are never
+read twice.
+
+The Ethernet and IP header prepend is the third copy of the same
+logic in this tree, after the `ARP <../axi_stream_eth_arp/README.rst>`__
+and `ICMP <../axi_stream_icmp_echo/README.rst>`__ responders. A shared
+block taking a payload stream with destination, protocol and length
+side-bands would serve all three; the two existing ones are done and
+measured, so that refactor, if it comes, starts here.
+
 Connection
 ----------
 
