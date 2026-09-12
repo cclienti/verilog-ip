@@ -497,6 +497,16 @@ module axi_stream_tcp_socket #(
                     ev_fin_rx     <= 1'b1;
                 end
 
+                // A peer segment that carries data or a FIN but was not
+                // accepted (old, out of order, or does not fit) is
+                // answered with a pure acknowledgement of rcv_nxt, so the
+                // peer learns what we still expect
+                if (rx_seg_ok && fsm_connected && peer_match && to_us
+                    && (rx_paylen != 16'h0 || is_fin) && !acc_data && !acc_fin) begin
+                    ack_owed <= 1'b1;
+                    ack_ctr  <= 16'h0;
+                end
+
                 if (rx_seg_ok && acc_rst) begin
                     ev_rst_rx <= 1'b1;
                 end

@@ -71,7 +71,12 @@ module axi_stream_tcp_socket_tb;
     //----------------------------------------------------------------
     // DUT, with the echo loopback m_app -> s_app
     //----------------------------------------------------------------
-    axi_stream_tcp_socket dut (
+    // Small timers so retransmission and the idle limit are reachable
+    // in simulation
+    axi_stream_tcp_socket #(
+        .RTO_CLOCKS (300), .MAX_RETRIES (4), .IDLE_CLOCKS (64'd0),
+        .ACK_DELAY_CLOCKS (8)
+    ) dut (
         .clock (clock), .sreset (sreset),
         .local_mac (LOCAL_MAC), .local_ip (LOCAL_IP), .listen_port (LISTEN),
         .s_axi_tdata (s_tdata), .s_axi_tuser (s_tuser), .s_axi_tvalid (s_tvalid),
@@ -166,6 +171,8 @@ module axi_stream_tcp_socket_tb;
     string    err;
     bit       ok;
     logic [31:0] cli_isn, our_isn;
+    integer      c0;
+    bytes_t      fpl;
 
     initial begin
         sreset = 1'b1;
@@ -228,6 +235,73 @@ module axi_stream_tcp_socket_tb;
         send_seg(build_tcp(h, bytes_new(0)));
         repeat (20) @(posedge clock);
         check(!conn, "closed after our FIN is acked");
+
+        //============================================================
+        // Second connection: retransmission, an old segment, a reset
+        //============================================================
+        cli_isn = 32'h55667700;
+
+        //--- open ---
+        h = cli_hdr(F_SYN, cli_isn, 32'h0, 16'd1460);
+        send_seg(build_tcp(h, bytes_new(0)));
+        wait_frame(fcount + 1, "syn-ack 2");
+        fb = frame_bytes(fcount - 1); parse_frame(fb, pf, err, ok);
+        check(ok && pf.flags == (F_SYN|F_ACK), "syn-ack 2 ok");
+        our_isn = pf.seq;
+        h = cli_hdr(F_ACK, cli_isn + 1, our_isn + 1, 16'h0);
+        send_seg(build_tcp(h, bytes_new(0)));
+        repeat (10) @(posedge clock);
+        check(conn, "connected 2");
+
+        //--- B. data echoed, but we never ACK it: expect a retransmit ---
+        h = cli_hdr(F_PSH|F_ACK, cli_isn + 1, our_isn + 1, 16'h0);
+        send_seg(build_tcp(h, bytes_from_hex("6162")));   // "ab"
+        wait_frame(fcount + 1, "echo 2");
+        fb = frame_bytes(fcount - 1); parse_frame(fb, pf, err, ok);
+        check(ok && pf.seq == our_isn + 1 && bytes_eq(frame_payload(fb), bytes_from_hex("6162")),
+              "echo 2 payload");
+        // Do not acknowledge; after RTO the same segment must come again
+        wait_frame(fcount + 1, "retransmit");
+        fb = frame_bytes(fcount - 1); parse_frame(fb, pf, err, ok);
+        check(ok && pf.seq == our_isn + 1 && bytes_eq(frame_payload(fb), bytes_from_hex("6162")),
+              "retransmit repeats the segment");
+        // Now acknowledge the echo; retransmission must stop
+        h = cli_hdr(F_ACK, cli_isn + 1 + 2, our_isn + 1 + 2, 16'h0);
+        send_seg(build_tcp(h, bytes_new(0)));
+        c0 = fcount; repeat (800) @(posedge clock);
+        check(fcount == c0, "no more retransmits after the ack");
+
+        //--- C. an old (already-acked) segment: a pure ACK, no echo ---
+        h = cli_hdr(F_PSH|F_ACK, cli_isn + 1, our_isn + 1 + 2, 16'h0);  // old seq
+        send_seg(build_tcp(h, bytes_from_hex("6162")));
+        wait_frame(fcount + 1, "old-seg ack");
+        fb = frame_bytes(fcount - 1); parse_frame(fb, pf, err, ok);
+        fpl = frame_payload(fb);
+        check(ok && !pf.flags[3] && pf.flags[4] && fpl.size() == 0,
+              $sformatf("old segment gets a bare ACK, flags %02x len %0d", pf.flags, fpl.size()));
+        check(pf.ack == cli_isn + 1 + 2, "old-seg ack acknowledges rcv_nxt");
+
+        //--- D. a SYN from another port while connected: a reset ---
+        begin
+            bytes_t s3;
+            tcp_hdr_t hf = '0;
+            hf.src_ip = CLI_IP; hf.dst_ip = LOCAL_IP;
+            hf.src_port = 16'd40000; hf.dst_port = LISTEN;  // a different peer port
+            hf.seq = 32'hAAAA0000; hf.ack = 32'h0; hf.flags = F_SYN; hf.window = 16'd1000;
+            s3 = build_tcp(hf, bytes_new(0));
+            @(negedge clock);
+            for (int i = 0; i < s3.size(); i++) begin
+                @(negedge clock);
+                s_tvalid = 1'b1; s_tdata = s3[i]; s_tlast = (i == s3.size()-1); s_tuser = 1'b0;
+                s_src_ip = CLI_IP; s_dst_ip = LOCAL_IP; s_src_mac = CLI_MAC; s_length = 16'(s3.size());
+                @(posedge clock); while (!s_tready) @(posedge clock);
+            end
+            @(negedge clock); s_tvalid = 1'b0;
+            wait_frame(fcount + 1, "foreign reset");
+            fb = frame_bytes(fcount - 1); parse_frame(fb, pf, err, ok);
+            check(ok && pf.flags[2], $sformatf("foreign SYN gets a RST, flags %02x", pf.flags));
+            check(pf.dst_port == 16'd40000, "reset is addressed to the offending port");
+        end
 
         $display("axi_stream_tcp_socket_tb: %0d checks", checks);
         if (errors == 0) $display("axi_stream_tcp_socket_tb: ALL TESTS PASSED");
