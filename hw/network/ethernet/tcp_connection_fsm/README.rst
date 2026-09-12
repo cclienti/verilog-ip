@@ -30,11 +30,11 @@ Transitions
 -----------
 
 Events are one-cycle pulses — the four segment events registered by
-the receive walker on the last beat of a segment, ``abort`` by the
+the receive walker on the last beat of a segment, ``give_up`` by the
 timer side — so at most one segment's events arrive per cycle and
 several of them may be set together — a FIN rides on an ACK, the
 socket gives up in any state. The machine resolves them in a fixed
-order: ``rst_rx`` first, then ``abort``, then the event the current
+order: ``rst_rx`` first, then ``give_up``, then the event the current
 state waits for. A pulse a state does not wait for is ignored: a SYN
 outside ``LISTEN`` is the walker's business (a reset for a foreign
 peer, a challenge ACK for the connected one), an ACK in
@@ -53,7 +53,7 @@ unacknowledged for the peer to retransmit.
   LAST_ACK    --ctl_acked--------------> CLOSED
   any but CLOSED, LISTEN
               --rst_rx-----------------> CLOSED
-              --abort------------------> CLOSED
+              --give_up----------------> CLOSED
 
 ``ctl_acked`` is the walker's verdict that the peer acknowledged the
 control segment outstanding in the current state — the SYN-ACK in
@@ -73,7 +73,7 @@ to start from. A reset in ``SYN_RCVD`` also goes through ``CLOSED``
 rather than straight back to ``LISTEN``, so that the clean-up is one
 place. ``close_ready`` is the socket's verdict that its own FIN may
 go: the application's close token has been received, the ring is
-empty, everything sent is acknowledged. ``abort`` is the socket giving the
+empty, everything sent is acknowledged. ``give_up`` is the socket giving the
 connection up — retransmission budget spent, idle limit reached — and
 arrives from the timer side, not from the walker.
 
@@ -107,6 +107,26 @@ ring is empty. ``connected`` is the socket's ``connected`` port.
 ``clear`` holds for as long as the clean-up takes, since ``CLOSED``
 waits for ``clear_done``.
 
+Testing
+-------
+
+The testbench sees the machine only through its seven outputs, the
+contract a drop-in must honor, and every state has a unique decode,
+so it recovers the state from them. For each of the six states and
+each of the 256 input vectors it resets, walks to the state along the
+normal path checking every step, applies the vector for one cycle,
+and checks the decode against a reference model of the table above,
+priority included, then once more with all inputs low to see the
+successor hold — 8475 checks. Reset from every state is checked to
+land in ``CLOSED``. The recovery of an unused encoding is not
+tested: it would mean forcing the state register, which a generated
+version may encode differently or not have at all, so it stays a
+coding rule. Mutation-tested: dropping ``give_up`` in ``SYN_RCVD``,
+``tx_open`` high in ``LAST_ACK``, ``CLOSED`` leaving on ``listen``
+alone, ``ESTABLISHED`` moving on ``ctl_acked``, ``close_ready``
+ahead of ``rst_rx`` in ``CLOSE_WAIT``, and ``LAST_ACK`` returning to
+``LISTEN`` each fail the bench, by 64 to 1059 checks.
+
 Benchmark note
 --------------
 
@@ -136,7 +156,7 @@ Signals
 - ``fin_rx``: pulse, an in-order FIN from the connected peer arrived.
 - ``rst_rx``: pulse, an acceptable RST from the connected peer
   arrived.
-- ``abort``: pulse, the socket gives the connection up —
+- ``give_up``: pulse, the socket gives the connection up —
   retransmission budget spent or idle limit reached.
 - ``close_ready``: level, the socket may send its FIN — the
   application's close token received, transmit ring empty, everything

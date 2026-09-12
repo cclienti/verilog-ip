@@ -466,7 +466,7 @@ state.
   its own area and timing numbers; its README is the contract.
   Inputs are one-cycle events the receive walker has qualified
   against the connection record — ``syn_rx``, ``ctl_acked``,
-  ``fin_rx``, ``rst_rx`` — the ``abort`` pulse from the timer side
+  ``fin_rx``, ``rst_rx`` — the ``give_up`` pulse from the timer side
   (retry budget spent or idle limit reached), and three levels the
   socket computes: ``listen``, tied high; ``close_ready``, which is
   the application's close token received with the ring empty and

@@ -67,5 +67,7 @@ it lives in `hw/boards/zedboard/eth_endpoint
 +---------------------------------------------------------------------+----------------------------------------------+
 | `axi_stream_icmp_echo <axi_stream_icmp_echo/README.rst>`_           | ICMP echo responder with payload buffer      |
 +---------------------------------------------------------------------+----------------------------------------------+
+| `tcp_connection_fsm <tcp_connection_fsm/README.rst>`_               | TCP connection state machine, passive server |
++---------------------------------------------------------------------+----------------------------------------------+
 | `rmii_eth_endpoint <rmii_eth_endpoint/README.rst>`_                 | The whole stack between the RMII PHY pins    |
 +---------------------------------------------------------------------+----------------------------------------------+
