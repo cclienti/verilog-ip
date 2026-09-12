@@ -169,6 +169,22 @@ without an acknowledgement that advances give the connection up. A
 fixed ``RTO_CLOCKS`` period, no round-trip estimate and no back-off,
 is enough on a LAN and keeps the timer a plain counter.
 
+The timer is the only trigger of a retransmission. TCP has no
+explicit request; the peer signals a loss implicitly, and neither
+signal is acted on here. Duplicate acknowledgements — the same
+number again, no data, the window unchanged, three of which RFC 5681
+turns into an immediate resend of the oldest segment — change
+nothing, as stated above. Selective acknowledgement is never
+negotiated, the SYN-ACK carrying the MSS option alone, so the peer
+never sends SACK blocks and nothing parses them. Fast retransmit is
+the documented, not implemented, extension: one counter of such
+duplicates and one more boolean into the scheduler, firing the same
+resend the timer does, restarting the timer, and not counting
+against ``MAX_RETRIES``. Keystroke segments carry data and so are
+not duplicates; only the peer's pure acknowledgements of later
+echoes are, which is the RFC's intent. Without it a lost echo shows
+as a pause of up to ``RTO_CLOCKS`` before the character appears.
+
 The peer's receive window bounds what may be in flight: the window
 field of every acceptable segment is kept, and no byte is sent beyond
 the oldest unacknowledged one plus that window. Bytes the application
@@ -266,6 +282,21 @@ only the data sum, read from the ring before the header starts;
 segments without payload skip it, so the pre-pass costs nothing on
 control segments or pure acknowledgements, and the headers are never
 read twice.
+
+Once the first byte of a frame is presented, every following byte is
+delivered as fast as the downsizer takes it, one per four cycles at
+100 Mbit: the transmit path has no store-and-forward stage and the
+`RMII MAC <../rmii_mac_tx/README.rst>`_ truncates a frame whose
+source pauses, which the peer then drops on the FCS. The socket
+meets that by construction — the header is a register image, the
+payload is already in the ring, the data sum is complete before the
+first byte — and the application stream cannot break it, since it
+feeds the ring and never the frame in flight. What the serialization
+of the sum pass and the wire-paced emit does cost is bulk throughput,
+about a fifth on full-size segments (computed, not measured); a
+summer running ahead over the unsent bytes while the current frame
+drains would recover it without a buffer, and is left for a use case
+that moves bulk data.
 
 The Ethernet and IP header prepend is the third copy of the same
 logic in this tree, after the `ARP <../axi_stream_eth_arp/README.rst>`__
