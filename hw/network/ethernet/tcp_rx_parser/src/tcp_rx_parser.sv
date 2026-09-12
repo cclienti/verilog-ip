@@ -100,7 +100,7 @@ module tcp_rx_parser (
     logic beat;               // a segment byte is consumed this cycle
     logic first;              // the first byte of a segment (in IDLE)
     assign beat  = s_axi_tvalid && s_axi_tready;
-    assign first = (state == IDLE) && beat;
+    assign first = (state == IDLE) && s_axi_tvalid;  // IDLE ready is always 1
 
     //-------------------------------------------
     // Checksum: pseudo-header once, then every byte, big-endian pairs
