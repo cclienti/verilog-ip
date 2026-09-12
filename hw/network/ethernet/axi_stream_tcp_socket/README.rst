@@ -38,6 +38,34 @@ and ``s_axi_tready`` does not drop while a frame drains. The receive
 chain behind the demuxes therefore no longer stalls on TCP traffic,
 only on the two responders.
 
+::
+
+  s_axi_* ──► receive walker ────► receive buffer ────► m_app_*
+  side-bands   validate, order,     packet FIFO,          in order,
+               checksum, events     commit / rollback     tlast per segment
+                    │ events              │ occupancy
+                    ▼                     ▼ window
+             connection machine ◄──► connection record ──► connected
+             tcp_connection_fsm      peer MAC/IP/port,     peer_ip, peer_port
+                    │ levels         seq/ack, window,      rx_eof
+                    ▼                timer, retries
+  m_axi_* ◄── transmit walker ◄── scheduler ◄──── transmit ring ◄──── s_app_*
+  complete     header image,      reset, SYN-ACK,   una/nxt/wr,       app_close
+  frames       checksums,         FIN, resend,      bytes kept until
+               payload            probe, data, ACK  acknowledged
+
+The two engines meet only in the connection record and in the
+machine. The receive walker writes the record (peer, next expected
+sequence, the peer's acknowledgement and window), commits or dooms
+segments in the receive buffer, and hands the machine its events,
+the scheduler its acknowledgement-owed flag and the one-entry reset
+request. The scheduler reads the record and the ring's pointers to
+choose the next segment, the transmit walker builds and emits it, and
+neither ever waits on the receive side, nor the receive side on
+them. The receive buffer and the ring are the two block RAMs; the
+ring is indexed by sequence number and freed by acknowledgement, not
+by read, which is why it is not a packet FIFO.
+
 Receive
 -------
 
