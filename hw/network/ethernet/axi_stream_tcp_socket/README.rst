@@ -487,10 +487,14 @@ state.
   buffer, raises the events above, the acknowledgement-owed flag and
   the reset request. Registers the events, so the connection machine
   never sees a raw stream bit.
-- **Transmit walker** — ``IDLE``, ``SUM``, ``HEADER``, ``PAYLOAD``.
-  Emits one frame of the kind it was handed; a segment without
-  payload leaves ``HEADER`` for ``IDLE`` directly, and ``SUM`` is
-  entered only with a payload to scan.
+- **Transmit walker** — its own component, `tcp_tx_frame
+  <../tcp_tx_frame/README.rst>`_, so it is verified against the
+  bench-side model on its own, like the connection machine. ``IDLE``,
+  ``SUM``, ``HEADER``, ``PAYLOAD``: it emits one frame of the kind the
+  scheduler hands it, from the header fields and a payload it reads
+  back from the ring; a segment without payload leaves ``HEADER`` for
+  ``IDLE`` directly, and ``SUM`` is entered only with a payload to
+  scan.
 - **Transmit scheduler** — not a machine. A priority encoder over
   the booleans of the priority above: a reset owed, a pending
   SYN-ACK or FIN on its rising edge or on expiry, a resend or probe
