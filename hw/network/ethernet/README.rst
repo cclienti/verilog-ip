@@ -73,5 +73,7 @@ it lives in `hw/boards/zedboard/eth_endpoint
 +---------------------------------------------------------------------+----------------------------------------------+
 | `tcp_tx_frame <tcp_tx_frame/README.rst>`_                           | TCP transmit frame builder, one segment      |
 +---------------------------------------------------------------------+----------------------------------------------+
+| `tcp_rx_parser <tcp_rx_parser/README.rst>`_                         | TCP receive segment parser and validator     |
++---------------------------------------------------------------------+----------------------------------------------+
 | `rmii_eth_endpoint <rmii_eth_endpoint/README.rst>`_                 | The whole stack between the RMII PHY pins    |
 +---------------------------------------------------------------------+----------------------------------------------+

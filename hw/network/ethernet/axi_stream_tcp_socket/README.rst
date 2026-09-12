@@ -482,11 +482,15 @@ state.
   seven Moore levels the socket's engines act on: ``clear``,
   ``listening``, ``syn_ack_pending``, ``connected``, ``rx_open``,
   ``tx_open``, ``fin_pending``.
-- **Receive walker** — ``IDLE``, ``HEADER``, ``OPTIONS``, ``PAYLOAD``,
-  ``DROP``. Walks the segment, validates it, writes the receive
-  buffer, raises the events above, the acknowledgement-owed flag and
-  the reset request. Registers the events, so the connection machine
-  never sees a raw stream bit.
+- **Receive walker** — its own component, `tcp_rx_parser
+  <../tcp_rx_parser/README.rst>`_, verified against the model like the
+  others. ``IDLE``, ``HEADER``, ``OPTIONS``, ``PAYLOAD``, ``DROP``: it
+  decodes and validates one segment and streams its payload, and knows
+  nothing of the connection. The socket wraps it with the record
+  match, the in-order and window decisions, the events it raises for
+  the connection machine, the acknowledgement-owed flag and the reset
+  request, and the receive FIFO write with the walker's payload doom
+  folded into the socket's not-accepted decision.
 - **Transmit walker** — its own component, `tcp_tx_frame
   <../tcp_tx_frame/README.rst>`_, so it is verified against the
   bench-side model on its own, like the connection machine. ``IDLE``,
