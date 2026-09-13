@@ -7,9 +7,13 @@ Description
 The Fast Ethernet endpoint carrying a TCP transport: the ARP and ICMP
 device of the `RMII endpoint <../rmii_eth_endpoint/README.rst>`_ plus
 one passive `TCP socket <../axi_stream_tcp_socket/README.rst>`_ on the
-second IPv4 demux output, its application streams looped ``m_app`` to
-``s_app`` so the board answers ``arping``, ``ping``, and ``telnet`` or
-``nc`` to ``listen_port`` — an echo server on the wire.
+second IPv4 demux output, with the socket's application streams
+brought out to the endpoint ports. Wiring ``m_app`` straight back to
+``s_app`` outside the endpoint makes an echo server, answering
+``telnet`` or ``nc`` to ``listen_port`` on top of ``arping`` and
+``ping``; another user puts its own logic between the two streams. The
+`Zedboard TCP demonstrator
+<../../boards/zedboard/tcp_endpoint/README.rst>`_ is that echo build.
 
 ::
 
@@ -63,6 +67,9 @@ Signals
   side-band.
 - ``tcp_connected``, ``tcp_peer_ip``, ``tcp_peer_port``: the TCP
   connection status, the peer valid while connected.
+- ``m_app_*``, ``s_app_*``: the socket's application streams, received
+  payload out and bytes to send in, ``tuser`` the close token on both.
+  An echo build ties ``m_app`` to ``s_app`` externally.
 
 Testing
 -------
@@ -70,9 +77,10 @@ Testing
 The testbench drives the RMII pins at the wire level, frames built by
 the `TCP model <../tcp_model/README.rst>`_ with a real preamble and
 FCS, and captures the transmit pins, strips the preamble and FCS, and
-parses the reply with the same model. It walks a TCP connection
-through the whole chain: SYN to SYN-ACK, the ACK to established with
-the peer reported, a data segment echoed byte-exact, and the close.
+parses the reply with the same model. It ties ``m_app`` back to
+``s_app`` for the echo, then walks a TCP connection through the whole
+chain: SYN to SYN-ACK, the ACK to established with the peer reported,
+a data segment echoed byte-exact, and the close.
 9 checks, ALL TESTS PASSED under ``check.iverilog`` and
 ``check.verilator``, ``lint.verilator`` clean. The socket and its
 sub-blocks carry their own exhaustive benches; this one proves the

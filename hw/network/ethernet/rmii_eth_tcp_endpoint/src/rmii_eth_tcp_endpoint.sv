@@ -19,9 +19,10 @@
 //-----------------------------------------------------------------------------
 // Description: The Fast Ethernet endpoint carrying a TCP transport: the
 // ARP/ICMP endpoint plus one passive TCP socket on the second IPv4
-// demux output, its application streams looped m_app -> s_app so the
-// device is a telnet/nc echo server as well as answering arping and
-// ping. The transport occupies a slot -- IP demux output 1 and packet
+// demux output, with the socket's application streams (m_app/s_app)
+// brought out to the endpoint ports. Wiring m_app straight back to
+// s_app makes an echo server (telnet/nc) while still answering arping
+// and ping; other users put their own logic between the streams. The transport occupies a slot -- IP demux output 1 and packet
 // mux input 2, decoded by IP protocol -- that a future UDP block would
 // take instead; that slot is the boundary along which rmii_eth_endpoint_core
 // will be extracted when a second transport exists.
@@ -82,6 +83,20 @@ module rmii_eth_tcp_endpoint #(
     output logic        tcp_connected,
     output logic [31:0] tcp_peer_ip,
     output logic [15:0] tcp_peer_port,
+
+    // TCP application streams: received payload out on m_app, bytes to
+    // send in on s_app, tuser the close token on both. An echo server
+    // wires m_app straight back to s_app; other users put logic between.
+    output logic [7:0]  m_app_tdata,
+    output logic        m_app_tuser,
+    output logic        m_app_tvalid,
+    output logic        m_app_tlast,
+    input logic         m_app_tready,
+    input logic [7:0]   s_app_tdata,
+    input logic         s_app_tuser,
+    input logic         s_app_tvalid,
+    input logic         s_app_tlast,
+    output logic        s_app_tready,
 
     // RMII PHY pins
     input logic [1:0]   phy_rxd,
@@ -433,21 +448,16 @@ module rmii_eth_tcp_endpoint #(
 
     //-------------------------------------------
     // Transport slot: the TCP socket on IP demux
-    // output 1, its application streams looped
-    // back so the endpoint echoes. This block and
-    // its two seams (demux output 1, mux input 2)
-    // are what a UDP transport would replace.
+    // output 1, its application streams brought out
+    // to the endpoint ports. This block and its two
+    // seams (demux output 1, mux input 2) are what a
+    // UDP transport would replace.
     //-------------------------------------------
     logic [7:0] tcp_tdata;   // TCP reply byte stream
     logic       tcp_tuser;   // constant zero
     logic       tcp_tvalid;  // byte valid
     logic       tcp_tlast;   // last reply byte
     logic       tcp_tready;  // packet mux grant
-    logic [7:0] app_tdata;   // received payload, looped straight back
-    logic       app_tuser;   // close token, looped back
-    logic       app_tvalid;  // byte valid
-    logic       app_tlast;   // segment boundary
-    logic       app_tready;  // send-side ready
 
     axi_stream_tcp_socket
     #(
@@ -479,18 +489,17 @@ module rmii_eth_tcp_endpoint #(
         .m_axi_tvalid (tcp_tvalid),
         .m_axi_tlast  (tcp_tlast),
         .m_axi_tready (tcp_tready),
-        // Application echo loopback: received bytes and the close token
-        // go straight back to the send side
-        .m_app_tdata  (app_tdata),
-        .m_app_tuser  (app_tuser),
-        .m_app_tvalid (app_tvalid),
-        .m_app_tlast  (app_tlast),
-        .m_app_tready (app_tready),
-        .s_app_tdata  (app_tdata),
-        .s_app_tuser  (app_tuser),
-        .s_app_tvalid (app_tvalid),
-        .s_app_tlast  (app_tlast),
-        .s_app_tready (app_tready),
+        // Application streams brought out to the endpoint ports
+        .m_app_tdata  (m_app_tdata),
+        .m_app_tuser  (m_app_tuser),
+        .m_app_tvalid (m_app_tvalid),
+        .m_app_tlast  (m_app_tlast),
+        .m_app_tready (m_app_tready),
+        .s_app_tdata  (s_app_tdata),
+        .s_app_tuser  (s_app_tuser),
+        .s_app_tvalid (s_app_tvalid),
+        .s_app_tlast  (s_app_tlast),
+        .s_app_tready (s_app_tready),
         .connected    (tcp_connected),
         .peer_ip      (tcp_peer_ip),
         .peer_port    (tcp_peer_port)

@@ -52,6 +52,11 @@ module rmii_eth_tcp_endpoint_tb;
     logic [31:0] tcp_peer_ip;
     logic [15:0] tcp_peer_port;
 
+    // Application streams, looped for the echo
+    logic [7:0]  mapp_tdata, sapp_tdata;
+    logic        mapp_tuser, mapp_tvalid, mapp_tlast, mapp_tready;
+    logic        sapp_tuser, sapp_tvalid, sapp_tlast, sapp_tready;
+
     integer errors = 0;
     integer checks = 0;
 
@@ -64,9 +69,20 @@ module rmii_eth_tcp_endpoint_tb;
         .clock (clock), .sreset (sreset),
         .local_mac (LOCAL_MAC), .local_ip (LOCAL_IP), .listen_port (LISTEN),
         .tcp_connected (tcp_connected), .tcp_peer_ip (tcp_peer_ip), .tcp_peer_port (tcp_peer_port),
+        .m_app_tdata (mapp_tdata), .m_app_tuser (mapp_tuser), .m_app_tvalid (mapp_tvalid),
+        .m_app_tlast (mapp_tlast), .m_app_tready (mapp_tready),
+        .s_app_tdata (sapp_tdata), .s_app_tuser (sapp_tuser), .s_app_tvalid (sapp_tvalid),
+        .s_app_tlast (sapp_tlast), .s_app_tready (sapp_tready),
         .phy_rxd (rxd), .phy_crs_dv (rxen), .phy_txd (txd), .phy_txen (txen),
         .learn_valid (learn_valid), .learn_mac (learn_mac), .learn_ip (learn_ip)
     );
+
+    // Echo loopback: m_app straight back to s_app
+    assign sapp_tdata  = mapp_tdata;
+    assign sapp_tuser  = mapp_tuser;
+    assign sapp_tvalid = mapp_tvalid;
+    assign sapp_tlast  = mapp_tlast;
+    assign mapp_tready = sapp_tready;
 
     initial clock = 0;
     always #10 clock = !clock;
