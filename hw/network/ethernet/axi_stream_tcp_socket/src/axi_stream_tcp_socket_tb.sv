@@ -74,7 +74,7 @@ module axi_stream_tcp_socket_tb;
     // Small timers so retransmission and the idle limit are reachable
     // in simulation
     axi_stream_tcp_socket #(
-        .RTO_CLOCKS (300), .MAX_RETRIES (4), .IDLE_CLOCKS (64'd0),
+        .RTO_CLOCKS (300), .MAX_RETRIES (4), .IDLE_CLOCKS (64'd5000),
         .ACK_DELAY_CLOCKS (8)
     ) dut (
         .clock (clock), .sreset (sreset),
@@ -173,6 +173,8 @@ module axi_stream_tcp_socket_tb;
     logic [31:0] cli_isn, our_isn;
     integer      c0;
     bytes_t      fpl;
+    bytes_t      s3;
+    tcp_hdr_t    hf;
 
     initial begin
         sreset = 1'b1;
@@ -283,8 +285,7 @@ module axi_stream_tcp_socket_tb;
 
         //--- D. a SYN from another port while connected: a reset ---
         begin
-            bytes_t s3;
-            tcp_hdr_t hf = '0;
+            hf = '0;
             hf.src_ip = CLI_IP; hf.dst_ip = LOCAL_IP;
             hf.src_port = 16'd40000; hf.dst_port = LISTEN;  // a different peer port
             hf.seq = 32'hAAAA0000; hf.ack = 32'h0; hf.flags = F_SYN; hf.window = 16'd1000;
@@ -302,6 +303,73 @@ module axi_stream_tcp_socket_tb;
             check(ok && pf.flags[2], $sformatf("foreign SYN gets a RST, flags %02x", pf.flags));
             check(pf.dst_port == 16'd40000, "reset is addressed to the offending port");
         end
+
+        //--- close the current connection with a peer RST ---
+        h = cli_hdr(F_RST|F_ACK, cli_isn + 1 + 2, our_isn + 1 + 2, 16'h0);
+        send_seg(build_tcp(h, bytes_new(0)));
+        repeat (10) @(posedge clock);
+        check(!conn, "closed by a peer RST");
+
+        //============================================================
+        // E. A lost SYN-ACK must be retransmitted
+        //============================================================
+        cli_isn = 32'h20000000;
+        h = cli_hdr(F_SYN, cli_isn, 32'h0, 16'd1460);
+        send_seg(build_tcp(h, bytes_new(0)));
+        wait_frame(fcount + 1, "syn-ack E");
+        fb = frame_bytes(fcount - 1); parse_frame(fb, pf, err, ok);
+        check(ok && pf.flags == (F_SYN|F_ACK), "syn-ack E ok");
+        our_isn = pf.seq;
+        // Do not ACK: after RTO the SYN-ACK must come again
+        wait_frame(fcount + 1, "syn-ack retransmit");
+        fb = frame_bytes(fcount - 1); parse_frame(fb, pf, err, ok);
+        check(ok && pf.flags == (F_SYN|F_ACK) && pf.seq == our_isn,
+              "syn-ack retransmitted with the same sequence");
+        // Now complete the open
+        h = cli_hdr(F_ACK, cli_isn + 1, our_isn + 1, 16'h0);
+        send_seg(build_tcp(h, bytes_new(0)));
+        repeat (10) @(posedge clock);
+        check(conn, "connected E after the retransmit");
+
+        //============================================================
+        // F. Zero-window persist probe
+        //============================================================
+        // Deliver data with a zero window: the echo is queued but cannot
+        // be sent, so after RTO a one-byte probe must appear
+        h = cli_hdr(F_PSH|F_ACK, cli_isn + 1, our_isn + 1, 16'h0);
+        h.window = 16'h0;                              // zero window
+        send_seg(build_tcp(h, bytes_from_hex("7879")));  // "xy"
+        // A pure ACK for the received data comes first, then the probe
+        wait_frame(fcount + 1, "zero-win ack");
+        c0 = fcount;
+        wait_frame(fcount + 1, "persist probe");
+        fb = frame_bytes(fcount - 1); parse_frame(fb, pf, err, ok);
+        fpl = frame_payload(fb);
+        check(ok && fpl.size() == 1 && pf.seq == our_isn + 1,
+              $sformatf("persist probe is one byte at snd_nxt, len %0d", fpl.size()));
+        // Open the window with a pure ACK: the queued echo goes out
+        h = cli_hdr(F_ACK, cli_isn + 1 + 2, our_isn + 1, 16'd4000);
+        send_seg(build_tcp(h, bytes_new(0)));
+        wait_frame(fcount + 1, "echo after window opens");
+        fb = frame_bytes(fcount - 1); parse_frame(fb, pf, err, ok);
+        check(ok && bytes_eq(frame_payload(fb), bytes_from_hex("7879")),
+              "the queued echo is sent once the window opens");
+        // Acknowledge it
+        h = cli_hdr(F_ACK, cli_isn + 1 + 2, our_isn + 1 + 2, 16'd4000);
+        send_seg(build_tcp(h, bytes_new(0)));
+        repeat (10) @(posedge clock);
+
+        //============================================================
+        // G. Idle limit: no traffic for IDLE_CLOCKS gives up with a RST
+        //============================================================
+        c0 = fcount;
+        while (fcount == c0 && conn) @(posedge clock);
+        wait_frame(c0 + 1, "idle give-up RST");
+        fb = frame_bytes(fcount - 1); parse_frame(fb, pf, err, ok);
+        check(ok && pf.flags[2] && pf.dst_ip == CLI_IP,
+              $sformatf("idle give-up sends a RST to the peer, flags %02x", pf.flags));
+        repeat (10) @(posedge clock);
+        check(!conn, "closed after the idle give-up");
 
         $display("axi_stream_tcp_socket_tb: %0d checks", checks);
         if (errors == 0) $display("axi_stream_tcp_socket_tb: ALL TESTS PASSED");

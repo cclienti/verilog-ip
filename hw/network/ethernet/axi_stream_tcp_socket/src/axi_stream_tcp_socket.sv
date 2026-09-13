@@ -30,13 +30,18 @@
 // keeps the SYN and FIN, which each consume a sequence, out of the
 // ring index.
 //
-// First integration: the passive-open handshake, data both ways (a
-// wire from m_app to s_app is the echo server) and the close through
-// the tuser tokens; the retransmission/persist/idle timer is wired.
-// First-cut simplifications flagged for a later pass: the CLOSED
-// clean-up resets the datapath in one cycle rather than draining the
-// receive FIFO frame by frame, and a segment is cut on a push
-// boundary or the effective MSS tracked in a small inline FIFO.
+// Covers the passive-open handshake, data both ways (a wire from
+// m_app to s_app is the echo server), the close through the tuser
+// tokens, data and control (SYN-ACK, FIN) retransmission, the
+// zero-window persist probe, and the idle limit -- each giving up
+// with a reset to the peer after MAX_RETRIES or IDLE_CLOCKS. The
+// timer's resets all live in one place per counter so a later
+// assignment cannot silently override an earlier one.
+//
+// First-cut simplifications still flagged for a later pass: the
+// CLOSED clean-up resets the datapath in one cycle rather than
+// draining the receive FIFO frame by frame, and a segment is cut on a
+// push boundary or the effective MSS tracked in a small inline FIFO.
 
 `timescale 1 ns / 100 ps
 
@@ -274,6 +279,7 @@ module axi_stream_tcp_socket #(
     logic [15:0] tx_pl_addr;
     logic [7:0]  tx_pl_data;
     logic [31:0] tx_base;      // send sequence the payload starts at
+    logic [31:0] tx_dst_ip;    // reset targets the offender, else the peer
 
     // Ring byte for the payload offset: (base + offset - data_base)
     logic [31:0] tx_rd_off;
@@ -284,7 +290,7 @@ module axi_stream_tcp_socket #(
         .clock (clock), .sreset (sreset || clr),
         .start (tx_start), .with_mss (tx_with_mss), .pl_len (tx_pl_len),
         .dst_mac (tx_dst_mac), .src_mac (local_mac), .ip_id (tx_ip_id),
-        .src_ip (local_ip), .dst_ip (peer_ip_q),
+        .src_ip (local_ip), .dst_ip (tx_dst_ip),
         .src_port (tx_src_port), .dst_port (tx_dst_port),
         .seq (tx_seq), .ack (tx_ack), .flags (tx_flags), .window (tx_window), .mss (tx_mss),
         .pl_addr (tx_pl_addr), .pl_data (tx_pl_data),
@@ -307,14 +313,15 @@ module axi_stream_tcp_socket #(
 
     assign outstanding   = ($signed(snd_nxt - snd_una) > 0);
     assign zero_wnd_wait = (snd_wnd == 16'h0) && (wr_seq != snd_nxt);
-    assign rto_run       = fsm_connected && (outstanding || zero_wnd_wait);
+    assign rto_run       = (fsm_connected && (outstanding || zero_wnd_wait))
+                         || fsm_syn_ack_pending || fsm_fin_pending;
     assign rto_expired   = rto_run && (rto_ctr >= 64'(RTO_CLOCKS));
     assign idle_expired  = fsm_connected && (IDLE_CLOCKS != 0) && (idle_ctr >= 64'(IDLE_CLOCKS));
 
     //================================================================
     // Scheduler
     //================================================================
-    typedef enum logic [2:0] { K_NONE, K_RST, K_SYNACK, K_FIN, K_RESEND, K_DATA, K_ACK } kind_t;
+    typedef enum logic [2:0] { K_NONE, K_RST, K_SYNACK, K_FIN, K_RESEND, K_PROBE, K_DATA, K_ACK } kind_t;
     kind_t       kind_q;
     logic        ctrl_sent;    // the pending control segment was sent once
 
@@ -343,6 +350,17 @@ module axi_stream_tcp_socket #(
     end
 
     logic        reset_pending;
+    logic        giving_up;    // a give-up RST is owed before we close
+    logic        rto_restart;  // an advancing ack or a sequence-carrying send
+    logic        tx_seq_send;  // a sent segment that consumes a sequence
+    logic        ack_owed_set; // a peer segment that must be acknowledged
+    logic        ack_owed_clr; // a sent segment that carried the ack
+    assign tx_seq_send  = tx_done && (kind_q == K_DATA || kind_q == K_RESEND
+                          || kind_q == K_SYNACK || kind_q == K_FIN || kind_q == K_PROBE);
+    assign rto_restart  = (rx_seg_done && rx_seg_ok && ack_adv) || tx_seq_send;
+    assign ack_owed_set = rx_seg_done && rx_seg_ok && fsm_connected && peer_match && to_us
+                          && (rx_paylen != 16'h0 || is_fin);
+    assign ack_owed_clr = tx_done && (kind_q != K_RST) && (kind_q != K_NONE);
     logic [15:0] adv_wnd;
     assign adv_wnd = (rx_free > 32'hFFFF) ? 16'hFFFF : 16'(rx_free);
 
@@ -352,6 +370,7 @@ module axi_stream_tcp_socket #(
         else if (fsm_syn_ack_pending && !ctrl_sent)            sched_kind = K_SYNACK;
         else if (fsm_fin_pending && !ctrl_sent)                sched_kind = K_FIN;
         else if (rto_expired && data_outstanding)              sched_kind = K_RESEND;
+        else if (rto_expired && zero_wnd_wait && !data_outstanding) sched_kind = K_PROBE;
         else if (data_ready)                                   sched_kind = K_DATA;
         else if (ack_owed && ack_ctr >= 16'(ACK_DELAY_CLOCKS)) sched_kind = K_ACK;
         else                                                   sched_kind = K_NONE;
@@ -395,6 +414,7 @@ module axi_stream_tcp_socket #(
         ev_ctl_acked <= 1'b0;
         ev_fin_rx    <= 1'b0;
         ev_rst_rx    <= 1'b0;
+        ev_give_up   <= 1'b0;
 
         if (sreset) begin
             rcv_nxt <= 32'h0; snd_una <= 32'h0; snd_nxt <= 32'h0; data_base <= 32'h0;
@@ -403,7 +423,7 @@ module axi_stream_tcp_socket #(
             app_closed <= 1'b0; pending_token <= 1'b0; reset_pending <= 1'b0;
             accept_data_q <= 1'b0; foreign_q <= 1'b0;
             bnd_wr <= '0; bnd_rd <= '0;
-            ctrl_sent <= 1'b0; retries <= 8'h0;
+            ctrl_sent <= 1'b0; retries <= 8'h0; giving_up <= 1'b0;
             rto_ctr <= 64'h0; idle_ctr <= 64'h0; ack_ctr <= 16'h0; ack_owed <= 1'b0;
             kind_q <= K_NONE; tx_start <= 1'b0; tx_inflight <= 1'b0;
         end
@@ -411,7 +431,7 @@ module axi_stream_tcp_socket #(
             // One-cycle clean-up: forget the connection
             snd_una <= 32'h0; snd_nxt <= 32'h0; wr_seq <= 32'h0; data_base <= 32'h0;
             app_closed <= 1'b0; pending_token <= 1'b0; reset_pending <= 1'b0;
-            bnd_wr <= '0; bnd_rd <= '0; ctrl_sent <= 1'b0; retries <= 8'h0;
+            bnd_wr <= '0; bnd_rd <= '0; ctrl_sent <= 1'b0; retries <= 8'h0; giving_up <= 1'b0;
             rto_ctr <= 64'h0; idle_ctr <= 64'h0; ack_ctr <= 16'h0; ack_owed <= 1'b0;
             peer_ip_q <= 32'h0; peer_port_q <= 16'h0;
         end
@@ -451,7 +471,6 @@ module axi_stream_tcp_socket #(
             // Segment end: apply the verdict
             //--------------------------------------------------------
             if (rx_seg_done) begin
-                idle_ctr <= 64'h0;   // any segment end refreshes the idle limit
 
                 if (rx_seg_ok && acc_syn) begin
                     // Accept the SYN, open the record
@@ -476,7 +495,6 @@ module axi_stream_tcp_socket #(
                     if (ack_adv) begin
                         snd_una  <= rx_ack;
                         retries  <= 8'h0;
-                        rto_ctr  <= 64'h0;
                         if ((fsm_syn_ack_pending || fsm_fin_pending) && (rx_ack == snd_nxt))
                             ev_ctl_acked <= 1'b1;
                     end
@@ -484,15 +502,11 @@ module axi_stream_tcp_socket #(
 
                 if (rx_seg_ok && acc_data) begin
                     rcv_nxt  <= rcv_nxt + {16'h0, rx_paylen};
-                    ack_owed <= 1'b1;
-                    ack_ctr  <= 16'h0;
                 end
 
                 if (rx_seg_ok && acc_fin) begin
                     // The FIN sits after any data this segment carried
                     rcv_nxt       <= rcv_nxt + {16'h0, rx_paylen} + 32'h1;
-                    ack_owed      <= 1'b1;
-                    ack_ctr       <= 16'h0;
                     pending_token <= 1'b1;
                     ev_fin_rx     <= 1'b1;
                 end
@@ -501,12 +515,6 @@ module axi_stream_tcp_socket #(
                 // accepted (old, out of order, or does not fit) is
                 // answered with a pure acknowledgement of rcv_nxt, so the
                 // peer learns what we still expect
-                if (rx_seg_ok && fsm_connected && peer_match && to_us
-                    && (rx_paylen != 16'h0 || is_fin) && !acc_data && !acc_fin) begin
-                    ack_owed <= 1'b1;
-                    ack_ctr  <= 16'h0;
-                end
-
                 if (rx_seg_ok && acc_rst) begin
                     ev_rst_rx <= 1'b1;
                 end
@@ -522,11 +530,30 @@ module axi_stream_tcp_socket #(
             if (token_write && rxf_s_tready) pending_token <= 1'b0;
 
             //--------------------------------------------------------
-            // Timers
+            // Timers, all with their resets in one place so a later
+            // assignment cannot silently override an earlier one
             //--------------------------------------------------------
-            if (rto_run) rto_ctr <= rto_ctr + 64'h1; else rto_ctr <= 64'h0;
-            if (fsm_connected) idle_ctr <= idle_ctr + 64'h1;
-            if (ack_owed) ack_ctr <= ack_ctr + 16'h1;
+            // RTO / persist: restart on an advancing ack or a
+            // sequence-carrying send, otherwise run while something is
+            // outstanding or data waits on a zero window
+            if (rto_restart)   rto_ctr <= 64'h0;
+            else if (rto_run)  rto_ctr <= rto_ctr + 64'h1;
+            else               rto_ctr <= 64'h0;
+            // Idle limit: any segment end refreshes it
+            if (!fsm_connected || rx_seg_done) idle_ctr <= 64'h0;
+            else                               idle_ctr <= idle_ctr + 64'h1;
+            // Pure-ACK hold-off, and the ack obligation with set over clear
+            if (ack_owed_set || !ack_owed) ack_ctr <= 16'h0;
+            else                           ack_ctr <= ack_ctr + 16'h1;
+            if (ack_owed_set)      ack_owed <= 1'b1;
+            else if (ack_owed_clr) ack_owed <= 1'b0;
+            // Control retransmit: on RTO expiry with a SYN-ACK or FIN
+            // still owed, clear ctrl_sent so the scheduler resends it,
+            // and spend a retry
+            if (rto_expired && (fsm_syn_ack_pending || fsm_fin_pending) && ctrl_sent) begin
+                ctrl_sent <= 1'b0;
+                retries   <= retries + 8'h1;
+            end
 
             //--------------------------------------------------------
             // Scheduler: launch a segment when the builder is idle
@@ -562,13 +589,24 @@ module axi_stream_tcp_socket #(
                         tx_with_mss <= 1'b0; tx_pl_len <= 16'h0; tx_flags <= 8'h10; // ACK
                         tx_seq <= snd_nxt; tx_ack <= rcv_nxt; tx_base <= snd_nxt;
                     end
+                    K_PROBE: begin
+                        // Zero-window probe: one byte from the first unsent
+                        tx_with_mss <= 1'b0; tx_pl_len <= 16'h1; tx_flags <= 8'h18; // PSH|ACK
+                        tx_seq <= snd_nxt; tx_ack <= rcv_nxt; tx_base <= snd_nxt;
+                    end
                     K_RST: begin
                         tx_with_mss <= 1'b0; tx_pl_len <= 16'h0;
-                        tx_flags <= rst_hasack ? 8'h04 : 8'h14;                    // RST or RST|ACK
-                        tx_seq <= rst_hasack ? rst_ack : 32'h0;
-                        tx_ack <= rst_seq + {16'h0, rst_len}
-                                  + (rst_syn ? 32'h1 : 32'h0) + (rst_fin ? 32'h1 : 32'h0);
-                        tx_base <= snd_nxt;
+                        if (giving_up) begin
+                            tx_flags <= 8'h14;                                     // RST|ACK to the peer
+                            tx_seq <= snd_nxt; tx_ack <= rcv_nxt; tx_base <= snd_nxt;
+                        end
+                        else begin
+                            tx_flags <= rst_hasack ? 8'h04 : 8'h14;                // RST or RST|ACK
+                            tx_seq <= rst_hasack ? rst_ack : 32'h0;
+                            tx_ack <= rst_seq + {16'h0, rst_len}
+                                      + (rst_syn ? 32'h1 : 32'h0) + (rst_fin ? 32'h1 : 32'h0);
+                            tx_base <= snd_nxt;
+                        end
                     end
                     default: ;
                 endcase
@@ -577,13 +615,15 @@ module axi_stream_tcp_socket #(
                 tx_window   <= adv_wnd;
                 tx_mss      <= 16'(MSS);
                 tx_src_port <= listen_port;
-                if (sched_kind == K_RST && foreign_q) begin
+                if (sched_kind == K_RST && foreign_q && !giving_up) begin
                     tx_dst_mac  <= rst_mac;
                     tx_dst_port <= rst_sport;
+                    tx_dst_ip   <= rst_ip;
                 end
                 else begin
                     tx_dst_mac  <= peer_mac;
                     tx_dst_port <= peer_port_q;
+                    tx_dst_ip   <= peer_ip_q;
                 end
             end
 
@@ -592,7 +632,6 @@ module axi_stream_tcp_socket #(
             //--------------------------------------------------------
             if (tx_done) begin
                 tx_inflight <= 1'b0;
-                rto_ctr <= 64'h0;
                 case (kind_q)
                     K_SYNACK: begin snd_nxt <= iss_val + 32'h1; ctrl_sent <= 1'b1; end
                     K_FIN:    begin snd_nxt <= snd_nxt + 32'h1;   ctrl_sent <= 1'b1; end
@@ -600,28 +639,27 @@ module axi_stream_tcp_socket #(
                         snd_nxt <= snd_nxt + {16'h0, tx_pl_len};
                         if (bnd_have && (snd_nxt + {16'h0, tx_pl_len} == bnd_head))
                             bnd_rd <= bnd_rd + 1'b1;
-                        ack_owed <= 1'b0;
                     end
-                    K_ACK:    ack_owed <= 1'b0;
                     K_RESEND: retries <= retries + 8'h1;
-                    K_RST:    reset_pending <= 1'b0;
+                    K_PROBE:  retries <= retries + 8'h1;   // unanswered until a window update
+                    K_RST: begin
+                        reset_pending <= 1'b0;
+                        // The give-up RST has drained: now let the machine close
+                        if (giving_up) ev_give_up <= 1'b1;
+                    end
                     default: ;
                 endcase
-                // A data or control send also carries the ACK
-                if (kind_q == K_SYNACK || kind_q == K_FIN || kind_q == K_DATA)
-                    ack_owed <= 1'b0;
             end
 
             //--------------------------------------------------------
-            // Give up: retransmission budget or idle limit
+            // Give up: retransmission budget or idle limit. Owe a RST to
+            // the peer first; ev_give_up is pulsed only once that RST has
+            // been sent (in the tx_done above), so it is not dropped by
+            // the CLOSED clean-up.
             //--------------------------------------------------------
-            if ((retries >= 8'(MAX_RETRIES)) || idle_expired) begin
-                ev_give_up <= 1'b1;
-                // On giving up, a reset is owed to the peer
+            if (fsm_connected && ((retries >= 8'(MAX_RETRIES)) || idle_expired) && !giving_up) begin
+                giving_up     <= 1'b1;
                 reset_pending <= 1'b1;
-            end
-            else begin
-                ev_give_up <= 1'b0;
             end
         end
     end
