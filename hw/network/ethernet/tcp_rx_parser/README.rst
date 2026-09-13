@@ -43,6 +43,27 @@ checksum accumulator are datapath. Header, options and drop bytes are
 consumed unconditionally; only the payload waits on ``m_pl_tready``,
 which is where a stall propagates back to ``s_axi_tready``.
 
+The checksum accumulator stays folded to 16 bits after every byte
+rather than growing to 32 and folding twice at the end — RFC 1071
+allows folding at any point in a ones'-complement sum, and two 16-bit
+values can only ever carry one bit out, so a single fold always
+suffices. Every byte after the first is one 16-bit add (the folded
+accumulator plus the byte) and that same shared fold; the first byte
+also carries the pseudo-header's six terms into it, rather than
+reducing them in a fold of their own first — ``s_src_ip``/``s_dst_ip``
+only become valid on the cycle the first byte is accepted, with no
+lead time to pre-register anything, so a separate reduction would
+only add depth to a cycle every segment is guaranteed to pass
+through. That mistake was made once already here: an earlier version
+gave the pseudo-header its own two-stage fold on the reasoning that
+it runs once per segment rather than once per byte, which static
+timing analysis does not credit — measured on the `Zedboard TCP
+endpoint <../../../boards/zedboard/tcp_endpoint/README.rst>`_, that
+version barely moved the fabric-domain setup slack because the
+pseudo-header path had become the new bottleneck. The original,
+un-folded 32-bit accumulator measured 0.302 ns of slack and 17 CARRY4
+levels; see that README for the figures after this fix.
+
 Signals
 -------
 
@@ -79,9 +100,15 @@ and length, a hand-built option list (two NOPs, MSS, a window-scale
 option, EOL, padding) whose MSS must be read from behind the NOPs, a
 data offset below 5 that must be dropped, single-byte damages to the
 header, a payload byte and the checksum field that must each flip the
-verdict and doom the payload, and a ``tuser`` mid-segment that must
-fail it. 1250 checks, ALL TESTS PASSED under ``check.iverilog`` and
-``check.verilator``, ``lint.verilator`` clean. Mutation-tested: a
-corrupted sequence byte, the checksum comparison inverted, the
-data-offset lower-bound check removed, the MSS high byte zeroed, and
-the payload doom held low each fail the bench, by 1 to 366 checks.
+verdict and doom the payload, a ``tuser`` mid-segment that must fail
+it, and one directed vector, found by search rather than by hand,
+whose source, destination and first payload byte make the shared
+fold carry out on the first byte — the same class of gap the IPv4
+parser's checksum commit found and closed the same way. 1256 checks,
+ALL TESTS PASSED under ``check.iverilog`` and ``check.verilator``,
+``lint.verilator`` clean. Mutation-tested: a corrupted sequence byte,
+the checksum comparison inverted, the data-offset lower-bound check
+removed, the MSS high byte zeroed, the payload doom held low, the
+carry-back dropped from a byte's fold, a byte placed in the wrong
+halfword, and the carry-back dropped from the first byte's fold each
+fail the bench, by 1 to 369 checks.

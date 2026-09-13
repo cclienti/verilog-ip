@@ -103,25 +103,50 @@ module tcp_rx_parser (
     assign first = (state == IDLE) && s_axi_tvalid;  // IDLE ready is always 1
 
     //-------------------------------------------
-    // Checksum: pseudo-header once, then every byte, big-endian pairs
+    // Checksum: pseudo-header once, then every byte, big-endian pairs.
+    // The running sum stays folded to 16 bits every cycle instead of
+    // growing to 32 and folding twice at the end -- RFC 1071 allows
+    // folding at any point in a ones'-complement accumulation. Every
+    // byte after the first is one 16-bit add (fold_q plus this byte)
+    // and one shared final fold. The first byte also carries the
+    // pseudo-header's six terms into that same final fold, rather than
+    // reducing them in a separate two-stage fold of their own first:
+    // s_src_ip/s_dst_ip only become valid on the cycle `first` fires,
+    // with no lead time (confirmed against axi_stream_ipv4_parser,
+    // where m_dst_ip and the state that drives m_axi_tvalid update on
+    // the identical edge), so nothing here can be pre-registered ahead
+    // of that cycle, and a separate reduction only added depth to the
+    // one cycle every segment is guaranteed to pass through.
+    //
+    // An earlier version gave the pseudo-header its own two-stage fold
+    // on the reasoning that it "runs once per segment, not once per
+    // byte" was enough to keep it off the critical path. Static timing
+    // analysis does not discount a path by how often it fires, only by
+    // whether some legal cycle exercises it, and every segment's first
+    // byte does. Measured on the Zedboard TCP endpoint, that version
+    // barely moved the fabric-domain setup slack (0.302 to 0.361 ns):
+    // the pseudo-header path had become the new bottleneck, 19 CARRY4
+    // levels where the per-byte accumulator had been 17.
     //-------------------------------------------
-    logic [31:0] sum_q;       // running ones' sum
-    logic [31:0] pseudo;      // pseudo-header contribution
-    logic [31:0] byte_add;    // this byte's contribution
-    logic [31:0] sum_next;    // sum after this byte
-    logic [16:0] fold1;
-    logic [15:0] fold2;
-    logic        checksum_ok; // verdict including the byte on the bus this cycle
+    logic [18:0] pseudo_sum;   // pseudo-header terms summed, before folding
+    logic [18:0] pseudo_byte0; // pseudo-header plus byte 0, before its fold
+    logic [15:0] fold_q;       // running checksum, folded to 16 bits after every byte
+    logic [15:0] byte16;       // this byte placed in its halfword position
+    logic [16:0] fold_a;       // this byte's addition into the fold, before the shared fold
+    logic [15:0] fold_next;    // the folded result: next fold_q, and the live verdict operand
+    logic        checksum_ok;  // verdict including the byte on the bus this cycle
 
-    assign pseudo   = {16'h0, s_src_ip[31:16]} + {16'h0, s_src_ip[15:0]}
-                    + {16'h0, s_dst_ip[31:16]} + {16'h0, s_dst_ip[15:0]}
-                    + {24'h0, 8'd6} + {16'h0, s_length};
-    assign byte_add = cnt[0] ? {24'h0, s_axi_tdata} : {16'h0, s_axi_tdata, 8'h00};
-    assign sum_next = (first ? pseudo : sum_q) + byte_add;
+    assign pseudo_sum   = {3'h0, s_src_ip[31:16]} + {3'h0, s_src_ip[15:0]}
+                        + {3'h0, s_dst_ip[31:16]} + {3'h0, s_dst_ip[15:0]}
+                        + {11'h0, 8'd6} + {3'h0, s_length};
+    assign byte16       = cnt[0] ? {8'h0, s_axi_tdata} : {s_axi_tdata, 8'h0};
+    assign pseudo_byte0 = pseudo_sum + {3'h0, byte16};
 
-    assign fold1       = {1'b0, sum_next[15:0]} + {1'b0, sum_next[31:16]};
-    assign fold2       = fold1[15:0] + {15'h0, fold1[16]};
-    assign checksum_ok = (fold2 == 16'hFFFF);
+    assign fold_a       = first
+                        ? {1'b0, pseudo_byte0[15:0]} + {14'h0, pseudo_byte0[18:16]}
+                        : {1'b0, fold_q} + {1'b0, byte16};
+    assign fold_next    = fold_a[15:0] + {15'h0, fold_a[16]};
+    assign checksum_ok  = (fold_next == 16'hFFFF);
 
     // Header length from the data-offset nibble, and the payload length
     logic [15:0] hl_live;
@@ -196,7 +221,7 @@ module tcp_rx_parser (
             mss        <= 16'h0000;
         end
         else if (beat) begin
-            sum_q   <= sum_next;
+            fold_q  <= fold_next;
             tuser_q <= (first ? 1'b0 : tuser_q) | s_axi_tuser;
 
             if (first) begin

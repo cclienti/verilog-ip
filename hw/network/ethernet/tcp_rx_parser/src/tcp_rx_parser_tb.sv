@@ -214,6 +214,21 @@ module tcp_rx_parser_tb;
         run_good("data5",    mkh(F_PSH|F_ACK,  16'h0),    bytes_from_hex("0102030405"));
         run_good("data_mss", mkh(F_PSH|F_ACK,  16'h0),    bytes_pattern(1460, 8'h40));
 
+        // Pseudo-header-plus-byte-0 fold overflow: src/dst/length
+        // chosen so pseudo_sum plus byte 0 (0xaa in the high position)
+        // sums to 0x3FFFE. Its single fold then reads 0xFFFE + 3 =
+        // 0x10001: low 16 bits become 1, with a carry out that the
+        // shared second fold must add back, or the seed for the whole
+        // segment is off by one and the checksum verdict is wrong.
+        // Found by search, not by hand, once the fold moved from a
+        // separate pseudo-header reduction to one shared with every
+        // byte -- the same class of gap the IPv4 parser's own checksum
+        // commit (a9464fc) found and closed with a directed vector.
+        h = mkh(F_PSH|F_ACK, 16'h0);
+        h.src_ip = 32'hFFFFFFFF;
+        h.dst_ip = 32'hFFFF55E3;
+        run_good("pseudo_fold_carry", h, bytes_from_hex("aabbccdd"));
+
         // Hand-built option list: NOP NOP MSS(1460) WS(3,3,7) EOL, then payload
         h = mkh(F_SYN|F_ACK, 16'h0);
         seg = build_tcp(h, bytes_new(0));
