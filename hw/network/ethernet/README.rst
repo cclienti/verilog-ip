@@ -77,5 +77,7 @@ it lives in `hw/boards/zedboard/eth_endpoint
 +---------------------------------------------------------------------+----------------------------------------------+
 | `axi_stream_tcp_socket <axi_stream_tcp_socket/README.rst>`_         | One passive TCP connection, echo use case    |
 +---------------------------------------------------------------------+----------------------------------------------+
+| `rmii_eth_tcp_endpoint <rmii_eth_tcp_endpoint/README.rst>`_         | The stack with a TCP transport, echo server  |
++---------------------------------------------------------------------+----------------------------------------------+
 | `rmii_eth_endpoint <rmii_eth_endpoint/README.rst>`_                 | The whole stack between the RMII PHY pins    |
 +---------------------------------------------------------------------+----------------------------------------------+
