@@ -90,3 +90,12 @@ mean re-verifying all of them, not just re-measuring one. 3555 LUT,
 flops, the cost of the whole TCP path: the connection machine, the
 receive parser, the transmit builder, the socket's record, ring and
 scheduler.
+
+On the wire, 2026-09-14: ``arping`` 3/3 unicast replies, and
+``ping -f -c 1000`` 1000/1000 at 0% loss, rtt 1.268/1.296/1.495 ms
+with 22 µs mdev — in line with the ICMP-only build's own flood
+numbers, so the TCP datapath's tighter fabric slack costs nothing on
+the ICMP path it shares the endpoint with. ``nc 192.168.90.42 23``
+echoed every line sent back byte for byte, the first live
+confirmation of the TCP path end to end, on the same bitstream this
+README's figures were measured from.
