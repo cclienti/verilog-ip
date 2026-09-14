@@ -98,4 +98,7 @@ numbers, so the TCP datapath's tighter fabric slack costs nothing on
 the ICMP path it shares the endpoint with. ``nc 192.168.90.42 23``
 echoed every line sent back byte for byte, the first live
 confirmation of the TCP path end to end, on the same bitstream this
-README's figures were measured from.
+README's figures were measured from. ``telnet 192.168.90.42 23`` was
+tried next, against the option-negotiation caveat above: it converged
+cleanly, nothing visibly garbled, every line echoed back the same
+way.
