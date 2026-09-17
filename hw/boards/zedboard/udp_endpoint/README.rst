@@ -66,53 +66,44 @@ the whole chain is proven at the network level by
 ``rmii_eth_udp_endpoint_tb``; the on-board ``nc -u`` session is the
 live test, as ``ping`` is for the ICMP demonstrator.
 
-Measured, Vivado 2026.1 on the -1 part, all constraints met: transmit
-setup 5.198 ns and hold 7.759 ns, receive setup 0.610 ns and hold
-3.392 ns — identical to the ICMP-only and TCP builds to the
-picosecond, since those are IOB-to-pin register paths dominated by
-fixed IBUF/OBUF/ODDR delays, untouched by anything in the fabric. The
-fabric-domain (``refclk`` to ``refclk``) number: **0.283 ns** of setup
-slack, 0.086 ns of hold, against 0.372 ns on the TCP build and
-7.522 ns on the ICMP-only one. The critical path is the one the TCP
-README already describes and leaves alone on purpose — it starts at
-the front receive packet FIFO's block RAM read data, runs down the
-whole parser chain, and closes back at that same FIFO's
-``m_axi_tvalid`` register through its look-ahead read pointer, 30
-logic levels and 16 CARRY4 — with one UDP-specific segment in the
-middle: the socket's receive checksum fold. The fold sits on that
-path because the doom flag depends on the checksum verdict and the
-receive buffer's ``tready`` is combinational on the doom, so the
-verdict propagates back up the chain as ready; the TCP receive parser
-has the same structure, and the 89 ps difference between the two
-builds is placement, not a different path. The transmit checksum —
-the three-term fold that carries the length in with the last byte,
-the one place this socket is arithmetically deeper than the TCP
-receive fold — is not the worst path: the summary report lists one
-path per clock group and the fold is on none of them. That is all it
-says; the fold's own slack was not measured (a ``get_timing_paths
--through`` on the routed checkpoint would, in about fifteen seconds).
-1907 LUT, of which 1613 as logic and 294 as distributed RAM — the
-latter entirely the socket's two 64-deep ``INFO`` stores, 96 bits
-wide on receive and 124 on transmit, the cost of the
-``LOG2_*_FRAMES`` default of 6 that the socket README does not put a
-number on — and 1419 flops. Block RAM: 2 tiles, as 4 RAMB18, one each
-for the front receive packet FIFO, the ICMP payload buffer and the
-socket's receive and transmit buffers, every one a 9-bit-wide
-2048-entry RAM that fits a RAMB18 exactly, checked against the
-implemented netlist's instance names rather than inferred from the
-count. Against the TCP build's 3555 LUT (3127 logic, 428 distributed
-RAM), 2592 flops and the same 2 block RAM tiles (1 RAMB36 and 2
-RAMB18), and the ICMP-only build's 997 LUT (no distributed RAM), 1172
-flops and 1 tile. So: no block RAM saved against TCP — a first draft of
-this paragraph read the RAMB36 count alone and claimed one — and about
-half the logic, which is the whole design argument of the socket
-README in one number.
+Measured, Vivado 2026.1 on the -1 part, all constraints met.
 
-On the wire, 2026-09-17: ``nc -u 192.168.90.42 7`` echoed
-``Hello World!`` back byte for byte, the first live confirmation of
-the UDP path end to end — receive parse, the doom-or-commit into the
-receive buffer, the sender's address riding through the wrapper's
-six-signal loopback, the transmit fold and header build — on the same
-bitstream this README's figures were measured from. No connection to
-open, nothing to negotiate: the line went out as one datagram and
-came back as one.
+=============================== ========== ========== ==========
+                                UDP        TCP        ICMP only
+=============================== ========== ========== ==========
+Fabric setup slack (``refclk``) 1.406 ns   0.372 ns   7.522 ns
+Fabric hold slack               0.037 ns   0.121 ns   —
+LUT, as logic                   1659       3127       997
+LUT, as distributed RAM         294        428        0
+Flops                           1595       2592       1172
+Block RAM tiles                 2          2          1
+=============================== ========== ========== ==========
+
+The pin paths — transmit setup 5.198 / hold 7.759 ns, receive setup
+0.610 / hold 3.392 ns — are identical on all three builds: IOB-to-pin
+register paths, fixed buffer delays, untouched by the fabric. The
+distributed RAM is the socket's two 64-deep ``INFO`` stores, the cost
+of ``LOG2_*_FRAMES`` at its default of 6. The 4 RAMB18 are the front
+receive FIFO, the ICMP buffer and the socket's two buffers, one each,
+checked against the netlist's instance names; no block RAM is saved
+against TCP. Half the logic is.
+
+The fabric slack took two builds. As first built, 0.283 ns: the
+critical path was the front receive FIFO's look-ahead valid loop the
+TCP README leaves alone, with the socket's receive checksum fold on
+it, since the receive buffer's backpressure-mode ``tready`` is
+combinational on the doom and the doom on the verdict. That
+``tready`` could never fall — the fit check admits only what has room
+— so the buffer now runs in ``DROP_ON_FULL`` mode for the constant
+``tready`` it gives: same 294 and 11 checks, the fold off the ready
+path, and the critical path now the transmit fold itself, 27 levels
+with 1.4 ns to spare. The first build predates the review-fix commit
+(its four address latches are the 176 extra flops, on side-band paths
+off the critical one), so the gain is attributed to the buffer mode by
+argument; a build of that commit alone would confirm it and has not
+been run. The TCP build's receive buffer has the same lever, untried.
+
+On the wire, 2026-09-17, on the first build's bitstream: ``nc -u
+192.168.90.42 7`` echoed ``Hello World!`` back byte for byte — the
+UDP path end to end, one datagram out, one back. The second build has
+not been programmed.

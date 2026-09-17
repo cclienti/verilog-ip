@@ -142,8 +142,23 @@ module axi_stream_udp_socket #(
     assign rx_first     = (rx_state == RX_IDLE) && s_axi_tvalid;
     assign rx_last_beat = rx_beat && s_axi_tlast;
 
-    // Header, drop and idle consume unconditionally; only payload waits
-    // on the receive buffer, which is where a full buffer backpressures.
+    // Consumes unconditionally in every state. The mux below is kept as
+    // the honest expression of what payload depends on, but with the
+    // receive buffer in DROP_ON_FULL mode rxf_s_tready is a constant one
+    // and s_axi_tready collapses to it. That is by construction, not by
+    // luck: rx_accept_q is set only when the whole payload fits the free
+    // space and a frame slot is free, nothing else writes the buffer,
+    // the reader only ever frees space, and a rejected payload is
+    // doomed from its first beat and needs no room -- so the
+    // backpressure mode's tready could never have gone low here.
+    // Measured on the Zedboard UDP endpoint, the difference is not in
+    // function but in timing: in backpressure mode tready is
+    // combinational on the doom, the doom on the live checksum verdict,
+    // and that put the whole 16-bit fold on the chain-wide ready path
+    // that is the build's critical path, back to the front receive
+    // FIFO's look-ahead valid register (0.283 ns of setup slack, 30
+    // levels). Constant, the fold leaves that path and the slack is
+    // 1.406 ns, the worst path then being the transmit fold itself.
     // rxf_s_tready is declared with the receive buffer below.
     assign s_axi_tready = (rx_state == RX_PAYLOAD) ? rxf_s_tready : 1'b1;
 
@@ -189,6 +204,10 @@ module axi_stream_udp_socket #(
     // (instantiated here so its level/frames outputs are declared
     // before the datapath below reads them for the fit check)
     //================================================================
+    // DROP_ON_FULL(1): the buffer never backpressures. Its drop-when-full
+    // path is unreachable here (see s_axi_tready above); the mode is
+    // chosen for the constant tready it gives, which keeps the checksum
+    // fold off the receive chain's ready path.
     logic [7:0]              rxf_s_tdata;   // payload byte offered to the buffer
     logic                    rxf_s_tuser;   // doom: bad checksum, not accepted, or tuser seen
     logic                    rxf_s_tvalid;  // offered only in PAYLOAD
@@ -203,7 +222,7 @@ module axi_stream_udp_socket #(
 
     axi_stream_packet_fifo #(
         .DATA_WIDTH (8), .LOG2_DEPTH (LOG2_RX_DEPTH), .LOG2_FRAMES (LOG2_RX_FRAMES),
-        .INFO_WIDTH (96), .DROP_ON_FULL (0)
+        .INFO_WIDTH (96), .DROP_ON_FULL (1)
     ) rxfifo (
         .clock (clock), .sreset (sreset),
         .s_axi_tdata (rxf_s_tdata), .s_axi_tuser (rxf_s_tuser), .s_axi_tvalid (rxf_s_tvalid),

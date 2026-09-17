@@ -177,18 +177,17 @@ README, would serve this one too.
 
 Measured on the `Zedboard UDP endpoint
 <../../../boards/zedboard/udp_endpoint/README.rst>`_ (Vivado 2026.1,
-the -1 part): the transmit fold above, three terms wide on a
-one-byte datagram's single beat, is not the build's worst path — the
-summary report lists one path per clock group and the fold is on none
-of them — but its own slack was not measured, and that is all the
-report can say. The receive fold does appear, as the middle segment of the
-build's critical path, but not as its own bottleneck: the front
-receive packet FIFO's look-ahead valid logic, the path the TCP build
-already leaves alone, runs through the whole parser chain and back,
-and this fold is on it because the doom flag depends on the verdict
-and the receive buffer's ``tready`` is combinational on the doom. The
-TCP receive parser sits on the same path in the same way; the 89 ps
-between the two builds' fabric slacks is placement.
+the -1 part): the receive fold was first the middle of the build's
+critical path, 0.283 ns of slack, because the receive buffer's
+backpressure-mode ``tready`` is combinational on the doom and the doom
+on the verdict. That ``tready`` could never fall — the fit check
+admits a payload only when all of it has room and a slot is free,
+nothing else writes the buffer, the reader only frees space, and a
+rejected payload is doomed from its first beat and needs none — so
+the buffer runs in ``DROP_ON_FULL`` mode, its drop path unreachable
+for the same reasons, for the constant ``tready`` alone: 1.406 ns,
+and the worst path is now the transmit fold itself, 27 levels, 1.4 ns
+to spare. The TCP socket's receive buffer has the same lever, untried.
 
 State machines
 ---------------
