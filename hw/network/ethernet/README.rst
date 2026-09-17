@@ -56,20 +56,21 @@ server on its Zedboard (`tcp_endpoint
 <../../boards/zedboard/tcp_endpoint/README.rst>`_, `udp_endpoint
 <../../boards/zedboard/udp_endpoint/README.rst>`_).
 
-The three demonstrators, measured on the same board, part and tool
-(Zedboard, xc7z020-1, Vivado 2026.1), all constraints met — the one
+The three demonstrators, measured on the same board, part, tool and
+clock (Zedboard, xc7z020-1, Vivado 2026.1, the whole datapath on the
+50 MHz RMII reference), all constraints met — the one
 place they are set side by side, so each board README carries only
 its own figures:
 
-=============================== ========== ========== ==========
-                                ICMP only  TCP        UDP
-=============================== ========== ========== ==========
-Fabric setup slack (``refclk``) 7.522 ns   0.372 ns   1.406 ns
-LUT, as logic                   997        3127       1659
-LUT, as distributed RAM         0          428        294
-Flops                           1172       2592       1595
-Block RAM tiles                 1          2          2
-=============================== ========== ========== ==========
+======================================= ========== ========== ==========
+                                        ICMP only  TCP        UDP
+======================================= ========== ========== ==========
+Fabric setup slack, ``refclk`` at 20 ns 7.522 ns   0.372 ns   1.406 ns
+LUT, as logic                           997        3127       1659
+LUT, as distributed RAM                 0          428        294
+Flops                                   1172       2592       1595
+Block RAM tiles                         1          2          2
+======================================= ========== ========== ==========
 
 The pin paths are identical on all three (transmit setup 5.198 /
 hold 7.759 ns, receive setup 0.610 / hold 3.392 ns): IOB-to-pin
