@@ -31,11 +31,13 @@ the eth parser, exactly as the ICMP responder does, and emits complete
 Ethernet reply frames into the mux.
 
 The TCP block occupies a **transport slot** — IP demux output 1 and
-packet mux input 2, selected by IP protocol — that a future UDP
-transport would take instead of TCP, exclusively. That slot is the
-boundary along which a shared ``rmii_eth_endpoint_core`` will be
-extracted once a second transport exists; until then the wiring lives
-here directly.
+packet mux input 2, selected by IP protocol — that `the UDP endpoint
+<../rmii_eth_udp_endpoint/README.rst>`_ occupies with UDP instead,
+exclusively; only one of the two endpoints is ever built. That slot
+remains the boundary along which a shared ``rmii_eth_endpoint_core``
+would be extracted, now that a second transport exists to justify the
+refactor — deferred until a build actually needs both transports at
+once, which neither endpoint here does.
 
 The socket never lowers its ``s_axi_tready``, so it does not stall the
 receive chain and adds no head-of-line requirement on the packet FIFO
