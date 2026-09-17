@@ -11,6 +11,7 @@ TOP_DEPS          ?= ../../rmii_mac_rx \
 			../../axi_stream_ipv4_parser \
 			../../axi_stream_icmp_echo \
 			../../axi_stream_udp_socket \
+			../../../../lib/axi_stream_reg_slice \
 			../../../../lib/axi_stream_upsizer \
 			../../../../lib/axi_stream_downsizer \
 			../../../../lib/axi_stream_packet_fifo \

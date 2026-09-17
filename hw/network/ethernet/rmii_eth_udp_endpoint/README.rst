@@ -102,3 +102,22 @@ and mux. 11 checks, ALL TESTS PASSED under ``check.iverilog`` and
 ``check.verilator``, ``lint.verilator`` clean. The socket carries its
 own exhaustive bench; this one proves the integration and the
 demux/mux routing.
+
+Theoretical fmax, measured out of context (Vivado 2026.1, xc7z020-1,
+a 10 ns constraint the board never asks for — it runs this block at
+50 MHz): as first built, WNS −5.637 ns, 290 failing endpoints, the
+worst data path 15.6 ns, so about 64 MHz. The sixty worst paths fell
+into three families, all crossing the socket's seams — transmit INFO
+store through the header image and packet mux into the FCS CRC, IPv4
+parser through the demux into the socket's fold and receive-buffer
+write, ``s_app_dst_*`` through the transmit fold into the INFO store.
+Three `register slices <../../../lib/axi_stream_reg_slice/README.rst>`_
+now ring the socket, one per seam, the side-bands riding in each
+slice's ``USER`` word so they stay beat-aligned: WNS −4.661 ns, 238
+failing endpoints, about 68 MHz, every worst path now starting or
+ending at a slice register, and the remaining 22–25 levels inside the
+socket — its header build off an unregistered INFO read, its receive
+fold and doom into the buffer, its three-term transmit fold. Slices
+cannot shorten those; pipelining the socket's own arithmetic would,
+and has not been done. One cycle of latency per slice, no throughput
+change, 11 checks unchanged.

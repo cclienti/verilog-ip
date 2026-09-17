@@ -461,12 +461,101 @@ module rmii_eth_udp_endpoint #(
     // ports. This block and its two seams (demux
     // output 1, mux input 2) are what a TCP
     // transport occupies instead, exclusively.
+    //
+    // Three register slices ring the socket, one
+    // per seam, for fmax alone: the socket's
+    // receive fold, header image and transmit fold
+    // each sat in one combinational path with the
+    // parser chain on one side and the packet mux
+    // and FCS generator on the other, 24 to 28
+    // logic levels, 64 MHz theoretical fmax
+    // measured out of context. The side-bands
+    // ride through each slice's USER word beside
+    // the data so they stay beat-aligned; a slice
+    // costs one cycle of latency and no throughput.
     //-------------------------------------------
-    logic [7:0] udp_tdata;   // UDP reply byte stream
+    localparam int UDP_RX_USER_W = 1 + 32 + 32 + 16 + 48;   // drop, src ip, dst ip, length, src mac
+    localparam int UDP_TX_USER_W = 48 + 32 + 16;            // dst mac, ip, port
+
+    logic [7:0]                urx_tdata;    // sliced L4 unit into the socket
+    logic [UDP_RX_USER_W-1:0]  urx_tuser;    // its drop flag and side-bands, beat-aligned
+    logic                      urx_tvalid;   // byte valid
+    logic                      urx_tlast;    // last byte of the datagram
+    logic                      urx_tready;   // socket ready
+    logic                      urx_drop;     // the receive drop flag, unpacked
+    logic [31:0]               urx_src_ip;   // sender IP, unpacked
+    logic [31:0]               urx_dst_ip;   // destination IP, unpacked
+    logic [15:0]               urx_length;   // L4 length, unpacked
+    logic [47:0]               urx_src_mac;  // sender MAC, unpacked
+
+    logic [7:0]                utx_tdata;    // socket reply, before its slice
+    logic                      utx_tuser;    // constant zero
+    logic                      utx_tvalid;   // byte valid
+    logic                      utx_tlast;    // last reply byte
+    logic                      utx_tready;   // slice ready
+
+    logic [7:0]                uapp_tdata;   // sliced application stream into the socket
+    logic [UDP_TX_USER_W-1:0]  uapp_tuser;   // its destination address, beat-aligned
+    logic                      uapp_tvalid;  // byte valid
+    logic                      uapp_tlast;   // last byte of the datagram
+    logic                      uapp_tready;  // socket ready
+    logic [47:0]               uapp_dst_mac; // destination MAC, unpacked
+    logic [31:0]               uapp_dst_ip;  // destination IP, unpacked
+    logic [15:0]               uapp_dst_port;// destination port, unpacked
+
+    logic [7:0] udp_tdata;   // UDP reply byte stream, sliced, into the mux
     logic       udp_tuser;   // constant zero
     logic       udp_tvalid;  // byte valid
     logic       udp_tlast;   // last reply byte
     logic       udp_tready;  // packet mux grant
+
+    // Seam 1: IP demux output 1 into the socket, side-bands beside the data
+    axi_stream_reg_slice
+    #(
+        .DATA_WIDTH (8),
+        .USER_WIDTH (UDP_RX_USER_W)
+    )
+    udp_rx_slice_inst
+    (
+        .clock        (clock),
+        .sreset       (sreset),
+        .s_axi_tdata  (ipd_tdata[15:8]),
+        .s_axi_tuser  ({ipd_tuser[1], ipp_src_ip, ipp_dst_ip, ipp_length, ethp_src_mac}),
+        .s_axi_tvalid (ipd_tvalid[1]),
+        .s_axi_tlast  (ipd_tlast[1]),
+        .s_axi_tready (ipd_tready[1]),
+        .m_axi_tdata  (urx_tdata),
+        .m_axi_tuser  (urx_tuser),
+        .m_axi_tvalid (urx_tvalid),
+        .m_axi_tlast  (urx_tlast),
+        .m_axi_tready (urx_tready)
+    );
+
+    assign {urx_drop, urx_src_ip, urx_dst_ip, urx_length, urx_src_mac} = urx_tuser;
+
+    // Seam 3: the application stream into the socket, its address beside the data
+    axi_stream_reg_slice
+    #(
+        .DATA_WIDTH (8),
+        .USER_WIDTH (UDP_TX_USER_W)
+    )
+    udp_app_slice_inst
+    (
+        .clock        (clock),
+        .sreset       (sreset),
+        .s_axi_tdata  (s_app_tdata),
+        .s_axi_tuser  ({s_app_dst_mac, s_app_dst_ip, s_app_dst_port}),
+        .s_axi_tvalid (s_app_tvalid),
+        .s_axi_tlast  (s_app_tlast),
+        .s_axi_tready (s_app_tready),
+        .m_axi_tdata  (uapp_tdata),
+        .m_axi_tuser  (uapp_tuser),
+        .m_axi_tvalid (uapp_tvalid),
+        .m_axi_tlast  (uapp_tlast),
+        .m_axi_tready (uapp_tready)
+    );
+
+    assign {uapp_dst_mac, uapp_dst_ip, uapp_dst_port} = uapp_tuser;
 
     axi_stream_udp_socket
     #(
@@ -482,22 +571,23 @@ module rmii_eth_udp_endpoint #(
         .local_mac    (local_mac),
         .local_ip     (local_ip),
         .listen_port  (listen_port),
-        .s_axi_tdata  (ipd_tdata[15:8]),
-        .s_axi_tuser  (ipd_tuser[1]),
-        .s_axi_tvalid (ipd_tvalid[1]),
-        .s_axi_tlast  (ipd_tlast[1]),
-        .s_axi_tready (ipd_tready[1]),
-        .s_src_ip     (ipp_src_ip),
-        .s_dst_ip     (ipp_dst_ip),
-        .s_length     (ipp_length),
-        .s_src_mac    (ethp_src_mac),
-        .m_axi_tdata  (udp_tdata),
-        .m_axi_tuser  (udp_tuser),
-        .m_axi_tvalid (udp_tvalid),
-        .m_axi_tlast  (udp_tlast),
-        .m_axi_tready (udp_tready),
+        .s_axi_tdata  (urx_tdata),
+        .s_axi_tuser  (urx_drop),
+        .s_axi_tvalid (urx_tvalid),
+        .s_axi_tlast  (urx_tlast),
+        .s_axi_tready (urx_tready),
+        .s_src_ip     (urx_src_ip),
+        .s_dst_ip     (urx_dst_ip),
+        .s_length     (urx_length),
+        .s_src_mac    (urx_src_mac),
+        .m_axi_tdata  (utx_tdata),
+        .m_axi_tuser  (utx_tuser),
+        .m_axi_tvalid (utx_tvalid),
+        .m_axi_tlast  (utx_tlast),
+        .m_axi_tready (utx_tready),
         // Application streams and their address fields, brought out
-        // to the endpoint ports
+        // to the endpoint ports (the receive side directly, the send
+        // side through its slice above)
         .m_app_tdata      (m_app_tdata),
         .m_app_tvalid     (m_app_tvalid),
         .m_app_tlast      (m_app_tlast),
@@ -505,13 +595,35 @@ module rmii_eth_udp_endpoint #(
         .m_app_peer_mac   (m_app_peer_mac),
         .m_app_peer_ip    (m_app_peer_ip),
         .m_app_peer_port  (m_app_peer_port),
-        .s_app_tdata      (s_app_tdata),
-        .s_app_tvalid     (s_app_tvalid),
-        .s_app_tlast      (s_app_tlast),
-        .s_app_tready     (s_app_tready),
-        .s_app_dst_mac    (s_app_dst_mac),
-        .s_app_dst_ip     (s_app_dst_ip),
-        .s_app_dst_port   (s_app_dst_port)
+        .s_app_tdata      (uapp_tdata),
+        .s_app_tvalid     (uapp_tvalid),
+        .s_app_tlast      (uapp_tlast),
+        .s_app_tready     (uapp_tready),
+        .s_app_dst_mac    (uapp_dst_mac),
+        .s_app_dst_ip     (uapp_dst_ip),
+        .s_app_dst_port   (uapp_dst_port)
+    );
+
+    // Seam 2: the socket's reply frames into the packet mux
+    axi_stream_reg_slice
+    #(
+        .DATA_WIDTH (8),
+        .USER_WIDTH (1)
+    )
+    udp_tx_slice_inst
+    (
+        .clock        (clock),
+        .sreset       (sreset),
+        .s_axi_tdata  (utx_tdata),
+        .s_axi_tuser  (utx_tuser),
+        .s_axi_tvalid (utx_tvalid),
+        .s_axi_tlast  (utx_tlast),
+        .s_axi_tready (utx_tready),
+        .m_axi_tdata  (udp_tdata),
+        .m_axi_tuser  (udp_tuser),
+        .m_axi_tvalid (udp_tvalid),
+        .m_axi_tlast  (udp_tlast),
+        .m_axi_tready (udp_tready)
     );
 
     //-------------------------------------------

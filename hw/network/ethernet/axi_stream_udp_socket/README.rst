@@ -189,6 +189,17 @@ for the same reasons, for the constant ``tready`` alone: 1.406 ns,
 and the worst path is now the transmit fold itself, 27 levels, 1.4 ns
 to spare.
 
+Out of context at a 10 ns constraint, with register slices on all
+three of the endpoint's seams around it (see the `endpoint README
+<../rmii_eth_udp_endpoint/README.rst>`_), the socket's own depth is
+what remains: 22 to 25 levels in each of the transmit header build
+(an unregistered INFO read into the IPv4 checksum sum and the 42:1
+byte mux), the receive fold with its doom into the buffer, and the
+transmit fold — about 68 MHz for the endpoint, 64 without the slices.
+Each block does its work in one cycle by design; a register on the
+header image at ``IDLE`` to ``HEADER``, and a pipeline stage in each
+fold, would be the next step toward 100 MHz, and none is taken here.
+
 State machines
 ---------------
 
