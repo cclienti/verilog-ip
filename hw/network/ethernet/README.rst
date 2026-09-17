@@ -46,7 +46,39 @@ Ethernet frames, like the ARP responder. The `endpoint
 receive and transmit, wired between the RMII pins of a PHY — a device
 that answers ``arping`` and ``ping``. A Zedboard demonstrator around
 it lives in `hw/boards/zedboard/eth_endpoint
-<../../boards/zedboard/eth_endpoint/README.rst>`_.
+<../../boards/zedboard/eth_endpoint/README.rst>`_. Two more endpoints
+add a transport in the second IPv4 demux output, one each and never
+both: `rmii_eth_tcp_endpoint <rmii_eth_tcp_endpoint/README.rst>`__ with
+a passive `TCP socket <axi_stream_tcp_socket/README.rst>`_ and
+`rmii_eth_udp_endpoint <rmii_eth_udp_endpoint/README.rst>`__ with a
+`UDP listener <axi_stream_udp_socket/README.rst>`_, each an echo
+server on its Zedboard (`tcp_endpoint
+<../../boards/zedboard/tcp_endpoint/README.rst>`_, `udp_endpoint
+<../../boards/zedboard/udp_endpoint/README.rst>`_).
+
+The three demonstrators, measured on the same board, part and tool
+(Zedboard, xc7z020-1, Vivado 2026.1), all constraints met — the one
+place they are set side by side, so each board README carries only
+its own figures:
+
+=============================== ========== ========== ==========
+                                ICMP only  TCP        UDP
+=============================== ========== ========== ==========
+Fabric setup slack (``refclk``) 7.522 ns   0.372 ns   1.406 ns
+LUT, as logic                   997        3127       1659
+LUT, as distributed RAM         0          428        294
+Flops                           1172       2592       1595
+Block RAM tiles                 1          2          2
+=============================== ========== ========== ==========
+
+The pin paths are identical on all three (transmit setup 5.198 /
+hold 7.759 ns, receive setup 0.610 / hold 3.392 ns): IOB-to-pin
+register paths the fabric does not touch. TCP's fabric slack sits on
+the front receive FIFO's look-ahead valid loop with the receive
+checksum fold on it; UDP left that path by running its receive buffer
+in ``DROP_ON_FULL`` mode, a lever the TCP socket has too and has not
+pulled. The connectionless transport costs about half of TCP's logic
+and the same block RAM.
 
 +---------------------------------------------------------------------+----------------------------------------------+
 | Module                                                              | Description                                  |
@@ -78,6 +110,12 @@ it lives in `hw/boards/zedboard/eth_endpoint
 | `axi_stream_tcp_socket <axi_stream_tcp_socket/README.rst>`_         | One passive TCP connection, echo use case    |
 +---------------------------------------------------------------------+----------------------------------------------+
 | `rmii_eth_tcp_endpoint <rmii_eth_tcp_endpoint/README.rst>`_         | The stack with a TCP transport, echo server  |
++---------------------------------------------------------------------+----------------------------------------------+
+| `udp_model <udp_model/README.rst>`_                                 | Bench-side UDP/IP frame model package        |
++---------------------------------------------------------------------+----------------------------------------------+
+| `axi_stream_udp_socket <axi_stream_udp_socket/README.rst>`_         | One UDP listener, per-datagram addressing    |
++---------------------------------------------------------------------+----------------------------------------------+
+| `rmii_eth_udp_endpoint <rmii_eth_udp_endpoint/README.rst>`_         | The stack with a UDP transport, echo server  |
 +---------------------------------------------------------------------+----------------------------------------------+
 | `rmii_eth_endpoint <rmii_eth_endpoint/README.rst>`_                 | The whole stack between the RMII PHY pins    |
 +---------------------------------------------------------------------+----------------------------------------------+

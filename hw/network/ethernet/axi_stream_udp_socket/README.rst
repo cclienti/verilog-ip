@@ -187,7 +187,7 @@ rejected payload is doomed from its first beat and needs none — so
 the buffer runs in ``DROP_ON_FULL`` mode, its drop path unreachable
 for the same reasons, for the constant ``tready`` alone: 1.406 ns,
 and the worst path is now the transmit fold itself, 27 levels, 1.4 ns
-to spare. The TCP socket's receive buffer has the same lever, untried.
+to spare.
 
 State machines
 ---------------
