@@ -66,37 +66,42 @@ the whole chain is proven at the network level by
 ``rmii_eth_udp_endpoint_tb``; the on-board ``nc -u`` session is the
 live test, as ``ping`` is for the ICMP demonstrator.
 
-Measured, Vivado 2026.1 on the -1 part, all constraints met:
+Measured, Vivado 2026.1 on the -1 part, all constraints met, on the
+RTL as committed with the endpoint's three register slices:
 
-- fabric (``refclk`` to ``refclk``) setup slack 1.406 ns, hold
+- fabric (``refclk`` to ``refclk``) setup slack 2.684 ns, hold
   0.037 ns;
 - transmit pins setup 5.198 ns, hold 7.759 ns; receive pins setup
   0.610 ns, hold 3.392 ns — IOB-to-pin register paths, fixed buffer
   delays, untouched by the fabric;
-- 1659 LUT as logic and 294 as distributed RAM — the latter the
+- 1731 LUT as logic and 294 as distributed RAM — the latter the
   socket's two 64-deep ``INFO`` stores, the cost of ``LOG2_*_FRAMES``
-  at its default of 6 — 1595 flops, 2 block RAM tiles as 4 RAMB18:
+  at its default of 6 — 1966 flops, 2 block RAM tiles as 4 RAMB18:
   the front receive FIFO, the ICMP buffer and the socket's two
   buffers, one each, checked against the netlist's instance names.
 
 How this build stands against the other two demonstrators is tabled
 once, in the `chain README <../../../network/ethernet/README.rst>`_.
 
-The fabric slack took two builds. As first built, 0.283 ns: the
+The fabric slack took three builds. As first built, 0.283 ns: the
 critical path was the front receive FIFO's look-ahead valid loop,
 with the socket's receive checksum fold on it, since the receive
 buffer's backpressure-mode ``tready`` is combinational on the doom and
 the doom on the verdict. That ``tready`` could never fall — the fit
-check admits only what has room — so the buffer now runs in
-``DROP_ON_FULL`` mode for the constant ``tready`` it gives: same 294
-and 11 checks, the fold off the ready path, and the critical path now
-the transmit fold itself, 27 levels with 1.4 ns to spare. The first
-build predates the review-fix commit (its four address latches are
-the 176 extra flops, on side-band paths off the critical one), so the
-gain is attributed to the buffer mode by argument; a build of that
-commit alone would confirm it and has not been run.
+check admits only what has room — so the buffer runs in
+``DROP_ON_FULL`` mode for the constant ``tready`` it gives: 1.406 ns,
+the fold off the ready path, the critical path the transmit fold. Then
+the endpoint gained a register slice on each of the socket's three
+seams, for its out-of-context fmax rather than for this board (see
+the endpoint README): 2.684 ns here, the critical path now the
+application slice into the transmit fold and its ``INFO`` store, 26
+levels — inside the socket, where a slice cannot reach. The slices are
+the 371 extra flops; the earlier 176 were the review-fix commit's
+address latches. Each step's gain is attributed by the path the
+report names, not by a control build, none having been run.
 
 On the wire, 2026-09-17, on the first build's bitstream: ``nc -u
 192.168.90.42 7`` echoed ``Hello World!`` back byte for byte — the
-UDP path end to end, one datagram out, one back. The second build has
-not been programmed.
+UDP path end to end, one datagram out, one back. The later builds
+have not been programmed; the slices change latency by one cycle per
+seam and nothing a client can see.

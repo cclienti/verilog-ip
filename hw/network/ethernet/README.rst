@@ -65,10 +65,10 @@ its own figures:
 ======================================= ========== ========== ==========
                                         ICMP only  TCP        UDP
 ======================================= ========== ========== ==========
-Fabric setup slack, ``refclk`` at 20 ns 7.522 ns   0.372 ns   1.406 ns
-LUT, as logic                           997        3127       1659
+Fabric setup slack, ``refclk`` at 20 ns 7.522 ns   0.372 ns   2.684 ns
+LUT, as logic                           997        3127       1731
 LUT, as distributed RAM                 0          428        294
-Flops                                   1172       2592       1595
+Flops                                   1172       2592       1966
 Block RAM tiles                         1          2          2
 ======================================= ========== ========== ==========
 
@@ -78,8 +78,10 @@ register paths the fabric does not touch. TCP's fabric slack sits on
 the front receive FIFO's look-ahead valid loop with the receive
 checksum fold on it; UDP left that path by running its receive buffer
 in ``DROP_ON_FULL`` mode, a lever the TCP socket has too and has not
-pulled. The connectionless transport costs about half of TCP's logic
-and the same block RAM.
+pulled, and then gained a register slice on each of its socket's
+seams, which is where its remaining margin comes from. The
+connectionless transport costs about half of TCP's logic and the same
+block RAM.
 
 +---------------------------------------------------------------------+----------------------------------------------+
 | Module                                                              | Description                                  |
