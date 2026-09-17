@@ -53,7 +53,13 @@ Parameters
 - ``LOG2_UDP_RX_DEPTH``, ``LOG2_UDP_RX_FRAMES`` (default 11, 6): the
   socket's receive buffer, in bytes and in datagrams, log2.
 - ``LOG2_UDP_TX_DEPTH``, ``LOG2_UDP_TX_FRAMES`` (default 11, 6): the
-  socket's transmit buffer, in bytes and in datagrams, log2.
+  socket's transmit buffer, in bytes and in datagrams, log2. In an
+  echo build keep ``LOG2_UDP_TX_DEPTH`` at least equal to
+  ``LOG2_UDP_RX_DEPTH``: a datagram that passed the receive fit check
+  is streamed whole into the transmit buffer, and one larger than that
+  buffer deadlocks its writer for good, as the packet FIFO's README
+  says of any oversized frame in backpressure mode. Nothing checks
+  this at elaboration; the defaults satisfy it.
 
 Signals
 -------
@@ -61,7 +67,10 @@ Signals
 - ``clock``, ``sreset``: 50 MHz RMII reference clock and synchronous
   reset, active high.
 - ``local_mac``, ``local_ip``, ``listen_port``: endpoint identity and
-  the UDP listening port.
+  the UDP listening port. The responders sample them per frame; the
+  UDP socket folds ``local_ip`` and ``listen_port`` into a datagram's
+  checksum as it is written and reads them again as its header
+  leaves, so they must hold still while any datagram is queued.
 - ``phy_rxd``, ``phy_crs_dv``, ``phy_txd``, ``phy_txen``: the RMII PHY
   pins.
 - ``learn_valid``, ``learn_mac``, ``learn_ip``: the ARP learn
@@ -83,10 +92,13 @@ the `UDP model <../udp_model/README.rst>`_ with a real preamble and
 FCS, and captures the transmit pins, strips the preamble and FCS, and
 parses the reply with the same model. It ties ``m_app`` back to
 ``s_app``, address fields included, for the echo, then sends two
-datagrams in turn and checks each reply is addressed back to the
-client and echoes its payload byte-exact — proving the chain is not
-one-shot, since a UDP datagram carries no connection state to persist
-between them. 7 checks, ALL TESTS PASSED under ``check.iverilog`` and
+datagrams in turn from one station and a third from a second station,
+and checks each reply is addressed back to the station that sent that
+datagram — not the previous one — and echoes its payload byte-exact:
+the chain is not one-shot, since a UDP datagram carries no connection
+state to persist between them, and the per-datagram addressing that is
+the whole point of the side-band survives the trip through the demux
+and mux. 11 checks, ALL TESTS PASSED under ``check.iverilog`` and
 ``check.verilator``, ``lint.verilator`` clean. The socket carries its
 own exhaustive bench; this one proves the integration and the
 demux/mux routing.

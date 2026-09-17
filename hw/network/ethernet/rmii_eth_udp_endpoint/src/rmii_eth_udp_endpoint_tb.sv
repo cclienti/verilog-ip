@@ -39,6 +39,9 @@ module rmii_eth_udp_endpoint_tb;
     localparam logic [47:0] CLI_MAC   = 48'h3c_97_0e_12_34_56;
     localparam logic [31:0] CLI_IP    = 32'hc0a85a01;
     localparam logic [15:0] CLI_PORT  = 16'd51234;
+    localparam logic [47:0] CLI2_MAC  = 48'h00_1b_21_7a_5e_c3;
+    localparam logic [31:0] CLI2_IP   = 32'hc0a85a07;
+    localparam logic [15:0] CLI2_PORT = 16'd40000;
 
     logic       clock, sreset;
     logic [1:0] rxd;
@@ -222,7 +225,20 @@ module rmii_eth_udp_endpoint_tb;
         check(ok, {"echo 2 parses: ", err});
         check(pf.dst_mac == CLI_MAC && pf.dst_ip == CLI_IP && pf.dst_port == CLI_PORT,
               "echo 2 addressed back to the client");
+        check(pf.src_ip == LOCAL_IP && pf.src_port == LISTEN, "echo 2 source fields");
         check(bytes_eq(frame_payload(fb), pl), "echo 2 payload");
+
+        //--- 3. a second station: the reply must follow its own sender ---
+        h  = cli_hdr(16'h4e23);
+        h.src_mac = CLI2_MAC; h.src_ip = CLI2_IP; h.src_port = CLI2_PORT;
+        pl = bytes_from_hex("7365636f6e64");   // "second"
+        send_wire(build_frame(h, pl));
+        wait_tx(3, "echo 3");
+        fb = cap_frame(2); parse_frame(fb, pf, err, ok);
+        check(ok, {"echo 3 parses: ", err});
+        check(pf.dst_mac == CLI2_MAC && pf.dst_ip == CLI2_IP && pf.dst_port == CLI2_PORT,
+              "echo 3 addressed back to the second station, not the first");
+        check(bytes_eq(frame_payload(fb), pl), "echo 3 payload");
 
         $display("rmii_eth_udp_endpoint_tb: %0d checks", checks);
         if (errors == 0) $display("rmii_eth_udp_endpoint_tb: ALL TESTS PASSED");

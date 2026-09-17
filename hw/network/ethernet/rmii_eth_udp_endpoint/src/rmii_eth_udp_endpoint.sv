@@ -60,8 +60,11 @@
 // stalling the MAC, which cannot pause the wire. The UDP socket never
 // lowers its own s_axi_tready, so it adds no head-of-line requirement
 // beyond the two responders'. local_mac/local_ip are sampled per frame
-// inside the protocol blocks, so they may be tied to constants or
-// driven at run time. The eth parser's promiscuous mode and multicast
+// inside the responders, so they may be tied to constants or driven at
+// run time -- with one caveat the UDP socket adds: it folds local_ip
+// and listen_port into a datagram's checksum as the application writes
+// it and reads them again when the header leaves, so both must hold
+// still while any datagram is queued. The eth parser's promiscuous mode and multicast
 // accept are left off: this endpoint only ever answers frames
 // addressed to it or broadcast.
 

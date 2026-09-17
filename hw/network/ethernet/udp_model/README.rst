@@ -47,12 +47,13 @@ Functions
 - ``build_ipv4(h, l4)``, ``build_eth(h, ip)``, ``build_frame(h,
   payload)``: the layers above, the last one a complete frame without
   FCS, what the socket emits.
-- ``parse_frame(f, h, err)``: validates a frame — lengths, EtherType,
-  version/IHL, no fragment, protocol, both checksums — fills the record
-  and returns 1, or returns 0 with the reason in ``err``. Padding
+- ``parse_frame(f, h, err, ok)``: a task — Icarus takes only inputs on
+  a function — that validates a frame (lengths, EtherType,
+  version/IHL, no fragment, protocol, both checksums), fills the record
+  and sets ``ok``, or clears it with the reason in ``err``. Padding
   beyond ``total_length`` is tolerated, as the receive chain tolerates
   it. ``frame_payload(f)`` and ``frame_l4(f)`` slice an accepted frame.
-- ``parse_udp(src_ip, dst_ip, dgram, h, err)``: the same for an L4 unit
+- ``parse_udp(src_ip, dst_ip, dgram, h, err, ok)``: the same for an L4 unit
   with the pseudo-header addresses supplied beside it, the socket's own
   input, including the length-field-equals-the-unit's-own-size check
   the socket's RTL applies; ``udp_payload(dgram)`` slices it.

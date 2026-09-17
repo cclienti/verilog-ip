@@ -28,10 +28,12 @@ def generator(internals=False):
     if internals:
         rx = blk.add(Group("Receive walker"))
         rx.add(Disp(["rx_state", "rx_cnt", "rx_len_bad_q", "rx_csum_zero_q", "rx_accept_q"]))
+        rx.add(Disp(["rx_src_mac_q", "rx_src_ip_q", "rx_src_port_q", "rx_dst_port_q"]))
         rx.add(Disp(["rx_fold_q", "rx_checksum_ok", "rxf_s_tvalid", "rxf_s_tuser", "rxf_s_tready"]))
         rx.add(Disp(["rxf_level", "rxf_frames", "rx_free", "rx_frame_free"]))
         tx = blk.add(Group("Transmit"))
-        tx.add(Disp(["tx_byte_cnt_q", "tx_fold_q", "tx_checksum", "txf_s_tready"]))
+        tx.add(Disp(["tx_byte_cnt_q", "tx_first", "tx_fold_q", "tx_checksum", "txf_s_tready"]))
+        tx.add(Disp(["tx_dst_mac_q", "tx_dst_ip_q", "tx_dst_port_q"]))
         tx.add(Disp(["tx_state", "tx_hcnt", "txf_m_tvalid", "txf_m_tready", "txf_m_length"]))
 
     return blk

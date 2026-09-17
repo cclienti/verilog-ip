@@ -37,6 +37,9 @@ module axi_stream_udp_socket_tb;
     localparam logic [47:0] CLI_MAC   = 48'h3c_97_0e_12_34_56;
     localparam logic [31:0] CLI_IP    = 32'hc0a85a01;   // 192.168.90.1
     localparam logic [15:0] CLI_PORT  = 16'd51234;
+    localparam logic [47:0] CLI2_MAC  = 48'h00_1b_21_7a_5e_c3;   // a second station
+    localparam logic [31:0] CLI2_IP   = 32'hc0a85a07;            // 192.168.90.7
+    localparam logic [15:0] CLI2_PORT = 16'd40000;
     localparam logic [31:0] BROADCAST = 32'hFFFFFFFF;
 
     logic        clock, sreset;
@@ -104,7 +107,14 @@ module axi_stream_udp_socket_tb;
     initial clock = 0;
     always #10 clock = !clock;
 
-    assign m_tready = 1'b1;   // always accept the socket's output
+    // The socket's Ethernet output is backpressured at random, about a
+    // third of the cycles: on the board the packet mux stalls this
+    // source whenever an ARP or ICMP reply is draining, and an earlier
+    // version of this bench that held m_tready high let two transmit
+    // handshake mutations pass unnoticed. Registered off the clock, the
+    // repo's race-free pattern; the frame monitor samples on the same
+    // edge.
+    always @(posedge clock) m_tready <= ($urandom_range(0, 2) != 0);
 
     task automatic check(input bit ok, input string what);
         checks = checks + 1;
@@ -164,6 +174,21 @@ module axi_stream_udp_socket_tb;
         s_tvalid = 1'b0; s_tlast = 1'b0;
     endtask
 
+    // Like send_dgram, from another station: its MAC on the side-band
+    task automatic send_dgram_from(input bytes_t seg, input logic [47:0] src_mac,
+                                   input logic [31:0] src_ip, input logic [31:0] dst_ip);
+        @(negedge clock);
+        for (int i = 0; i < seg.size(); i++) begin
+            @(negedge clock);
+            s_tvalid = 1'b1; s_tdata = seg[i]; s_tlast = (i == seg.size()-1); s_tuser = 1'b0;
+            s_src_ip = src_ip; s_dst_ip = dst_ip; s_src_mac = src_mac; s_length = 16'(seg.size());
+            @(posedge clock);
+            while (!s_tready) @(posedge clock);
+        end
+        @(negedge clock);
+        s_tvalid = 1'b0; s_tlast = 1'b0;
+    endtask
+
     // Like send_dgram, but the beat at index tuser_at also carries tuser
     task automatic send_dgram_tuser(input bytes_t seg, input logic [31:0] src_ip, input logic [31:0] dst_ip,
                                     input integer tuser_at);
@@ -211,6 +236,28 @@ module axi_stream_udp_socket_tb;
         idx = fcount;
         wait_frame(fcount + 1, what);
         check_reply(idx, payload, what);
+    endtask
+
+    // The same, for a reply owed to a given station rather than CLI_*:
+    // the per-datagram addressing this socket exists for
+    task automatic expect_reply_to(input bytes_t payload, input logic [47:0] pmac,
+                                   input logic [31:0] pip, input logic [15:0] pport,
+                                   input string what);
+        integer   idx;
+        udp_hdr_t p;
+        string    err;
+        bit       ok;
+        bytes_t   f;
+        idx = fcount;
+        wait_frame(fcount + 1, what);
+        f = frame_bytes(idx);
+        parse_frame(f, p, err, ok);
+        check(ok, {what, ": reply parses: ", err});
+        check(p.dst_mac == pmac && p.dst_ip == pip && p.dst_port == pport,
+              $sformatf("%s: reply addressed to %012x %08x:%0d, got %012x %08x:%0d",
+                        what, pmac, pip, pport, p.dst_mac, p.dst_ip, p.dst_port));
+        check(p.src_ip == LOCAL_IP && p.src_port == LISTEN, {what, ": reply source fields"});
+        check(bytes_eq(frame_payload(f), payload), {what, ": reply payload"});
     endtask
 
     //----------------------------------------------------------------
@@ -371,6 +418,34 @@ module axi_stream_udp_socket_tb;
         f = frame_bytes(n_before);
         check({f[40], f[41]} == 16'hFFFF,
               $sformatf("computed-zero checksum sent as FFFF: got %04x", {f[40], f[41]}));
+
+        //------------------------------------------------------------
+        // 11b. Two stations interleaved: each reply must go back to
+        //      the station that sent that datagram -- the per-datagram
+        //      address side-band is the one thing UDP-specific here,
+        //      and every other test uses a single peer, so a peer path
+        //      stale by one datagram would pass them by accident. The
+        //      first three go out with the app held, so all three sit
+        //      queued in the receive buffer with their addresses before
+        //      any reply leaves; the fourth streams through live.
+        //------------------------------------------------------------
+        n_before = fcount;
+        hold_app = 1'b1;
+        h = cli_hdr(LISTEN, 1'b0);
+        send_dgram(build_udp(h, bytes_from_hex("a1a1")), CLI_IP, LOCAL_IP);
+        h = cli_hdr(LISTEN, 1'b0); h.src_ip = CLI2_IP; h.src_port = CLI2_PORT;
+        send_dgram_from(build_udp(h, bytes_from_hex("b2b2b2")), CLI2_MAC, CLI2_IP, LOCAL_IP);
+        h = cli_hdr(LISTEN, 1'b0);
+        send_dgram(build_udp(h, bytes_from_hex("a3")), CLI_IP, LOCAL_IP);
+        repeat (10) @(posedge clock);
+        hold_app = 1'b0;
+        expect_reply_to(bytes_from_hex("a1a1"),   CLI_MAC,  CLI_IP,  CLI_PORT,  "two stations, first to A");
+        expect_reply_to(bytes_from_hex("b2b2b2"), CLI2_MAC, CLI2_IP, CLI2_PORT, "two stations, second to B");
+        expect_reply_to(bytes_from_hex("a3"),     CLI_MAC,  CLI_IP,  CLI_PORT,  "two stations, third to A");
+        h = cli_hdr(LISTEN, 1'b1); h.src_ip = CLI2_IP; h.src_port = CLI2_PORT;
+        send_dgram_from(build_udp(h, bytes_from_hex("b4b4b4b4")), CLI2_MAC, CLI2_IP, LOCAL_IP);
+        expect_reply_to(bytes_from_hex("b4b4b4b4"), CLI2_MAC, CLI2_IP, CLI2_PORT, "two stations, live to B");
+        check(fcount == n_before + 4, "two stations: exactly four replies");
 
         //------------------------------------------------------------
         // 12. Random round trips: well-formed datagrams of varying

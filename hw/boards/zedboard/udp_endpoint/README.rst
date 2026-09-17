@@ -87,19 +87,25 @@ has the same structure, and the 89 ps difference between the two
 builds is placement, not a different path. The transmit checksum —
 the three-term fold that carries the length in with the last byte,
 the one place this socket is arithmetically deeper than the TCP
-receive fold — does not appear anywhere in the timing report: the
-fabric-domain report names no ``tx_fold``, ``tx_checksum`` or
-``txf_s_info`` net on any listed path, so the concern the socket
-README raised about it is answered by measurement, not by argument.
-1907 LUT, 1419 flops, 4 RAMB18 — one each for the front receive
-packet FIFO, the ICMP payload buffer and the socket's receive and
-transmit buffers, every one a 9-bit-wide 2048-entry RAM that fits a
-RAMB18 exactly, checked against the implemented netlist's instance
-names rather than inferred from the count — and no RAMB36 —
-against the TCP build's 3555 LUT, 2592 flops and 1 RAMB36, and the
-ICMP-only build's 997 LUT and 1172 flops. The connectionless transport
-costs about half of what TCP's connection machine, ring, scheduler
-and timers do, which is the whole design argument of the socket
+receive fold — is not the worst path: the summary report lists one
+path per clock group and the fold is on none of them. That is all it
+says; the fold's own slack was not measured (a ``get_timing_paths
+-through`` on the routed checkpoint would, in about fifteen seconds).
+1907 LUT, of which 1613 as logic and 294 as distributed RAM — the
+latter entirely the socket's two 64-deep ``INFO`` stores, 96 bits
+wide on receive and 124 on transmit, the cost of the
+``LOG2_*_FRAMES`` default of 6 that the socket README does not put a
+number on — and 1419 flops. Block RAM: 2 tiles, as 4 RAMB18, one each
+for the front receive packet FIFO, the ICMP payload buffer and the
+socket's receive and transmit buffers, every one a 9-bit-wide
+2048-entry RAM that fits a RAMB18 exactly, checked against the
+implemented netlist's instance names rather than inferred from the
+count. Against the TCP build's 3555 LUT (3127 logic, 428 distributed
+RAM), 2592 flops and the same 2 block RAM tiles (1 RAMB36 and 2
+RAMB18), and the ICMP-only build's 997 LUT (no distributed RAM), 1172
+flops and 1 tile. So: no block RAM saved against TCP — a first draft of
+this paragraph read the RAMB36 count alone and claimed one — and about
+half the logic, which is the whole design argument of the socket
 README in one number.
 
 On the wire, 2026-09-17: ``nc -u 192.168.90.42 7`` echoed

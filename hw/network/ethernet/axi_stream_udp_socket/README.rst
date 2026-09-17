@@ -21,9 +21,10 @@ another, or to several in turn. The peer address travels beside the
 stream instead of living in a record — ``m_app_peer_mac`` /
 ``m_app_peer_ip`` / ``m_app_peer_port`` accompany a received datagram
 exactly as the IPv4 parser's own side-bands accompany a segment,
-sampled with its first beat and stable to its last; ``s_app_dst_mac`` /
-``s_app_dst_ip`` / ``s_app_dst_port`` are the mirror going out, sampled
-the same way. Wiring all six alongside the data, ``tvalid``, ``tlast``
+stable from its first beat to its last; ``s_app_dst_mac`` /
+``s_app_dst_ip`` / ``s_app_dst_port`` are the mirror going out, latched
+on the first beat of the datagram they address and consumed nowhere
+else. Wiring all six alongside the data, ``tvalid``, ``tlast``
 and ``tready`` — the whole datagram, address included — straight from
 ``m_app`` back to ``s_app`` makes a UDP echo server, ``nc -u`` or any
 client on ``listen_port``; the socket captures the sender's MAC as
@@ -107,8 +108,11 @@ The verdict is known only on the last byte, so the payload is written
 speculatively into the receive buffer, an ``axi_stream_packet_fifo``
 whose commit/rollback is exactly the mechanism needed, and doomed with
 ``tuser`` when the checksum fails. Its ``INFO_WIDTH`` word carries the
-sender's MAC, IP and port, sampled at the header and committed with the
-frame; it rides through to ``m_app_peer_mac``/``m_app_peer_ip``/
+sender's MAC, IP and port, latched on the datagram's first beat — as
+the TCP socket and the ICMP responder latch theirs, not the live
+side-band at commit, so a buffering stage inserted ahead of the socket
+one day could not shift them onto the next frame — and committed with
+the frame; it rides through to ``m_app_peer_mac``/``m_app_peer_ip``/
 ``m_app_peer_port``, stable for the whole delivered datagram. A
 datagram whose payload does not fit the free space, or which arrives
 with no frame slot free, is not written and not answered — UDP has
@@ -174,9 +178,10 @@ README, would serve this one too.
 Measured on the `Zedboard UDP endpoint
 <../../../boards/zedboard/udp_endpoint/README.rst>`_ (Vivado 2026.1,
 the -1 part): the transmit fold above, three terms wide on a
-one-byte datagram's single beat, appears nowhere in the timing report
-— no ``tx_fold``, ``tx_checksum`` or ``txf_s_info`` net on any listed
-path. The receive fold does appear, as the middle segment of the
+one-byte datagram's single beat, is not the build's worst path — the
+summary report lists one path per clock group and the fold is on none
+of them — but its own slack was not measured, and that is all the
+report can say. The receive fold does appear, as the middle segment of the
 build's critical path, but not as its own bottleneck: the front
 receive packet FIFO's look-ahead valid logic, the path the TCP build
 already leaves alone, runs through the whole parser chain and back,
@@ -195,9 +200,14 @@ process, Moore outputs, no state hidden in a counter.
 - **Receive walker** — ``IDLE``, ``HEADER`` (the 8 UDP header bytes,
   decoding and starting the checksum fold), ``PAYLOAD`` (streamed to
   the receive buffer, the fit already checked at the header), ``DROP``
-  (a datagram shorter than 8 bytes, consumed with nothing stored). The
-  byte counter, the header fields and the checksum accumulator are
-  datapath.
+  (a length field that disagrees with ``s_length``: the rest of the
+  datagram consumed with nothing stored). A datagram that ends inside
+  the header, or exactly at it, needs no state of its own: its last
+  beat returns the walker to ``IDLE`` from ``HEADER`` before the
+  decision is taken, so a header-only datagram is consumed without a
+  checksum verdict ever being formed — there is nothing one could
+  gate. The byte counter, the header fields and the checksum
+  accumulator are datapath.
 - **Transmit walker** — ``IDLE`` (polling the transmit buffer's frame
   count), ``HEADER`` (the fixed 42-byte image, streamed by byte
   index), ``PAYLOAD`` (streamed from the transmit buffer). No ``SUM``
@@ -221,8 +231,14 @@ Signals
 
 - ``clock``, ``sreset``: clock and synchronous reset, active high.
 - ``local_mac`` (48 bits), ``local_ip`` (32 bits), ``listen_port``
-  (16 bits): endpoint identity and the listening port, live inputs —
-  there being no connection, nothing here is ever sampled and held.
+  (16 bits): endpoint identity and the listening port. Live inputs,
+  read as each header is built and, for ``local_ip`` and
+  ``listen_port``, folded into a datagram's checksum as it is written:
+  they must hold still while any datagram is queued for transmission,
+  or a queued header leaves with a checksum computed for the old
+  identity. The peer and destination addresses are latched per
+  datagram; the identity is not, there being no connection to latch
+  it for.
 - ``s_axi_tdata`` (8 bits), ``s_axi_tuser``, ``s_axi_tvalid``,
   ``s_axi_tlast``, ``s_axi_tready``: AXI stream slave, UDP datagrams
   from the IPv4 demux.
@@ -255,27 +271,43 @@ misinterpret with option negotiation, so nothing here needs the
 The bench drives datagrams built by ``udp_model_pkg`` into a small
 64-byte, four-datagram receive and transmit buffer, with ``m_app``
 wired straight back to ``s_app``, address fields included, so the
-socket is an echo server. It walks a basic round trip, then every
-rejection this README describes — the wrong port, a broadcast
-destination, a bad checksum, a checksum field of zero with a payload
-byte a real checksum would have caught, a ``tuser`` mid-datagram, a
-length field that disagrees with ``s_length``, a datagram shorter than
-a header, and a payload larger than the buffer — each checked to leave
-no reply and the socket able to answer the next datagram cleanly
-afterward. A dedicated scenario holds the application off to fill all
-four receive frame slots, confirms a fifth datagram is dropped for
-want of one, and that releasing the application drains exactly the
-four that fit; a directed vector, found by search against this
-bench's own addresses the way the TCP checksum's directed vectors
-were, exercises RFC 768's computed-zero-sent-as-all-ones edge case in
-hardware. Sixty random round trips close it out, payload length and
-content random, checksum enabled and disabled about equally. 277
-checks, ALL TESTS PASSED under ``check.iverilog`` and
-``check.verilator``, ``lint.verilator`` clean. Mutation-tested: the
-no-checksum bypass, the length-field check, the destination-port
-check, the checksum's one's-complement, its RFC 768 substitution, the
-length term folded into it, and a byte's halfword placement each fail
-the bench; removing the not-accepted or no-free-frame-slot dooming
-does not just fail a check, it deadlocks the writer against a full
-buffer, exactly the failure mode the receive buffer's own README
-warns an oversized or misrouted frame invites without it.
+socket is an echo server, and backpressures the Ethernet output at
+random about a third of the cycles, as the packet mux does on the
+board whenever another responder is draining. It walks a basic round
+trip, then every rejection this README describes — the wrong port, a
+broadcast destination, a bad checksum, a checksum field of zero with
+a payload byte a real checksum would have caught, a ``tuser``
+mid-datagram, a length field that disagrees with ``s_length``, a
+datagram shorter than a header, and a payload larger than the buffer
+— each checked to leave no reply and the socket able to answer the
+next datagram cleanly afterward. A dedicated scenario holds the
+application off to fill all four receive frame slots, confirms a
+fifth datagram is dropped for want of one, and that releasing the
+application drains exactly the four that fit; a directed vector, found
+by search against this bench's own addresses the way the TCP
+checksum's directed vectors were, exercises RFC 768's
+computed-zero-sent-as-all-ones edge case in hardware. Two stations
+then interleave — three datagrams queued with the application held,
+A, B, A, then one from B live — and each reply must go back to the
+station that sent that datagram, the one property here that is
+UDP-specific and that a single-peer bench would pass by accident with
+an address path stale by one datagram. Sixty random round trips close
+it out, payload length and content random, checksum enabled and
+disabled about equally. 294 checks, ALL TESTS PASSED under
+``check.iverilog`` and ``check.verilator``, ``lint.verilator`` clean.
+Mutation-tested, 14 of 14: the no-checksum bypass, the length-field
+check, the destination-port check, the checksum's one's-complement,
+its RFC 768 substitution, the length term folded into it, a byte's
+halfword placement, the destination MAC in the header image, the
+transmit walker popping its buffer without waiting for ``tready``, its
+header index advancing without a beat, the peer-MAC latch never
+loading, and the INFO word taking the latch instead of the live value
+on a one-beat datagram each fail the bench — the last by exactly one
+check, the one-byte datagram to A queued behind B's, which is what
+that scenario is for; and the two transmit handshake mutations are
+caught only since the output is backpressured, an earlier
+always-ready version of this bench let both through. Removing the
+not-accepted or no-free-frame-slot dooming does not just fail a
+check, it deadlocks the writer against a full buffer, exactly the
+failure mode the receive buffer's own README warns an oversized or
+misrouted frame invites without it.

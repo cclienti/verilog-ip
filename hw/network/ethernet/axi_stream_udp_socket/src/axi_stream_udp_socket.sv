@@ -32,14 +32,25 @@
 // real buffer space, exactly as axi_stream_tcp_socket dooms a
 // not-accepted segment.
 //
-// A datagram with no payload is accepted at the wire -- decoded,
-// matched, its checksum verified -- but delivers nothing to the
-// application: AXI stream needs a beat to carry an event, and there is
-// none to spend on an empty frame the way TCP spends one on its close
-// token, so this socket cannot represent, and cannot originate, a
-// zero-byte UDP datagram. Documented, not implemented: rare enough in
-// practice, and a marker-beat mechanism to carry it would cost more
-// than the limitation does.
+// A datagram with no payload is consumed at the wire but delivers
+// nothing to the application, and its checksum verdict is never even
+// formed: it ends on its eighth byte, which the receive walker takes
+// as the datagram's end ahead of the header decision, and there is
+// nothing a verdict could gate. AXI stream needs a beat to carry an
+// event, and there is none to spend on an empty frame the way TCP
+// spends one on its close token, so this socket cannot represent, and
+// cannot originate, a zero-byte UDP datagram. Documented, not
+// implemented: rare enough in practice, and a marker-beat mechanism to
+// carry it would cost more than the limitation does.
+//
+// local_mac, local_ip and listen_port are live inputs folded into a
+// datagram's checksum as it is written and read again as its header
+// is built: they must hold still while any datagram is queued, which a
+// board that ties them to constants satisfies trivially. The peer and
+// destination addresses, by contrast, are latched on the first beat of
+// the datagram they belong to, so a stream that changes them between
+// datagrams -- the case the echo wire never produces -- is served
+// correctly.
 //
 // Clean FSMs for the socket's benchmark goal, both kept inside this
 // one component rather than split out the way tcp_rx_parser and
@@ -113,10 +124,14 @@ module axi_stream_udp_socket #(
 
     logic        rxf_s_tready;  // receive buffer write-side ready, declared here: iverilog
                                  // wants a continuous assign's operands declared ahead of it
-    logic        rx_beat, rx_first, rx_last_beat;
+    logic        rx_beat;         // a datagram byte is consumed this cycle
+    logic        rx_first;        // the first byte of a datagram, in IDLE
+    logic        rx_last_beat;    // the datagram's final byte is consumed this cycle
     logic [15:0] rx_cnt;          // byte index within the datagram
-    logic [15:0] rx_src_port_q;
-    logic [15:0] rx_dst_port_q;
+    logic [47:0] rx_src_mac_q;    // sender MAC, latched on the first beat
+    logic [31:0] rx_src_ip_q;     // sender IP, latched on the first beat
+    logic [15:0] rx_src_port_q;   // sender port, from header bytes 0-1
+    logic [15:0] rx_dst_port_q;   // destination port, from header bytes 2-3
     logic [7:0]  rx_len_hi_q;     // length field high byte, cnt==4
     logic        rx_len_bad_q;    // length field disagrees with s_length
     logic        rx_csum_zero_q;  // received checksum field is all-zero: RFC 768, skip
@@ -140,13 +155,13 @@ module axi_stream_udp_socket #(
     // length below, it is a side-band already valid on the first beat,
     // not something decoded from the stream, so it needs no register.
     //-------------------------------------------
-    logic [18:0] rx_pseudo_sum;
-    logic [18:0] rx_pseudo_byte0;
-    logic [15:0] rx_fold_q;
-    logic [15:0] rx_byte16;
-    logic [16:0] rx_fold_a;
-    logic [15:0] rx_fold_next;
-    logic        rx_checksum_ok;
+    logic [18:0] rx_pseudo_sum;   // pseudo-header terms summed, before folding
+    logic [18:0] rx_pseudo_byte0; // pseudo-header plus byte 0, before its fold
+    logic [15:0] rx_fold_q;       // running checksum, folded to 16 bits after every byte
+    logic [15:0] rx_byte16;       // this byte placed in its halfword position
+    logic [16:0] rx_fold_a;       // this byte's addition into the fold, before the shared fold
+    logic [15:0] rx_fold_next;    // the folded result: next rx_fold_q, and the live verdict operand
+    logic        rx_checksum_ok;  // verdict including the byte on the bus, or field was zero
 
     assign rx_pseudo_sum   = {3'h0, s_src_ip[31:16]} + {3'h0, s_src_ip[15:0]}
                            + {3'h0, s_dst_ip[31:16]} + {3'h0, s_dst_ip[15:0]}
@@ -163,10 +178,10 @@ module axi_stream_udp_socket #(
     // Length field, decoded live from byte 5 with byte 4 already
     // registered, checked and registered the same cycle -- settled two
     // cycles ahead of the HEADER/PAYLOAD decision at cnt==7
-    logic [15:0] rx_len_live;
+    logic [15:0] rx_len_live;     // length field, byte 4 registered with byte 5 live
     assign rx_len_live = {rx_len_hi_q, s_axi_tdata};
 
-    logic [15:0] rx_payload_len;
+    logic [15:0] rx_payload_len;  // s_length less the header, for the fit check
     assign rx_payload_len = s_length - 16'(UDP_HDR_LEN);
 
     //================================================================
@@ -174,14 +189,17 @@ module axi_stream_udp_socket #(
     // (instantiated here so its level/frames outputs are declared
     // before the datapath below reads them for the fit check)
     //================================================================
-    logic [7:0]              rxf_s_tdata;
-    logic                    rxf_s_tuser, rxf_s_tvalid, rxf_s_tlast;
-    logic [95:0]             rxf_s_info;
-    logic [7:0]              rxf_m_tdata;
-    logic                    rxf_m_tvalid, rxf_m_tlast;
-    logic [95:0]             rxf_m_info;
-    logic [LOG2_RX_DEPTH:0]  rxf_level;
-    logic [LOG2_RX_FRAMES:0] rxf_frames;
+    logic [7:0]              rxf_s_tdata;   // payload byte offered to the buffer
+    logic                    rxf_s_tuser;   // doom: bad checksum, not accepted, or tuser seen
+    logic                    rxf_s_tvalid;  // offered only in PAYLOAD
+    logic                    rxf_s_tlast;   // the datagram's last payload byte
+    logic [95:0]             rxf_s_info;    // {peer MAC, IP, port}, sampled at commit
+    logic [7:0]              rxf_m_tdata;   // committed payload byte, to m_app
+    logic                    rxf_m_tvalid;  // a committed datagram is being read
+    logic                    rxf_m_tlast;   // its last byte
+    logic [95:0]             rxf_m_info;    // its peer address, stable for the frame
+    logic [LOG2_RX_DEPTH:0]  rxf_level;     // committed bytes not yet popped
+    logic [LOG2_RX_FRAMES:0] rxf_frames;    // committed datagrams not yet popped
 
     axi_stream_packet_fifo #(
         .DATA_WIDTH (8), .LOG2_DEPTH (LOG2_RX_DEPTH), .LOG2_FRAMES (LOG2_RX_FRAMES),
@@ -195,9 +213,9 @@ module axi_stream_udp_socket #(
         .level (rxf_level), .frames (rxf_frames)
     );
 
-    logic [31:0] rx_free;
-    logic        rx_frame_free;
-    assign rx_free       = (32'(1) << LOG2_RX_DEPTH) - {20'h0, rxf_level};
+    logic [31:0] rx_free;        // bytes free in the receive buffer
+    logic        rx_frame_free;  // a datagram slot is free
+    assign rx_free       = (32'(1) << LOG2_RX_DEPTH) - 32'(rxf_level);
     assign rx_frame_free = !rxf_frames[LOG2_RX_FRAMES];
 
     //-------------------------------------------
@@ -216,11 +234,14 @@ module axi_stream_udp_socket #(
                 // a one-byte "datagram" is absorbed in IDLE, next_state stays IDLE
             end
             RX_HEADER: begin
-                if (rx_last_beat) rx_next_state = RX_IDLE;   // ended inside the header
+                // A datagram that ends inside or exactly at the header -- a
+                // header-only datagram's eighth byte carries tlast, since the
+                // IPv4 parser cuts at total_length -- returns to IDLE here,
+                // so the decision below always has payload bytes to come
+                if (rx_last_beat) rx_next_state = RX_IDLE;
                 else if (rx_beat && rx_cnt == 16'(UDP_HDR_LEN - 1)) begin
-                    if      (rx_len_bad_q)          rx_next_state = RX_DROP;
-                    else if (rx_payload_len == 16'd0) rx_next_state = RX_IDLE;
-                    else                             rx_next_state = RX_PAYLOAD;
+                    if (rx_len_bad_q) rx_next_state = RX_DROP;
+                    else              rx_next_state = RX_PAYLOAD;
                 end
             end
             RX_PAYLOAD: if (rx_last_beat) rx_next_state = RX_IDLE;
@@ -247,6 +268,8 @@ module axi_stream_udp_socket #(
             if (rx_first) begin
                 rx_len_bad_q   <= 1'b0;
                 rx_csum_zero_q <= 1'b1;
+                rx_src_mac_q   <= s_src_mac;   // the first-beat sample the README promises,
+                rx_src_ip_q    <= s_src_ip;    // not the live value at commit
             end
 
             case (rx_cnt)
@@ -279,7 +302,7 @@ module axi_stream_udp_socket #(
     assign rxf_s_tdata  = s_axi_tdata;
     assign rxf_s_tlast  = s_axi_tlast;
     assign rxf_s_tuser  = (s_axi_tlast && !rx_checksum_ok) || !rx_accept_q || rx_tuser_q || s_axi_tuser;
-    assign rxf_s_info   = {s_src_mac, s_src_ip, rx_src_port_q};
+    assign rxf_s_info   = {rx_src_mac_q, rx_src_ip_q, rx_src_port_q};
 
     assign m_app_tdata      = rxf_m_tdata;
     assign m_app_tvalid     = rxf_m_tvalid;
@@ -292,12 +315,14 @@ module axi_stream_udp_socket #(
     // Transmit buffer: commit/rollback, destination address and the
     // precomputed checksum riding as INFO
     //================================================================
-    logic [111:0]            txf_s_info;
-    logic                    txf_s_tready;
-    logic [7:0]               txf_m_tdata;
-    logic                     txf_m_tvalid, txf_m_tlast, txf_m_tready;
-    logic [111:0]             txf_m_info;
-    logic [LOG2_TX_DEPTH:0]   txf_m_length;
+    logic [111:0]            txf_s_info;    // {dst MAC, IP, port, checksum}, sampled at commit
+    logic                    txf_s_tready;  // buffer has room: s_app_tready
+    logic [7:0]              txf_m_tdata;   // committed payload byte, to the walker
+    logic                    txf_m_tvalid;  // a committed datagram is waiting or being read
+    logic                    txf_m_tlast;   // its last byte
+    logic                    txf_m_tready;  // popped only in TX_PAYLOAD
+    logic [111:0]            txf_m_info;    // its address and checksum, stable for the frame
+    logic [LOG2_TX_DEPTH:0]  txf_m_length;  // its payload length in bytes
 
     axi_stream_packet_fifo #(
         .DATA_WIDTH (8), .LOG2_DEPTH (LOG2_TX_DEPTH), .LOG2_FRAMES (LOG2_TX_FRAMES),
@@ -316,29 +341,49 @@ module axi_stream_udp_socket #(
     //-------------------------------------------
     // Checksum built while the datagram is written, folded byte by
     // byte like the receive side; the pseudo-header and UDP header
-    // terms known from the first beat (destination address and port,
-    // already stable per the s_app_dst_* contract) fold in with byte
-    // 0, and the length -- known only once tlast arrives -- folds in
-    // with the last byte instead, since nothing here is ever read back
-    // to sum a second time the way a TCP retransmission requires.
-    // RFC 768's edge case is honoured: a computed checksum of zero is
-    // sent as all ones.
+    // terms known from the first beat (destination address and port)
+    // fold in with byte 0, and the length -- known only once tlast
+    // arrives -- folds in with the last byte instead, since nothing
+    // here is ever read back to sum a second time the way a TCP
+    // retransmission requires. RFC 768's edge case is honoured: a
+    // computed checksum of zero is sent as all ones.
+    //
+    // s_app_dst_mac/ip/port are consumed on the first beat and nowhere
+    // else: the checksum folds them there, and the same values are
+    // latched for the INFO word the buffer samples on the committing
+    // beat. Consuming the live inputs at commit instead would let a
+    // header be addressed to one destination with a checksum computed
+    // for another whenever an application changes the fields between
+    // the first and last beat, which the "sampled with its first beat"
+    // contract permits. A one-beat datagram is first and last at once,
+    // so the INFO word takes the live value on that beat and the latch
+    // otherwise.
     //-------------------------------------------
     logic [15:0] tx_byte_cnt_q;    // payload bytes already accepted before this beat
-    logic        tx_first;
-    logic [15:0] tx_fold_q;
+    logic        tx_first;         // this accepted beat is a datagram's first byte
+    logic [15:0] tx_fold_q;        // running checksum, folded to 16 bits after every byte
     logic [18:0] tx_base_sum;      // pseudo header (minus length) + UDP header ports
-    logic [15:0] tx_byte16;
+    logic [15:0] tx_byte16;        // this byte placed in its halfword position
     logic [15:0] tx_total_len;     // UDP_HDR_LEN + bytes through this beat
     logic [16:0] tx_len_x2;        // 2 * tx_total_len, valid when this beat is last
-    logic [19:0] tx_fold_a;
-    logic [16:0] tx_fold_mid;
-    logic [15:0] tx_fold_final;
-    logic [15:0] tx_checksum;
+    logic [19:0] tx_fold_a;        // this beat's terms summed, before folding
+    logic [16:0] tx_fold_mid;      // first fold stage, 20 to 17 bits
+    logic [15:0] tx_fold_final;    // fully folded running sum: next tx_fold_q
+    logic [15:0] tx_checksum;      // the field value, complemented and RFC 768-substituted
+    logic [47:0] tx_dst_mac_q;     // destination MAC, latched on the first beat
+    logic [31:0] tx_dst_ip_q;      // destination IP, latched on the first beat
+    logic [15:0] tx_dst_port_q;    // destination port, latched on the first beat
+    logic [47:0] tx_dst_mac;       // what INFO commits: live on the first beat, the latch after
+    logic [31:0] tx_dst_ip;        // idem
+    logic [15:0] tx_dst_port;      // idem
 
-    logic        tx_beat;
+    logic        tx_beat;          // an s_app byte is accepted this cycle
     assign tx_beat  = s_app_tvalid && s_app_tready;
     assign tx_first = tx_beat && (tx_byte_cnt_q == 16'd0);
+
+    assign tx_dst_mac  = tx_first ? s_app_dst_mac  : tx_dst_mac_q;
+    assign tx_dst_ip   = tx_first ? s_app_dst_ip   : tx_dst_ip_q;
+    assign tx_dst_port = tx_first ? s_app_dst_port : tx_dst_port_q;
 
     assign tx_base_sum = {3'h0, local_ip[31:16]} + {3'h0, local_ip[15:0]}
                        + {3'h0, s_app_dst_ip[31:16]} + {3'h0, s_app_dst_ip[15:0]}
@@ -358,7 +403,7 @@ module axi_stream_udp_socket #(
     // byte's fold, exactly as the receive side never complements what
     // it feeds forward either. RFC 768: a complemented result of zero
     // is sent as all ones.
-    logic [15:0] tx_csum_raw;
+    logic [15:0] tx_csum_raw;      // the complemented fold, before the zero substitution
     assign tx_csum_raw = ~tx_fold_final;
     assign tx_checksum = (tx_csum_raw == 16'h0000) ? 16'hFFFF : tx_csum_raw;
 
@@ -370,10 +415,15 @@ module axi_stream_udp_socket #(
         else if (tx_beat) begin
             tx_fold_q     <= tx_fold_final;
             tx_byte_cnt_q <= s_app_tlast ? 16'd0 : tx_byte_cnt_q + 16'd1;
+            if (tx_first) begin
+                tx_dst_mac_q  <= s_app_dst_mac;
+                tx_dst_ip_q   <= s_app_dst_ip;
+                tx_dst_port_q <= s_app_dst_port;
+            end
         end
     end
 
-    assign txf_s_info = {s_app_dst_mac, s_app_dst_ip, s_app_dst_port, tx_checksum};
+    assign txf_s_info = {tx_dst_mac, tx_dst_ip, tx_dst_port, tx_checksum};
 
     //================================================================
     // Transmit walker: pop a committed datagram, build the fixed
@@ -382,14 +432,14 @@ module axi_stream_udp_socket #(
     //================================================================
     enum logic [1:0] { TX_IDLE, TX_HEADER, TX_PAYLOAD } tx_state, tx_next_state;
 
-    logic [15:0] tx_hcnt;   // header byte index, HEADER only
-    logic        tx_hbeat;
+    logic [15:0] tx_hcnt;        // header byte index, HEADER only
+    logic        tx_hbeat;       // an output beat is accepted this cycle
     assign tx_hbeat = m_axi_tvalid && m_axi_tready;
 
-    logic [47:0] txp_dst_mac;
-    logic [31:0] txp_dst_ip;
-    logic [15:0] txp_dst_port;
-    logic [15:0] txp_checksum;
+    logic [47:0] txp_dst_mac;    // the datagram being sent: its destination MAC ...
+    logic [31:0] txp_dst_ip;     // ... IP ...
+    logic [15:0] txp_dst_port;   // ... port ...
+    logic [15:0] txp_checksum;   // ... and precomputed checksum, all from INFO
     assign {txp_dst_mac, txp_dst_ip, txp_dst_port, txp_checksum} = txf_m_info;
 
     logic [15:0] txp_udp_len;   // UDP_HDR_LEN + payload bytes, from the FIFO's own length
@@ -405,8 +455,8 @@ module axi_stream_udp_socket #(
         return ~s[15:0];
     endfunction
 
-    logic [31:0] ip_acc;
-    logic [15:0] ip_ck;
+    logic [31:0] ip_acc;   // sum of the IPv4 header's nine non-zero halfwords
+    logic [15:0] ip_ck;    // the IPv4 header checksum field
     always_comb begin
         ip_acc = {16'h0, 16'h4500} + {16'h0, txp_ip_len} + {16'h0, 16'h0000}
                + {16'h0, 16'h4000} + {16'h0, 8'd64, IP_PROTO_UDP}
@@ -415,7 +465,7 @@ module axi_stream_udp_socket #(
     end
     assign ip_ck = ip_fold(ip_acc);
 
-    logic [7:0] tx_img [0:HDR_LEN-1];
+    logic [7:0] tx_img [0:HDR_LEN-1];   // the 42-byte Ethernet+IPv4+UDP header image
     always_comb begin
         {tx_img[0], tx_img[1], tx_img[2], tx_img[3], tx_img[4], tx_img[5]}    = txp_dst_mac;
         {tx_img[6], tx_img[7], tx_img[8], tx_img[9], tx_img[10], tx_img[11]} = local_mac;
