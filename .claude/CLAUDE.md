@@ -87,6 +87,13 @@ and READ_FIRST covered on port A only.
 **Sweep the configuration space, not one point.** If a parameter changes
 a timing path, the bench must drive every combination.
 
+**Read a Verilator run for `%Warning`, not only for the verdict.**
+Grepping `check.verilator` output for `ERROR` and `ALL TESTS PASSED`
+let a `WIDTHEXPAND` sit unseen: a zero-extension written for the default
+depth, wrong at the bench's smaller one, and `lint.verilator` — which
+elaborates the defaults — was clean. A bench that overrides a parameter
+is the only place such a warning appears.
+
 ## wavedisp — waveform declarations
 
 Python, in `project/`, two files per component: `<module>.wave.py`
@@ -156,13 +163,40 @@ make impl.vivado VIVADO_PART="xc7z020clg484-1" \
 Reports in `project/vivado-post-impl/post_impl_{timing,util}.rpt` — `Setup :`
 for worst slack, `Slice LUTs` / `CLB LUTs` / `RAMB36` for area.
 
+Two ways those reports were misread, twice each. The timing summary
+lists **one path per clock group**: "X is not in the report" means "X
+is not the worst path" and nothing more — its slack is unmeasured. For
+the families behind a WNS, open the routed `.dcp` and
+`report_timing -max_paths 60 -nworst 1 -unique_pins -sort_by slack`,
+about 15 s; grouping the sixty by source and destination block is what
+showed where register slices could help and where they could not. And
+`RAMB36` alone misreads area: a design with four RAMB18 and one with a
+RAMB36 plus two RAMB18 both use two tiles. Quote `Block RAM Tile`, and
+split `Slice LUTs` into `LUT as Logic` and `LUT as Memory` — a 64-deep
+side-band store is a few hundred LUTs of distributed RAM that the
+total hides.
+
 An I/O property change (SLEW, DRIVE, IOSTANDARD) needs no re-run: open
 the routed `.dcp` with `open_checkpoint`, `set_property` it, and read
 `get_timing_paths` — about 15 s, and it reproduced the full run to the
-picosecond on paths with no placement freedom. Board projects: a
-`hw_server` launched by `program.vivado` outlives the Vivado session;
-one born while the Platform Cable was re-enumerating keeps a stale
-target list until stopped by PID.
+picosecond on paths with no placement freedom.
+
+Board projects, `program.vivado` and the Platform Cable USB II. The udev
+rule only sets permissions, so the cable idles firmware-less —
+`03fd:0007`, LED red — and only a `hw_server` *at its startup* loads the
+firmware: about nine seconds, two re-enumerations. The server that
+loaded it then never sees the cable again: `connect_hw_server` itself
+throws 44-494 ("no active target … locked by another hw_server"), and
+every refresh after it 44-469. A fresh server finds the cable loaded
+and opens it at once. The recipe does this by itself — it retries, and
+restarts the server *it* launched, by the PID listening on 3121 — so a
+first run takes about 30 s, prints a couple of `retry` lines, and needs
+no `killall`. An auto-launched server exits about a minute after its
+last client, and the cable goes red again; a run that *fails* orphans
+its server instead. When a JTAG failure makes no sense, read the
+kernel first — `journalctl -k | grep 'usb 1-'` — and find out which
+command threw before fixing one: `-notrace` hides it, and three
+confident fixes here went to a command that was not the one failing.
 
 Licensed and installed parts: `xc7z020clg484-1` (z7020-1),
 `xc7k160tfbg484-2` (k160-2), `xcku5p-ffvb676-2-e` (ku5p-2).
