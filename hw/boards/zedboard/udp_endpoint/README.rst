@@ -102,6 +102,8 @@ report names, not by a control build, none having been run.
 
 On the wire, 2026-09-17, on the first build's bitstream: ``nc -u
 192.168.90.42 7`` echoed ``Hello World!`` back byte for byte — the
-UDP path end to end, one datagram out, one back. The later builds
-have not been programmed; the slices change latency by one cycle per
-seam and nothing a client can see.
+UDP path end to end, one datagram out, one back. On 2026-09-18 the
+build these figures describe, register slices and all, was programmed
+and did the same: each line typed into ``nc -u`` came back as typed.
+The slices change latency by one cycle per seam and nothing a client
+can see.
