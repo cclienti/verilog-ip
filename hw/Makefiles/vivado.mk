@@ -186,16 +186,59 @@ vivado-program.tcl:
 	@echo "Generating $@"
 	@echo "### Vivado $(TOP_MODULE) script to program the bitstream over JTAG" > $@
 	@echo "open_hw_manager" >> $@
-	@echo "connect_hw_server" >> $@
+	@echo "# Is a hw_server already listening? If not, the one connect_hw_server" >> $@
+	@echo "# launches is ours, and ours to restart below; a server somebody" >> $@
+	@echo "# else started is never touched" >> $@
+	@echo "set ours [catch {close [socket localhost 3121]}]" >> $@
 	@echo "# A cable that downloads its firmware on first use re-enumerates" >> $@
 	@echo "# while we are already connecting: the target is then missing, or" >> $@
-	@echo "# listed stale by a server that saw both incarnations. Both fail" >> $@
-	@echo "# open_hw_target the same way; refresh and retry that one error" >> $@
+	@echo "# listed stale by a server that saw both incarnations. The same" >> $@
+	@echo "# happens when this script had to launch hw_server itself: it" >> $@
+	@echo "# returns from connect_hw_server before the new server has" >> $@
+	@echo "# enumerated the cable. Both open_hw_target AND refresh_hw_server" >> $@
+	@echo "# fail the same way then (44-494), so both sit inside the catch:" >> $@
+	@echo "# an earlier version caught only the open, and the refresh on the" >> $@
+	@echo "# retry path killed the script three seconds in -- the first" >> $@
+	@echo "# run after a cold start always failed, the second, finding the" >> $@
+	@echo "# server the first had left behind already settled, always worked" >> $@
+	@echo "# What the kernel log showed, on a Platform Cable USB II whose udev" >> $@
+	@echo "# rule only sets permissions: the cable idles firmware-less (03fd:0007," >> $@
+	@echo "# LED red); only a hw_server at its STARTUP loads the firmware, which" >> $@
+	@echo "# takes about nine seconds and two re-enumerations, so open_hw_target" >> $@
+	@echo "# right after connect_hw_server lands before the target is registered" >> $@
+	@echo "# -- every first run failed. About a minute after its last client the" >> $@
+	@echo "# launched server exits and the cable falls back to 0007, hence every" >> $@
+	@echo "# time. And a server never loads firmware into a cable that turns up" >> $@
+	@echo "# firmware-less after it started: retrying that server is hopeless," >> $@
+	@echo "# restarting it is the cure. So: retry, and every ten failures restart" >> $@
+	@echo "# the server if this script launched it, found by the PID listening" >> $@
+	@echo "# on 3121, never by name." >> $@
+	@echo "#" >> $@
+	@echo "# The error (44-494, no active target) is thrown by connect_hw_server" >> $@
+	@echo "# itself, which selects a target as it connects -- not by" >> $@
+	@echo "# open_hw_target. Three versions of this loop wrapped only the open" >> $@
+	@echo "# and never ran once: the script died at the connect above them, and" >> $@
+	@echo "# -notrace hid which command had failed. The whole acquisition is" >> $@
+	@echo "# inside the catch now, and the retry does not look at the message" >> $@
 	@echo "set tries 0" >> $@
-	@echo "while {[catch {open_hw_target} err]} {" >> $@
-	@echo "  if {![string match {*no active target available*} \$$err] || [incr tries] > 15} { return -code error \$$err }" >> $@
-	@echo "  after 1000" >> $@
-	@echo "  refresh_hw_server" >> $@
+	@echo "while {[catch {" >> $@
+	@echo "    if {[llength [get_hw_servers -quiet]] == 0} { connect_hw_server } else { refresh_hw_server -quiet }" >> $@
+	@echo "    open_hw_target" >> $@
+	@echo "  } err]} {" >> $@
+	@echo "  if {[incr tries] > 40} {" >> $@
+	@echo "    puts \"program.vivado: giving up after \$$tries tries. Cable LED red means no firmware: 'pgrep -a hw_server', stop the stale one by PID, run again\"" >> $@
+	@echo "    return -code error \$$err" >> $@
+	@echo "  }" >> $@
+	@echo "  puts \"program.vivado: JTAG target not acquired, retry \$$tries/40, caught: [lindex [split \$$err \\n] 0]\"" >> $@
+	@echo "  if {\$$ours && \$$tries % 10 == 0} {" >> $@
+	@echo "    if {[catch {exec sh -c {ss -H -ltnp 'sport = :3121' | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2}} pid] || ![string is integer -strict \$$pid]} { set pid {} }" >> $@
+	@echo "    puts \"program.vivado: restarting the hw_server this script launched (pid '\$$pid') so it reloads the cable firmware\"" >> $@
+	@echo "    catch {disconnect_hw_server}" >> $@
+	@echo "    if {\$$pid ne {}} { catch {exec kill \$$pid} }" >> $@
+	@echo "    after 3000" >> $@
+	@echo "  } else {" >> $@
+	@echo "    after 1000" >> $@
+	@echo "  }" >> $@
 	@echo "}" >> $@
 	@echo "set dev [lindex [get_hw_devices -quiet {$(VIVADO_JTAG_DEVICE)}] 0]" >> $@
 	@echo "if {\$$dev eq {}} { error \"no device matching $(VIVADO_JTAG_DEVICE) in the JTAG chain: [get_hw_devices]\" }" >> $@
