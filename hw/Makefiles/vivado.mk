@@ -210,9 +210,13 @@ vivado-program.tcl:
 	@echo "# launched server exits and the cable falls back to 0007, hence every" >> $@
 	@echo "# time. And a server never loads firmware into a cable that turns up" >> $@
 	@echo "# firmware-less after it started: retrying that server is hopeless," >> $@
-	@echo "# restarting it is the cure. So: retry, and every ten failures restart" >> $@
-	@echo "# the server if this script launched it, found by the PID listening" >> $@
-	@echo "# on 3121, never by name." >> $@
+	@echo "# restarting it is the cure. So: retry, and restart the server if" >> $@
+	@echo "# this script launched it, found by the PID listening on 3121, never" >> $@
+	@echo "# by name -- on the second failure, then every tenth. The second," >> $@
+	@echo "# because the run on the board showed the pattern exactly: failure 1" >> $@
+	@echo "# is connect_hw_server's 44-494, and every refresh after it returned" >> $@
+	@echo "# 44-469, no current hw_target, nine times out of nine; one refresh" >> $@
+	@echo "# is given its chance and the other eight seconds are not spent." >> $@
 	@echo "#" >> $@
 	@echo "# The error (44-494, no active target) is thrown by connect_hw_server" >> $@
 	@echo "# itself, which selects a target as it connects -- not by" >> $@
@@ -230,7 +234,7 @@ vivado-program.tcl:
 	@echo "    return -code error \$$err" >> $@
 	@echo "  }" >> $@
 	@echo "  puts \"program.vivado: JTAG target not acquired, retry \$$tries/40, caught: [lindex [split \$$err \\n] 0]\"" >> $@
-	@echo "  if {\$$ours && \$$tries % 10 == 0} {" >> $@
+	@echo "  if {\$$ours && (\$$tries == 2 || \$$tries % 10 == 0)} {" >> $@
 	@echo "    if {[catch {exec sh -c {ss -H -ltnp 'sport = :3121' | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2}} pid] || ![string is integer -strict \$$pid]} { set pid {} }" >> $@
 	@echo "    puts \"program.vivado: restarting the hw_server this script launched (pid '\$$pid') so it reloads the cable firmware\"" >> $@
 	@echo "    catch {disconnect_hw_server}" >> $@
