@@ -334,6 +334,23 @@ To only compile/elaborate the design:
    cd hw/lib/adderc/project
    make build.modelsim
 
+**Veriparse**
+
+The `veriparse <https://github.com/cclienti/veriparse>`_ tools run from a pinned release
+(``VERIPARSE_VERSION`` in ``hw/Makefiles/veriparse.mk``), installed with micromamba in a prefix
+environment under ``hw/Makefiles/`` on first use — that run needs network access. ``make
+env.veriparse`` creates it on its own.
+
+``verilower`` compiles an ``initial`` process marked ``(* veriparse_fsm *)`` into the explicit
+state machine. A project lists the lowered files it keeps in ``VERILOWER_OUTPUTS``; each
+``<module>.sv`` is generated from ``<module>.beh.sv`` beside it, and both are committed, so
+simulation and synthesis need no environment:
+
+.. code-block:: bash
+
+   make lower.verilower    # regenerate the lowered files and their .fsm.json state maps
+   make check.verilower    # fail when a committed file differs from a fresh lowering
+
 **Available Targets Summary**
 
 Targets are named ``<action>.<tool>``: the action is what you want done, the tool is who does it.
@@ -381,6 +398,12 @@ action, which depends on the ``.mk`` files its Makefile includes.
 | ``project.quartus``        | Generate the Quartus project                       |
 +----------------------------+----------------------------------------------------+
 | ``waves.wavedisp``         | Generate the save scripts for every viewer         |
++----------------------------+----------------------------------------------------+
+| ``lower.verilower``        | Regenerate the committed FSMs from ``.beh.sv``     |
++----------------------------+----------------------------------------------------+
+| ``check.verilower``        | Fail when a committed FSM is stale                 |
++----------------------------+----------------------------------------------------+
+| ``flatten.veriparse``      | Flatten the design into one module                 |
 +----------------------------+----------------------------------------------------+
 | ``clean``                  | Remove the files that rebuild in seconds           |
 +----------------------------+----------------------------------------------------+

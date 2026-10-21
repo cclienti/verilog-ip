@@ -57,6 +57,11 @@ doc/logo/*png
 **/project/verilator/check/
 # micromamba prefix env holding the pinned verilator (env.verilator)
 hw/Makefiles/.verilator-env/
+# micromamba prefix env holding the pinned veriparse release (env.veriparse),
+# the local channel it is installed from, and its transient index env
+hw/Makefiles/.veriparse-env/
+hw/Makefiles/.veriparse-channel/
+hw/Makefiles/.veriparse-index-env/
 *.o
 *.a
 *.d

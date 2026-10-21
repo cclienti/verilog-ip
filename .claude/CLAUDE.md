@@ -39,6 +39,12 @@ the tool is never implicit. `make help` lists what a project provides,
 sorted by action. The old bare names — `sim`, `trace`, `lint`,
 `verilates`, `msim-sim`, `vivado-gen-post-syn` — no longer exist.
 
+verilower output is committed: `lower.verilower` regenerates
+`<module>.sv` from `<module>.beh.sv`, `check.verilower` diffs a fresh
+lowering against it. Never hand-edit the lowered file. verilower v2.0.0
+exits 0 and writes nothing when the `-o` directory does not exist —
+the makefile guards it; a direct call must too.
+
 `clean` removes only what rebuilds in seconds. Synthesis and
 implementation results are on `distclean`, because `clean` taking a
 netlist away cost a re-synthesis once.
